@@ -1,0 +1,64 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Add Item — InvSys{% endblock %}
+{% block page_title %}Add Item{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <h2 class="form-title">New Inventory Item</h2>
+
+  {% if form.errors %}
+    <div class="alert alert-error">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path stroke-linecap="round" d="M12 8v4m0 4h.01"/>
+      </svg>
+      Please fix the errors below.
+    </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.name.id_for_label }}">Item Name</label>
+      <input type="text" id="{{ form.name.id_for_label }}" name="{{ form.name.html_name }}"
+        class="form-control" placeholder="e.g. DSLR Camera"
+        value="{{ form.name.value|default:'' }}"/>
+      {% if form.name.errors %}<span class="form-error">{{ form.name.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.description.id_for_label }}">Description</label>
+      <textarea id="{{ form.description.id_for_label }}" name="{{ form.description.html_name }}"
+        class="form-control" placeholder="Brief description…">{{ form.description.value|default:'' }}</textarea>
+      {% if form.description.errors %}<span class="form-error">{{ form.description.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.serial.id_for_label }}">Serial Number</label>
+      <textarea id="{{ form.serial.id_for_label }}" name="{{ form.serial.html_name }}"
+        class="form-control" placeholder="Serial number(s)…" style="min-height:70px">{{ form.serial.value|default:'' }}</textarea>
+      {% if form.serial.errors %}<span class="form-error">{{ form.serial.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.quantity.id_for_label }}">Total Quantity</label>
+      <input type="number" id="{{ form.quantity.id_for_label }}" name="{{ form.quantity.html_name }}"
+        class="form-control" placeholder="0" min="1"
+        value="{{ form.quantity.value|default:'' }}"/>
+      <span class="form-hint">This also sets the initial available quantity.</span>
+      {% if form.quantity.errors %}<span class="form-error">{{ form.quantity.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Item
+      </button>
+      <a href="{% url 'index' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

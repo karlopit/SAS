@@ -1,0 +1,70 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Return Item — InvSys{% endblock %}
+{% block page_title %}Return Item{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'index' %}" class="btn btn-secondary">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Back
+  </a>
+{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <h2 class="form-title">Return Item</h2>
+
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:24px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Item</div>
+        <div style="font-weight:600;font-size:15px">{{ transaction.item.name }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Quantity</div>
+        <div style="font-weight:600;font-size:15px">{{ transaction.quantity_borrowed }} units</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Borrowed By</div>
+        <div style="font-weight:600">{{ transaction.borrower.username }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Borrowed On</div>
+        <div style="color:var(--muted)">{{ transaction.borrowed_at|date:"M d, Y — H:i" }}</div>
+      </div>
+    </div>
+  </div>
+
+  {% if transaction.status == 'returned' %}
+    <div class="alert alert-success">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+      Already returned on {{ transaction.returned_at|date:"M d, Y" }}.
+    </div>
+    <a href="{% url 'index' %}" class="btn btn-secondary">Back to Dashboard</a>
+  {% else %}
+    <div class="alert alert-info">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path stroke-linecap="round" d="M12 16v-4m0-4h.01"/>
+      </svg>
+      This will restore <strong>{{ transaction.quantity_borrowed }}</strong> unit(s) of
+      <strong>{{ transaction.item.name }}</strong> back to inventory.
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+          </svg>
+          Confirm Return
+        </button>
+        <a href="{% url 'index' %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

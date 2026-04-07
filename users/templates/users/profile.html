@@ -1,0 +1,71 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Profile — InvSys{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:800px">
+
+  <div class="form-card" style="max-width:100%">
+    <h2 class="form-title">Account Info</h2>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
+      <div class="user-avatar" style="width:56px;height:56px;font-size:22px">
+        {{ user.username|first|upper }}
+      </div>
+      <div>
+        <div style="font-family:var(--font-head);font-size:18px;font-weight:800">{{ user.username }}</div>
+        <div style="color:var(--muted);font-size:12px">{{ user.email|default:"No email set" }}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Role</span>
+        <span class="badge {% if user.role == 'admin' %}badge-blue{% elif user.role == 'staff' %}badge-yellow{% else %}badge-green{% endif %}">
+          {{ user.role|title }}
+        </span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Joined</span>
+        <span>{{ user.date_joined|date:"M d, Y" }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:12px 0">
+        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Status</span>
+        {% if user.is_active %}
+          <span class="badge badge-green">Active</span>
+        {% else %}
+          <span class="badge badge-red">Inactive</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="form-card" style="max-width:100%">
+    <h2 class="form-title">My Activity</h2>
+    {% if user.transactions.all %}
+      <div style="display:flex;flex-direction:column;gap:10px">
+        {% for tx in user.transactions.all|slice:":6" %}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+            <div>
+              <div style="font-weight:600;font-size:13px">{{ tx.item.name }}</div>
+              <div style="color:var(--muted);font-size:11px">{{ tx.borrowed_at|date:"M d, Y" }} · {{ tx.quantity_borrowed }} unit(s)</div>
+            </div>
+            {% if tx.status == 'borrowed' %}
+              <span class="badge badge-yellow">Borrowed</span>
+            {% else %}
+              <span class="badge badge-green">Returned</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state" style="padding:30px 0">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <p>No transactions yet.</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

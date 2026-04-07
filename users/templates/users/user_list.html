@@ -1,0 +1,72 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Manage Users — InvSys{% endblock %}
+{% block page_title %}Manage Users{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert alert-success" style="margin-bottom:16px">{{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Registered Accounts</span>
+    <div class="table-search">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="item-search" placeholder="Search users…"/>
+    </div>
+  </div>
+
+  {% if users %}
+  <table id="items-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Date Joined</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td style="color:var(--muted)">{{ forloop.counter }}</td>
+        <td style="font-weight:600">{{ u.username }}</td>
+        <td style="color:var(--muted)">{{ u.email|default:"—" }}</td>
+        <td>
+          <span class="badge {% if u.role == 'admin' %}badge-blue{% else %}badge-yellow{% endif %}">
+            {{ u.role|title }}
+          </span>
+        </td>
+        <td style="color:var(--muted)">{{ u.date_joined|date:"M d, Y" }}</td>
+        <td>
+          {% if u.is_active %}
+            <span class="badge badge-green">Active</span>
+          {% else %}
+            <span class="badge badge-red">Inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <a href="{% url 'edit_user' u.id %}" class="btn btn-secondary btn-sm">Edit</a>
+            <a href="{% url 'reset_password' u.id %}" class="btn btn-danger btn-sm">Reset PW</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <p>No users found.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

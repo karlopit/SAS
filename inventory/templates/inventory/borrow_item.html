@@ -1,0 +1,77 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Borrow Item — InvSys{% endblock %}
+{% block page_title %}Borrow Item{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <h2 class="form-title">Borrow an Item</h2>
+
+  {% if form.errors %}
+    <div class="alert alert-error">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path stroke-linecap="round" d="M12 8v4m0 4h.01"/>
+      </svg>
+      {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.office_college.id_for_label }}">College/Office</label>
+      <input type="text" id="{{ form.office_college.id_for_label }}"
+        name="{{ form.office_college.html_name }}"
+        class="form-control"
+        placeholder="Enter College/Office"
+        value="{{ form.office_college.value|default:'' }}"/>
+        {% if form.office_college.errors %}
+      <span class="form-error">{{ form.office_college.errors.0 }}</span>
+      {% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.item.id_for_label }}">Select Item</label>
+      <select id="{{ form.item.id_for_label }}" name="{{ form.item.html_name }}" class="form-control">
+        <option value="">— Choose an item —</option>
+        {% for item in available_items %}
+          <option value="{{ item.id }}" data-available="{{ item.available_quantity }}"
+            {% if request.GET.item == item.id|stringformat:"s" %}selected{% endif %}>
+            {{ item.name }} ({{ item.available_quantity }} available)
+          </option>
+        {% endfor %}
+      </select>
+      {% if form.item.errors %}<span class="form-error">{{ form.item.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.quantity_borrowed.id_for_label }}">Quantity</label>
+      <input type="number" id="{{ form.quantity_borrowed.id_for_label }}"
+        name="{{ form.quantity_borrowed.html_name }}"
+        class="form-control" placeholder="1" min="1"
+        value="{{ form.quantity_borrowed.value|default:'' }}"/>
+      <span id="qty-hint" class="form-hint">Select an item to see availability.</span>
+      {% if form.quantity_borrowed.errors %}<span class="form-error">{{ form.quantity_borrowed.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="alert alert-info">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path stroke-linecap="round" d="M12 16v-4m0-4h.01"/>
+      </svg>
+      Borrowing as <strong>{{ request.user.username }}</strong>.
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>
+        </svg>
+        Confirm Borrow
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

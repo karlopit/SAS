@@ -1,0 +1,179 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Dashboard — InvSys{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Items</div>
+    <div class="stat-value">{{ items.count }}</div>
+    <div class="stat-sub">across all categories</div>
+    <div class="stat-icon">📦</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Borrows</div>
+    <div class="stat-value" style="color:var(--warning)">{{ active_borrows }}</div>
+    <div class="stat-sub">currently borrowed</div>
+    <div class="stat-icon">🔄</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Returns</div>
+    <div class="stat-value" style="color:var(--accent2)">{{ total_returns }}</div>
+    <div class="stat-sub">all time</div>
+    <div class="stat-icon">↩️</div>
+  </div>
+</div>
+
+<!-- Inventory Items -->
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Inventory Items</span>
+    <div class="table-search">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="item-search" placeholder="Search items…"/>
+    </div>
+  </div>
+
+  {% if items %}
+  <table id="items-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Item Name</th>
+        <th>Serial Number</th>
+        <th>Description</th>
+        <th>Availability</th>
+        <th>Status</th>
+        {% if request.user.role != 'admin' %}<th>Actions</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td style="color:var(--muted)">{{ forloop.counter }}</td>
+        <td style="font-weight:600">{{ item.name }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ item.serial|default:"—"|linebreaksbr }}</td>
+        <td style="color:var(--muted)">{{ item.description|truncatechars:40|default:"—" }}</td>
+        <td><div data-qty="{{ item.available_quantity }}" data-total="{{ item.quantity }}"></div></td>
+        <td>
+          {% if item.available_quantity == 0 %}
+            <span class="badge badge-red">Out of Stock</span>
+          {% else %}
+            <span class="badge badge-green">In Stock</span>
+          {% endif %}
+        </td>
+        {% if request.user.role != 'admin' %}
+        <td>
+          {% if item.available_quantity > 0 %}
+            <button class="btn btn-secondary btn-sm"
+              onclick="openBorrow('{{ item.id }}', '{{ item.name|escapejs }}', '{{ item.available_quantity }}')">
+              Borrow
+            </button>
+          {% else %}
+            <span style="color:var(--muted);font-size:12px">Unavailable</span>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+    </svg>
+    <p>No items yet.{% if request.user.role == 'admin' %} <a href="{% url 'add_item' %}">Add your first item →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Recent Transactions -->
+{% if transactions %}
+<div class="table-card" style="margin-top:24px; overflow-x:auto;">
+  <div class="table-header">
+    <span class="table-title">Recent Transactions</span>
+    <div class="table-search">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="transaction-search" placeholder="Search transactions…"/>
+    </div>
+  </div>
+
+  <table id="transactions-table" style="min-width:1200px;">
+    <thead>
+      <tr>
+        <th>Staff</th>
+        <th>College/Office</th>
+        <th>Item</th>
+        <th>Serial</th>
+        <th>Qty</th>
+        <th>Borrowed On</th>
+        <th>Serviceable</th>
+        <th>Unserviceable</th>
+        <th>Sealed</th>
+        <th>Lent to Students</th>
+        <th>Box Only</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr>
+        <td style="font-weight:600">{{ tx.borrower.username }}</td>
+        <td><span class="badge badge-blue">{{ tx.office_college|default:"N/A" }}</span></td>
+        <td>{{ tx.item.name }}</td>
+        <td style="color:var(--muted); font-size:12px">{{ tx.item.serial|default:"—" }}</td>
+        <td>{{ tx.quantity_borrowed }}</td>
+        <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
+
+        {% if request.user.role == 'staff' %}
+        <form method="post" action="{% url 'update_condition' tx.id %}">
+          {% csrf_token %}
+          <td><input type="number" name="serviceable" value="{{ tx.serviceable }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+          <td><input type="number" name="unserviceable" value="{{ tx.unserviceable }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+          <td><input type="number" name="sealed" value="{{ tx.sealed }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+          <td><input type="number" name="lent_to_students" value="{{ tx.lent_to_students }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+          <td><input type="number" name="box_only" value="{{ tx.box_only }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+        </form>
+        {% else %}
+        <td>{{ tx.serviceable }}</td>
+        <td>{{ tx.unserviceable }}</td>
+        <td>{{ tx.sealed }}</td>
+        <td>{{ tx.lent_to_students }}</td>
+        <td>{{ tx.box_only }}</td>
+        {% endif %}
+
+        <td>
+          {% if tx.status == 'borrowed' %}
+            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
+          {% else %}
+            <span style="color:var(--muted); font-size:12px">{{ tx.returned_at|date:"M d" }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openBorrow(itemId, itemName, available) {
+  document.getElementById('modal-item-id').value = itemId;
+  document.getElementById('modal-item-name').textContent = itemName;
+  document.getElementById('modal-available').textContent = available;
+  document.getElementById('modal-qty').value = '';
+  document.getElementById('modal-qty').max = available;
+  openModal('borrow-modal');
+}
+</script>
+{% endblock %}
