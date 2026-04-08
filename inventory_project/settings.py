@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from decouple import config
 import dj_database_url
@@ -53,11 +54,25 @@ TEMPLATES = [
 WSGI_APPLICATION = 'inventory_project.wsgi.application'
 
 # DATABASE
-DATABASES = {
-    'default': dj_database_url.config(
-        default=config('DATABASE_URL')  # Render provides this automatically
-    )
-}
+if config('DATABASE_URL', default=None):
+    # Production (Render) — uses DATABASE_URL
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=config('DATABASE_URL')
+        )
+    }
+else:
+    # Local development — uses individual credentials from .env
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432'),
+        }
+    }
 
 # AUTHENTICATION
 AUTH_USER_MODEL = 'users.CustomUser'
