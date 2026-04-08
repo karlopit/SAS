@@ -1,1 +1,1 @@
-web: gunicorn inventory_project.wsgi --log-file -
+web: gunicorn inventory_project.wsgi --workers 3 --bind 0.0.0.0:$PORT --log-file -
