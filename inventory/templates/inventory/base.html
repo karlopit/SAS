@@ -16,7 +16,6 @@
 {% endif %}
 
 <div class="wrapper">
-
   <aside class="sidebar">
     <div class="sidebar-logo">
       <h1>Inv<span>Sys</span></h1>
@@ -41,12 +40,15 @@
       </a>
       {% endif %}
 
-      {% if request.user.role != 'admin' %}
-      <a href="{% url 'borrow_item' %}" class="nav-item {% if request.resolver_match.url_name == 'borrow_item' %}active{% endif %}">
+      {% if request.user.role == 'staff' %}
+      <a href="{% url 'borrow_requests' %}" class="nav-item {% if request.resolver_match.url_name == 'borrow_requests' %}active{% endif %}">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
         </svg>
-        Borrow Item
+        Borrow Requests
+        {% if pending_count %}
+          <span style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">{{ pending_count }}</span>
+        {% endif %}
       </a>
       {% endif %}
 
@@ -97,7 +99,6 @@
       {% block content %}{% endblock %}
     </div>
   </div>
-
 </div>
 
 <div id="toast-container"></div>

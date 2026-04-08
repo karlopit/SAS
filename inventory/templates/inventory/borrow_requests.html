@@ -1,0 +1,52 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Borrow Requests — InvSys{% endblock %}
+{% block page_title %}Borrow Requests{% endblock %}
+
+{% block content %}
+<div class="table-card">
+  <div class="table-header">
+    <span class="table-title">Pending Requests</span>
+  </div>
+
+  {% if pending %}
+  <table id="items-table">
+    <thead>
+      <tr>
+        <th>Transaction ID</th>
+        <th>Borrower Name</th>
+        <th>College / Office</th>
+        <th>Item Requested</th>
+        <th>Quantity</th>
+        <th>Requested On</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for req in pending %}
+      <tr>
+        <td><span class="badge badge-blue">#{{ req.transaction_id }}</span></td>
+        <td style="font-weight:600">{{ req.borrower_name }}</td>
+        <td>{{ req.office_college }}</td>
+        <td>{{ req.item.name|default:"—" }}</td>
+        <td>{{ req.quantity }}</td>
+        <td style="color:var(--muted)">{{ req.created_at|date:"M d, Y — H:i" }}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <a href="{% url 'staff_confirm_borrow' req.id %}" class="btn btn-primary btn-sm">Accept</a>
+            <form method="post" action="{% url 'decline_request' req.id %}" style="display:inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state" style="padding:40px">
+    <p>No pending borrow requests.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

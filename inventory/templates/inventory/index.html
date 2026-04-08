@@ -22,6 +22,14 @@
     <div class="stat-sub">all time</div>
     <div class="stat-icon">↩️</div>
   </div>
+  {% if request.user.role == 'staff' %}
+  <div class="stat-card" style="cursor:pointer" onclick="window.location='{% url 'borrow_requests' %}'">
+    <div class="stat-label">Pending Requests</div>
+    <div class="stat-value" style="color:var(--accent)">{{ pending_count }}</div>
+    <div class="stat-sub">awaiting approval</div>
+    <div class="stat-icon">📋</div>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Inventory Items -->
@@ -46,7 +54,6 @@
         <th>Description</th>
         <th>Availability</th>
         <th>Status</th>
-        {% if request.user.role != 'admin' %}<th>Actions</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -64,18 +71,6 @@
             <span class="badge badge-green">In Stock</span>
           {% endif %}
         </td>
-        {% if request.user.role != 'admin' %}
-        <td>
-          {% if item.available_quantity > 0 %}
-            <button class="btn btn-secondary btn-sm"
-              onclick="openBorrow('{{ item.id }}', '{{ item.name|escapejs }}', '{{ item.available_quantity }}')">
-              Borrow
-            </button>
-          {% else %}
-            <span style="color:var(--muted);font-size:12px">Unavailable</span>
-          {% endif %}
-        </td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -93,26 +88,26 @@
 
 <!-- Recent Transactions -->
 {% if transactions %}
-<div class="table-card" style="margin-top:24px; overflow-x:auto;">
+<div class="table-card" style="margin-top:24px;overflow-x:auto">
   <div class="table-header">
     <span class="table-title">Recent Transactions</span>
     <div class="table-search">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/>
-        <path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
       </svg>
       <input type="text" id="transaction-search" placeholder="Search transactions…"/>
     </div>
   </div>
-
-  <table id="transactions-table" style="min-width:1200px;">
+  <table id="transactions-table" style="min-width:1300px">
     <thead>
       <tr>
-        <th>Staff</th>
+        <th>Tx ID</th>
+        <th>Borrower Name</th>
         <th>College/Office</th>
         <th>Item</th>
         <th>Serial</th>
         <th>Qty</th>
+        <th>Returned Qty</th>
         <th>Borrowed On</th>
         <th>Serviceable</th>
         <th>Unserviceable</th>
@@ -125,23 +120,32 @@
     <tbody>
       {% for tx in transactions %}
       <tr>
-        <td style="font-weight:600">{{ tx.borrower.username }}</td>
-        <td><span class="badge badge-blue">{{ tx.office_college|default:"N/A" }}</span></td>
+        <td><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
+        <td style="font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
+        <td>{{ tx.office_college|default:"—" }}</td>
         <td>{{ tx.item.name }}</td>
-        <td style="color:var(--muted); font-size:12px">{{ tx.item.serial|default:"—" }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ tx.item.serial|default:"—" }}</td>
         <td>{{ tx.quantity_borrowed }}</td>
-        <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
 
         {% if request.user.role == 'staff' %}
-        <form method="post" action="{% url 'update_condition' tx.id %}">
+        <form method="post" action="{% url 'update_condition' tx.id %}" id="cond-{{ tx.id }}">
           {% csrf_token %}
-          <td><input type="number" name="serviceable" value="{{ tx.serviceable }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
-          <td><input type="number" name="unserviceable" value="{{ tx.unserviceable }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
-          <td><input type="number" name="sealed" value="{{ tx.sealed }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
-          <td><input type="number" name="lent_to_students" value="{{ tx.lent_to_students }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
-          <td><input type="number" name="box_only" value="{{ tx.box_only }}" min="0" class="form-control" style="width:70px; text-align:center;" onchange="this.form.submit()"/></td>
+          <input type="hidden" name="serviceable" value="{{ tx.serviceable }}"/>
+          <input type="hidden" name="unserviceable" value="{{ tx.unserviceable }}"/>
+          <input type="hidden" name="sealed" value="{{ tx.sealed }}"/>
+          <input type="hidden" name="lent_to_students" value="{{ tx.lent_to_students }}"/>
+          <input type="hidden" name="box_only" value="{{ tx.box_only }}"/>
+          <td><input type="number" name="returned_qty" value="{{ tx.returned_qty }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="document.getElementById('cond-{{ tx.id }}').submit()"/></td>
+          <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
+          <td><input type="number" name="serviceable" value="{{ tx.serviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['serviceable'][0].value=this.value;this.form.submit()"/></td>
+          <td><input type="number" name="unserviceable" value="{{ tx.unserviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['unserviceable'][0].value=this.value;this.form.submit()"/></td>
+          <td><input type="number" name="sealed" value="{{ tx.sealed }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['sealed'][0].value=this.value;this.form.submit()"/></td>
+          <td><input type="number" name="lent_to_students" value="{{ tx.lent_to_students }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['lent_to_students'][0].value=this.value;this.form.submit()"/></td>
+          <td><input type="number" name="box_only" value="{{ tx.box_only }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['box_only'][0].value=this.value;this.form.submit()"/></td>
         </form>
         {% else %}
+        <td>{{ tx.returned_qty }}</td>
+        <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
         <td>{{ tx.serviceable }}</td>
         <td>{{ tx.unserviceable }}</td>
         <td>{{ tx.sealed }}</td>
@@ -150,10 +154,12 @@
         {% endif %}
 
         <td>
-          {% if tx.status == 'borrowed' %}
+          {% if tx.status == 'borrowed' and request.user.role == 'staff' %}
             <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
+          {% elif tx.status == 'returned' %}
+            <span style="color:var(--muted);font-size:12px">{{ tx.returned_at|date:"M d" }}</span>
           {% else %}
-            <span style="color:var(--muted); font-size:12px">{{ tx.returned_at|date:"M d" }}</span>
+            <span style="color:var(--muted);font-size:12px">—</span>
           {% endif %}
         </td>
       </tr>
@@ -162,18 +168,4 @@
   </table>
 </div>
 {% endif %}
-
-{% endblock %}
-
-{% block extra_js %}
-<script>
-function openBorrow(itemId, itemName, available) {
-  document.getElementById('modal-item-id').value = itemId;
-  document.getElementById('modal-item-name').textContent = itemName;
-  document.getElementById('modal-available').textContent = available;
-  document.getElementById('modal-qty').value = '';
-  document.getElementById('modal-qty').max = available;
-  openModal('borrow-modal');
-}
-</script>
 {% endblock %}

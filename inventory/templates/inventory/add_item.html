@@ -35,13 +35,6 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.serial.id_for_label }}">Serial Number</label>
-      <textarea id="{{ form.serial.id_for_label }}" name="{{ form.serial.html_name }}"
-        class="form-control" placeholder="Serial number(s)…" style="min-height:70px">{{ form.serial.value|default:'' }}</textarea>
-      {% if form.serial.errors %}<span class="form-error">{{ form.serial.errors.0 }}</span>{% endif %}
-    </div>
-
-    <div class="form-group">
       <label class="form-label" for="{{ form.quantity.id_for_label }}">Total Quantity</label>
       <input type="number" id="{{ form.quantity.id_for_label }}" name="{{ form.quantity.html_name }}"
         class="form-control" placeholder="0" min="1"
