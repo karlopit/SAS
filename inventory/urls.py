@@ -10,4 +10,9 @@ urlpatterns = [
     path('transaction/<int:transaction_id>/condition/', views.update_condition, name='update_condition'),
     path('requests/', views.borrow_requests, name='borrow_requests'),
     path('requests/<int:request_id>/decline/', views.decline_request, name='decline_request'),
+    # New
+    path('borrow-management/', views.borrow_management, name='borrow_management'),
+    path('device-monitoring/', views.device_monitoring, name='device_monitoring'),
+    path('device-monitoring/save/', views.device_monitoring_save, name='device_monitoring_save'),
+    path('device-monitoring/<int:row_id>/delete/', views.device_monitoring_delete, name='device_monitoring_delete'),
 ]

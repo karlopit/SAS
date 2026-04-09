@@ -2,6 +2,7 @@ import random
 from django.db import models
 from users.models import CustomUser
 
+
 class Item(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -14,12 +15,13 @@ class Item(models.Model):
     def __str__(self):
         return self.name
 
+
 def generate_transaction_id():
-    """Generate a unique 5-digit transaction ID."""
     while True:
         tx_id = str(random.randint(10000, 99999))
         if not BorrowRequest.objects.filter(transaction_id=tx_id).exists():
             return tx_id
+
 
 class BorrowRequest(models.Model):
     STATUS_CHOICES = [
@@ -36,13 +38,13 @@ class BorrowRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # Auto-assign unique transaction_id on first save
         if not self.transaction_id:
             self.transaction_id = generate_transaction_id()
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Request #{self.transaction_id} — {self.borrower_name}"
+
 
 class Transaction(models.Model):
     STATUS_CHOICES = [
@@ -66,3 +68,28 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.borrower.username} borrowed {self.item.name}"
+
+
+class DeviceMonitor(models.Model):
+    """
+    Tracks per-office device condition for the Device Monitoring page.
+    Serviceable + Sealed can coexist. Non-Serviceable, Missing, Incomplete
+    are mutually exclusive with each other (enforced in the frontend).
+    """
+    office_college      = models.CharField(max_length=255, blank=True)
+    accountable_person  = models.CharField(max_length=255, blank=True)
+    device              = models.CharField(max_length=255, default='Tablet')
+    serial_number       = models.CharField(max_length=255, blank=True)
+    serviceable         = models.BooleanField(default=False)
+    non_serviceable     = models.BooleanField(default=False)
+    sealed              = models.BooleanField(default=False)
+    missing             = models.BooleanField(default=False)
+    incomplete          = models.BooleanField(default=False)
+    created_at          = models.DateTimeField(auto_now_add=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.office_college} — {self.device} ({self.serial_number})"

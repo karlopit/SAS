@@ -50,6 +50,21 @@
           <span style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">{{ pending_count }}</span>
         {% endif %}
       </a>
+
+      <a href="{% url 'borrow_management' %}" class="nav-item {% if request.resolver_match.url_name == 'borrow_management' %}active{% endif %}">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/>
+        </svg>
+        Borrow Management
+      </a>
+
+      <a href="{% url 'device_monitoring' %}" class="nav-item {% if request.resolver_match.url_name == 'device_monitoring' %}active{% endif %}">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4"/>
+        </svg>
+        Device Monitoring
+      </a>
       {% endif %}
 
       <span class="nav-label">Account</span>

@@ -1,0 +1,197 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Device Monitoring — InvSys{% endblock %}
+{% block page_title %}Device Monitoring{% endblock %}
+
+{% block content %}
+<form method="post" action="{% url 'device_monitoring_save' %}" id="dm-form">
+  {% csrf_token %}
+
+  <div class="table-card" style="overflow-x:auto">
+    <div class="table-header">
+      <span class="table-title">Device Records</span>
+    </div>
+
+    <table id="dm-table" style="min-width:1150px">
+      <thead>
+        <tr>
+          <th style="width:80px">ID</th>
+          <th>College / Office</th>
+          <th>Accountable Person</th>
+          <th>Device</th>
+          <th>Serial Number</th>
+          <th style="text-align:center">Serviceable</th>
+          <th style="text-align:center">Non-Serviceable</th>
+          <th style="text-align:center">Sealed</th>
+          <th style="text-align:center">Missing</th>
+          <th style="text-align:center">Incomplete</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="dm-tbody">
+        {% for row in rows %}
+        <tr data-row-id="{{ row.id }}">
+          <input type="hidden" name="row_id" value="{{ row.id }}"/>
+          <td>
+            <input type="text" name="row_display_id" value="{{ row.id }}"
+              class="form-control" style="width:64px;text-align:center"/>
+          </td>
+          <td><input type="text" name="office_college" value="{{ row.office_college }}" class="form-control" placeholder="e.g. CCS"/></td>
+          <td><input type="text" name="accountable_person" value="{{ row.accountable_person }}" class="form-control" placeholder="Full name"/></td>
+          <td><input type="text" name="device" value="{{ row.device }}" class="form-control"/></td>
+          <td><input type="text" name="serial_number" value="{{ row.serial_number }}" class="form-control" placeholder="S/N"/></td>
+          <td style="text-align:center">
+            <input type="checkbox" name="serviceable" {% if row.serviceable %}checked{% endif %}
+              onchange="handleDmCheck(this, 'serviceable')"/>
+          </td>
+          <td style="text-align:center">
+            <input type="checkbox" name="non_serviceable" {% if row.non_serviceable %}checked{% endif %}
+              onchange="handleDmCheck(this, 'non_serviceable')"/>
+          </td>
+          <td style="text-align:center">
+            <input type="checkbox" name="sealed" {% if row.sealed %}checked{% endif %}
+              onchange="handleDmCheck(this, 'sealed')"/>
+          </td>
+          <td style="text-align:center">
+            <input type="checkbox" name="missing" {% if row.missing %}checked{% endif %}
+              onchange="handleDmCheck(this, 'missing')"/>
+          </td>
+          <td style="text-align:center">
+            <input type="checkbox" name="incomplete" {% if row.incomplete %}checked{% endif %}
+              onchange="handleDmCheck(this, 'incomplete')"/>
+          </td>
+          <td style="text-align:center">
+            <button type="submit" name="save_row_id" value="{{ row.id }}"
+              class="btn btn-primary btn-sm" title="Save this row">✓</button>
+            <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm" title="Delete row"
+                onclick="return confirm('Delete this row?')">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="padding:16px">
+      <button type="button" class="btn btn-secondary" onclick="addDmRow()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" width="16" height="16">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Row
+      </button>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/**
+ * Checkbox rules:
+ *   - Serviceable (svc) and Sealed (seal) CAN coexist with each other.
+ *   - If Serviceable is checked → only Sealed may also be checked; all others are locked off.
+ *   - If any of Non-Serviceable / Missing / Incomplete is checked → ALL other boxes are locked off
+ *     (including Serviceable and Sealed).
+ *   - Unchecking restores the row to an unlocked state.
+ */
+function handleDmCheck(cb, field) {
+  const row  = cb.closest('tr');
+  const get  = name => row.querySelector(`input[name="${name}"]`);
+
+  const svc  = get('serviceable');
+  const ns   = get('non_serviceable');
+  const seal = get('sealed');
+  const miss = get('missing');
+  const inc  = get('incomplete');
+  const all  = [svc, ns, seal, miss, inc];
+
+  // First uncheck everything that conflicts, then re-evaluate lock state
+  if (field === 'serviceable' && cb.checked) {
+    // Uncheck and disable ns, missing, incomplete
+    [ns, miss, inc].forEach(x => { x.checked = false; });
+  }
+
+  if (['non_serviceable', 'missing', 'incomplete'].includes(field) && cb.checked) {
+    // Uncheck all others
+    all.forEach(x => { if (x !== cb) x.checked = false; });
+  }
+
+  if (field === 'sealed' && cb.checked) {
+    // Sealed can only coexist with serviceable — uncheck the exclusive trio
+    [ns, miss, inc].forEach(x => { x.checked = false; });
+  }
+
+  // Re-apply disabled states based on current checked state
+  applyLockState(row);
+}
+
+function applyLockState(row) {
+  const get  = name => row.querySelector(`input[name="${name}"]`);
+  const svc  = get('serviceable');
+  const ns   = get('non_serviceable');
+  const seal = get('sealed');
+  const miss = get('missing');
+  const inc  = get('incomplete');
+
+  const svcChecked  = svc.checked;
+  const sealChecked = seal.checked;
+  const nsChecked   = ns.checked;
+  const missChecked = miss.checked;
+  const incChecked  = inc.checked;
+
+  const exclusiveActive = nsChecked || missChecked || incChecked;
+
+  if (exclusiveActive) {
+    // Only the checked one stays enabled; lock all others
+    [svc, ns, seal, miss, inc].forEach(x => {
+      x.disabled = !x.checked;
+    });
+  } else if (svcChecked || sealChecked) {
+    // Serviceable/Sealed combo — lock out the exclusive trio
+    [ns, miss, inc].forEach(x => { x.disabled = true; });
+    svc.disabled  = false;
+    seal.disabled = false;
+  } else {
+    // Nothing checked — unlock everything
+    [svc, ns, seal, miss, inc].forEach(x => { x.disabled = false; });
+  }
+}
+
+// Apply lock states on page load for existing data
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#dm-tbody tr').forEach(row => applyLockState(row));
+});
+
+let newRowCounter = 0;
+function addDmRow() {
+  newRowCounter++;
+  const tbody = document.getElementById('dm-tbody');
+  const tr    = document.createElement('tr');
+  tr.innerHTML = `
+    <input type="hidden" name="row_id" value="new"/>
+    <td>
+      <input type="text" name="row_display_id" value="New"
+        class="form-control" style="width:64px;text-align:center" readonly/>
+    </td>
+    <td><input type="text" name="office_college" class="form-control" placeholder="e.g. CCS"/></td>
+    <td><input type="text" name="accountable_person" class="form-control" placeholder="Full name"/></td>
+    <td><input type="text" name="device" value="Tablet" class="form-control"/></td>
+    <td><input type="text" name="serial_number" class="form-control" placeholder="S/N"/></td>
+    <td style="text-align:center"><input type="checkbox" name="serviceable"   onchange="handleDmCheck(this,'serviceable')"/></td>
+    <td style="text-align:center"><input type="checkbox" name="non_serviceable" onchange="handleDmCheck(this,'non_serviceable')"/></td>
+    <td style="text-align:center"><input type="checkbox" name="sealed"       onchange="handleDmCheck(this,'sealed')"/></td>
+    <td style="text-align:center"><input type="checkbox" name="missing"      onchange="handleDmCheck(this,'missing')"/></td>
+    <td style="text-align:center"><input type="checkbox" name="incomplete"   onchange="handleDmCheck(this,'incomplete')"/></td>
+    <td style="text-align:center">
+      <button type="submit" class="btn btn-primary btn-sm" title="Save">✓</button>
+      <button type="button" class="btn btn-danger btn-sm" style="margin-left:4px"
+        onclick="this.closest('tr').remove()" title="Remove">✕</button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+  tr.querySelector('input[name="office_college"]').focus();
+  applyLockState(tr);
+}
+</script>
+{% endblock %}
