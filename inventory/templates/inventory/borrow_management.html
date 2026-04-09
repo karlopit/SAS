@@ -64,7 +64,7 @@
     <thead>
       <tr>
         <th>Tx ID</th><th>Borrower Name</th><th>College/Office</th>
-        <th>Item</th><th>Serial</th><th>Qty</th><th>Returned Qty</th>
+        <th>Item</th><th>Serial</th><th>Qty Borrowed</th><th>Returned Qty</th>
         <th>Borrowed On</th><th>Serviceable</th><th>Unserviceable</th>
         <th>Sealed</th><th>Lent to Students</th><th>Box Only</th><th>Action</th>
       </tr>
@@ -86,7 +86,13 @@
           <input type="hidden" name="sealed" value="{{ tx.sealed }}"/>
           <input type="hidden" name="lent_to_students" value="{{ tx.lent_to_students }}"/>
           <input type="hidden" name="box_only" value="{{ tx.box_only }}"/>
-          <td><input type="number" name="returned_qty" value="{{ tx.returned_qty }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="document.getElementById('cond-{{ tx.id }}').submit()"/></td>
+          <td>
+            <input type="number" name="returned_qty"
+              value="{{ tx.returned_qty }}"
+              min="0" max="{{ tx.quantity_borrowed }}"
+              class="form-control" style="width:75px;padding:4px 8px;text-align:center"
+              onchange="document.getElementById('cond-{{ tx.id }}').submit()"/>
+          </td>
           <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
           <td><input type="number" name="serviceable" value="{{ tx.serviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['serviceable'][0].value=this.value;this.form.submit()"/></td>
           <td><input type="number" name="unserviceable" value="{{ tx.unserviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['unserviceable'][0].value=this.value;this.form.submit()"/></td>
@@ -96,7 +102,8 @@
         </form>
 
         <td>
-          {% if tx.status == 'borrowed' %}
+          {% if tx.returned_qty < tx.quantity_borrowed %}
+            <!-- Still items outstanding — show Return button -->
             <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
           {% elif tx.status == 'returned' %}
             <span style="color:var(--muted);font-size:12px">{{ tx.returned_at|date:"M d" }}</span>

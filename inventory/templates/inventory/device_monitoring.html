@@ -24,13 +24,15 @@
           <th style="text-align:center">Sealed</th>
           <th style="text-align:center">Missing</th>
           <th style="text-align:center">Incomplete</th>
-          <th style="width:60px"></th>
+          <th style="width:100px"></th>
         </tr>
       </thead>
       <tbody id="dm-tbody">
         {% for row in rows %}
         <tr data-row-id="{{ row.id }}">
           <input type="hidden" name="row_id" value="{{ row.id }}"/>
+
+          <!-- ID: editable by staff -->
           <td>
             <input type="text" name="row_display_id" value="{{ row.id }}"
               class="form-control" style="width:64px;text-align:center"/>
@@ -39,27 +41,41 @@
           <td><input type="text" name="accountable_person" value="{{ row.accountable_person }}" class="form-control" placeholder="Full name"/></td>
           <td><input type="text" name="device" value="{{ row.device }}" class="form-control"/></td>
           <td><input type="text" name="serial_number" value="{{ row.serial_number }}" class="form-control" placeholder="S/N"/></td>
+
+          <!--
+            CHECKBOX FIX: each checkbox is paired with a hidden input of the same name
+            that always submits 'off'. The checkbox itself does NOT carry the name —
+            instead its onchange handler writes 'on'/'off' into the hidden input.
+            This guarantees every row always submits exactly 5 values, so server-side
+            index mapping never shifts.
+          -->
           <td style="text-align:center">
-            <input type="checkbox" name="serviceable" {% if row.serviceable %}checked{% endif %}
-              onchange="handleDmCheck(this, 'serviceable')"/>
+            <input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/>
+            <input type="checkbox" {% if row.serviceable %}checked{% endif %}
+              onchange="syncCheck(this); handleDmCheck(this, 'serviceable')"/>
           </td>
           <td style="text-align:center">
-            <input type="checkbox" name="non_serviceable" {% if row.non_serviceable %}checked{% endif %}
-              onchange="handleDmCheck(this, 'non_serviceable')"/>
+            <input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/>
+            <input type="checkbox" {% if row.non_serviceable %}checked{% endif %}
+              onchange="syncCheck(this); handleDmCheck(this, 'non_serviceable')"/>
           </td>
           <td style="text-align:center">
-            <input type="checkbox" name="sealed" {% if row.sealed %}checked{% endif %}
-              onchange="handleDmCheck(this, 'sealed')"/>
+            <input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/>
+            <input type="checkbox" {% if row.sealed %}checked{% endif %}
+              onchange="syncCheck(this); handleDmCheck(this, 'sealed')"/>
           </td>
           <td style="text-align:center">
-            <input type="checkbox" name="missing" {% if row.missing %}checked{% endif %}
-              onchange="handleDmCheck(this, 'missing')"/>
+            <input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/>
+            <input type="checkbox" {% if row.missing %}checked{% endif %}
+              onchange="syncCheck(this); handleDmCheck(this, 'missing')"/>
           </td>
           <td style="text-align:center">
-            <input type="checkbox" name="incomplete" {% if row.incomplete %}checked{% endif %}
-              onchange="handleDmCheck(this, 'incomplete')"/>
+            <input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/>
+            <input type="checkbox" {% if row.incomplete %}checked{% endif %}
+              onchange="syncCheck(this); handleDmCheck(this, 'incomplete')"/>
           </td>
-          <td style="text-align:center">
+
+          <td style="text-align:center;white-space:nowrap">
             <button type="submit" name="save_row_id" value="{{ row.id }}"
               class="btn btn-primary btn-sm" title="Save this row">✓</button>
             <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
@@ -88,102 +104,104 @@
 {% block extra_js %}
 <script>
 /**
- * Checkbox rules:
- *   - Serviceable (svc) and Sealed (seal) CAN coexist with each other.
- *   - If Serviceable is checked → only Sealed may also be checked; all others are locked off.
- *   - If any of Non-Serviceable / Missing / Incomplete is checked → ALL other boxes are locked off
- *     (including Serviceable and Sealed).
- *   - Unchecking restores the row to an unlocked state.
+ * syncCheck: keeps the paired hidden input in sync with the visual checkbox.
+ * The hidden input is always the immediately preceding sibling of the checkbox.
  */
+function syncCheck(cb) {
+  const hidden = cb.previousElementSibling;
+  hidden.value = cb.checked ? 'on' : 'off';
+}
+
+/**
+ * getCheckInRow: returns the visual checkbox (not hidden) for a given field name.
+ * Since checkboxes have no name, we find them by their hidden input sibling order.
+ */
+function getChecksInRow(row) {
+  // hidden inputs with these names, in order: svc, ns, seal, miss, inc
+  const fields = ['serviceable','non_serviceable','sealed','missing','incomplete'];
+  const result = {};
+  fields.forEach(f => {
+    const hidden = row.querySelector(`input[type=hidden][name="${f}"]`);
+    const cb = hidden ? hidden.nextElementSibling : null;
+    result[f] = { hidden, cb };
+  });
+  return result;
+}
+
 function handleDmCheck(cb, field) {
-  const row  = cb.closest('tr');
-  const get  = name => row.querySelector(`input[name="${name}"]`);
+  const row    = cb.closest('tr');
+  const checks = getChecksInRow(row);
+  const { serviceable: svc, non_serviceable: ns, sealed: seal, missing: miss, incomplete: inc } = checks;
 
-  const svc  = get('serviceable');
-  const ns   = get('non_serviceable');
-  const seal = get('sealed');
-  const miss = get('missing');
-  const inc  = get('incomplete');
-  const all  = [svc, ns, seal, miss, inc];
-
-  // First uncheck everything that conflicts, then re-evaluate lock state
+  // Enforce mutual exclusivity rules
   if (field === 'serviceable' && cb.checked) {
-    // Uncheck and disable ns, missing, incomplete
-    [ns, miss, inc].forEach(x => { x.checked = false; });
+    [ns, miss, inc].forEach(x => { x.cb.checked = false; x.hidden.value = 'off'; });
   }
-
-  if (['non_serviceable', 'missing', 'incomplete'].includes(field) && cb.checked) {
-    // Uncheck all others
-    all.forEach(x => { if (x !== cb) x.checked = false; });
+  if (['non_serviceable','missing','incomplete'].includes(field) && cb.checked) {
+    [svc, ns, seal, miss, inc].forEach(x => {
+      if (x.cb !== cb) { x.cb.checked = false; x.hidden.value = 'off'; }
+    });
   }
-
   if (field === 'sealed' && cb.checked) {
-    // Sealed can only coexist with serviceable — uncheck the exclusive trio
-    [ns, miss, inc].forEach(x => { x.checked = false; });
+    [ns, miss, inc].forEach(x => { x.cb.checked = false; x.hidden.value = 'off'; });
   }
 
-  // Re-apply disabled states based on current checked state
   applyLockState(row);
 }
 
 function applyLockState(row) {
-  const get  = name => row.querySelector(`input[name="${name}"]`);
-  const svc  = get('serviceable');
-  const ns   = get('non_serviceable');
-  const seal = get('sealed');
-  const miss = get('missing');
-  const inc  = get('incomplete');
+  const checks = getChecksInRow(row);
+  const { serviceable: svc, non_serviceable: ns, sealed: seal, missing: miss, incomplete: inc } = checks;
 
-  const svcChecked  = svc.checked;
-  const sealChecked = seal.checked;
-  const nsChecked   = ns.checked;
-  const missChecked = miss.checked;
-  const incChecked  = inc.checked;
-
-  const exclusiveActive = nsChecked || missChecked || incChecked;
+  const exclusiveActive = ns.cb.checked || miss.cb.checked || inc.cb.checked;
 
   if (exclusiveActive) {
-    // Only the checked one stays enabled; lock all others
-    [svc, ns, seal, miss, inc].forEach(x => {
-      x.disabled = !x.checked;
-    });
-  } else if (svcChecked || sealChecked) {
-    // Serviceable/Sealed combo — lock out the exclusive trio
-    [ns, miss, inc].forEach(x => { x.disabled = true; });
-    svc.disabled  = false;
-    seal.disabled = false;
+    [svc, ns, seal, miss, inc].forEach(x => { x.cb.disabled = !x.cb.checked; });
+  } else if (svc.cb.checked || seal.cb.checked) {
+    [ns, miss, inc].forEach(x => { x.cb.disabled = true; });
+    svc.cb.disabled  = false;
+    seal.cb.disabled = false;
   } else {
-    // Nothing checked — unlock everything
-    [svc, ns, seal, miss, inc].forEach(x => { x.disabled = false; });
+    [svc, ns, seal, miss, inc].forEach(x => { x.cb.disabled = false; });
   }
 }
 
-// Apply lock states on page load for existing data
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#dm-tbody tr').forEach(row => applyLockState(row));
 });
 
-let newRowCounter = 0;
 function addDmRow() {
-  newRowCounter++;
   const tbody = document.getElementById('dm-tbody');
   const tr    = document.createElement('tr');
+  // New rows: ID is blank and editable, hidden row_id = 'new'
   tr.innerHTML = `
     <input type="hidden" name="row_id" value="new"/>
-    <td>
-      <input type="text" name="row_display_id" value="New"
-        class="form-control" style="width:64px;text-align:center" readonly/>
-    </td>
+    <td><input type="text" name="row_display_id" value="" class="form-control" style="width:64px;text-align:center" placeholder="ID"/></td>
     <td><input type="text" name="office_college" class="form-control" placeholder="e.g. CCS"/></td>
     <td><input type="text" name="accountable_person" class="form-control" placeholder="Full name"/></td>
     <td><input type="text" name="device" value="Tablet" class="form-control"/></td>
     <td><input type="text" name="serial_number" class="form-control" placeholder="S/N"/></td>
-    <td style="text-align:center"><input type="checkbox" name="serviceable"   onchange="handleDmCheck(this,'serviceable')"/></td>
-    <td style="text-align:center"><input type="checkbox" name="non_serviceable" onchange="handleDmCheck(this,'non_serviceable')"/></td>
-    <td style="text-align:center"><input type="checkbox" name="sealed"       onchange="handleDmCheck(this,'sealed')"/></td>
-    <td style="text-align:center"><input type="checkbox" name="missing"      onchange="handleDmCheck(this,'missing')"/></td>
-    <td style="text-align:center"><input type="checkbox" name="incomplete"   onchange="handleDmCheck(this,'incomplete')"/></td>
     <td style="text-align:center">
+      <input type="hidden" name="serviceable" value="off"/>
+      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable')"/>
+    </td>
+    <td style="text-align:center">
+      <input type="hidden" name="non_serviceable" value="off"/>
+      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable')"/>
+    </td>
+    <td style="text-align:center">
+      <input type="hidden" name="sealed" value="off"/>
+      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed')"/>
+    </td>
+    <td style="text-align:center">
+      <input type="hidden" name="missing" value="off"/>
+      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing')"/>
+    </td>
+    <td style="text-align:center">
+      <input type="hidden" name="incomplete" value="off"/>
+      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete')"/>
+    </td>
+    <td style="text-align:center;white-space:nowrap">
       <button type="submit" class="btn btn-primary btn-sm" title="Save">✓</button>
       <button type="button" class="btn btn-danger btn-sm" style="margin-left:4px"
         onclick="this.closest('tr').remove()" title="Remove">✕</button>

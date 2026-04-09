@@ -18,23 +18,17 @@
       <label class="form-label">I am a…</label>
       <select id="role-select" class="form-control" onchange="handleRoleChange(this.value)">
         <option value="">— Select your role —</option>
-        <option value="admin">Admin</option>
-        <option value="staff">Staff</option>
+        <option value="admin_staff">Admin / Staff</option>
         <option value="borrower">Borrower</option>
       </select>
-    </div>
-
-    <!-- Admin/Staff: go to login -->
-    <div id="login-section" style="display:none">
-      <a href="{% url 'login' %}" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px">
-        Go to Login
-      </a>
     </div>
 
     <!-- Borrower: fill out request form -->
     <div id="borrower-section" style="display:none">
       <hr class="auth-divider"/>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Fill out the form below. A staff member will review your request.</p>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:16px">
+        Fill out the form below. A staff member will review your request.
+      </p>
 
       {% if borrow_success %}
         <div class="alert alert-success">
@@ -106,11 +100,14 @@
 
 <script>
 function handleRoleChange(val) {
-  document.getElementById('login-section').style.display = (val === 'admin' || val === 'staff') ? 'block' : 'none';
+  if (val === 'admin_staff') {
+    // Immediately redirect to login — no button needed
+    window.location.href = "{% url 'login' %}";
+    return;
+  }
   document.getElementById('borrower-section').style.display = val === 'borrower' ? 'block' : 'none';
 }
 
-// If borrower form had errors, keep borrower section open
 {% if borrow_form.errors or borrow_success %}
   document.getElementById('role-select').value = 'borrower';
   document.getElementById('borrower-section').style.display = 'block';

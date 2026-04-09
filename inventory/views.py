@@ -50,18 +50,21 @@ def index(request):
     items          = Item.objects.all()
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
-
-    # Pie chart — actual device unit counts, not transaction row counts
-    total_qty     = sum(i.quantity for i in items)
     available_qty = sum(i.available_quantity for i in items)
 
-    returned_qty  = Transaction.objects.filter(status='returned').aggregate(
-        total=Sum('quantity_borrowed')
+    from django.db.models import Sum, F, ExpressionWrapper, IntegerField
+    still_out = Transaction.objects.filter(status='borrowed').annotate(
+        still_borrowed=ExpressionWrapper(
+            F('quantity_borrowed') - F('returned_qty'),
+            output_field=IntegerField()
+        )
+    ).aggregate(total=Sum('still_borrowed'))['total'] or 0
+    borrowed_qty = max(0, still_out)
+
+    returned_qty = Transaction.objects.aggregate(
+        total=Sum('returned_qty')
     )['total'] or 0
 
-    borrowed_qty  = max(0, total_qty - available_qty - returned_qty)
-
-    # Bar chart — device monitoring counts per office
     monitors       = DeviceMonitor.objects.all()
     offices        = list(monitors.values_list('office_college', flat=True).distinct())
     dm_serviceable = [monitors.filter(office_college=o, serviceable=True).count()     for o in offices]
@@ -195,7 +198,6 @@ def device_monitoring_save(request):
 
     return redirect('device_monitoring')
 
-
 @login_required
 @require_POST
 def device_monitoring_delete(request, row_id):
@@ -256,11 +258,15 @@ def return_item(request, transaction_id):
     if request.user.role != 'staff':
         raise PermissionDenied
     transaction = get_object_or_404(Transaction, id=transaction_id)
-    if request.method == 'POST' and transaction.status == 'borrowed':
-        transaction.status       = 'returned'
-        transaction.returned_at  = timezone.now()
-        transaction.item.available_quantity += transaction.quantity_borrowed
-        transaction.item.save()
+    if request.method == 'POST' and transaction.status != 'returned':
+        qty_to_restore = transaction.returned_qty  # use what staff entered, not full qty
+        if qty_to_restore > 0:
+            transaction.item.available_quantity += qty_to_restore
+            transaction.item.save()
+        # Only fully close the transaction when everything is back
+        if transaction.returned_qty >= transaction.quantity_borrowed:
+            transaction.status      = 'returned'
+            transaction.returned_at = timezone.now()
         transaction.save()
         return redirect('borrow_management')
     return render(request, 'inventory/return_item.html', {'transaction': transaction})
