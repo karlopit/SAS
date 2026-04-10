@@ -71,11 +71,7 @@ class Transaction(models.Model):
 
 
 class DeviceMonitor(models.Model):
-    """
-    Tracks per-office device condition for the Device Monitoring page.
-    Serviceable + Sealed can coexist. Non-Serviceable, Missing, Incomplete
-    are mutually exclusive with each other (enforced in the frontend).
-    """
+    display_id          = models.CharField(max_length=100, blank=True)  # staff-entered ID
     office_college      = models.CharField(max_length=255, blank=True)
     accountable_person  = models.CharField(max_length=255, blank=True)
     device              = models.CharField(max_length=255, default='Tablet')

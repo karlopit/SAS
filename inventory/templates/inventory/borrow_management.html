@@ -4,7 +4,6 @@
 
 {% block content %}
 
-<!-- Inventory Items Table -->
 <div class="table-card">
   <div class="table-header">
     <span class="table-title">Inventory Items</span>
@@ -48,7 +47,6 @@
   {% endif %}
 </div>
 
-<!-- Recent Transactions Table -->
 {% if transactions %}
 <div class="table-card" style="margin-top:24px;overflow-x:auto">
   <div class="table-header">
@@ -60,18 +58,25 @@
       <input type="text" id="transaction-search" placeholder="Search transactions…"/>
     </div>
   </div>
-  <table id="transactions-table" style="min-width:1300px">
+
+  <table id="transactions-table" style="min-width:900px">
     <thead>
       <tr>
-        <th>Tx ID</th><th>Borrower Name</th><th>College/Office</th>
-        <th>Item</th><th>Serial</th><th>Qty Borrowed</th><th>Returned Qty</th>
-        <th>Borrowed On</th><th>Serviceable</th><th>Unserviceable</th>
-        <th>Sealed</th><th>Lent to Students</th><th>Box Only</th><th>Action</th>
+        <th>Tx ID</th>
+        <th>Borrower Name</th>
+        <th>College/Office</th>
+        <th>Item</th>
+        <th>Serial</th>
+        <th>Qty Borrowed</th>
+        <th>Returned Qty</th>
+        <th>Borrowed On</th>
+        <th>Returned On</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
       {% for tx in transactions %}
-      <tr>
+      <tr id="tx-row-{{ tx.id }}">
         <td><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
         <td style="font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
         <td>{{ tx.office_college|default:"—" }}</td>
@@ -79,36 +84,39 @@
         <td style="color:var(--muted);font-size:12px">{{ tx.item.serial|default:"—" }}</td>
         <td>{{ tx.quantity_borrowed }}</td>
 
-        <form method="post" action="{% url 'update_condition' tx.id %}" id="cond-{{ tx.id }}">
-          {% csrf_token %}
-          <input type="hidden" name="serviceable" value="{{ tx.serviceable }}"/>
-          <input type="hidden" name="unserviceable" value="{{ tx.unserviceable }}"/>
-          <input type="hidden" name="sealed" value="{{ tx.sealed }}"/>
-          <input type="hidden" name="lent_to_students" value="{{ tx.lent_to_students }}"/>
-          <input type="hidden" name="box_only" value="{{ tx.box_only }}"/>
-          <td>
-            <input type="number" name="returned_qty"
-              value="{{ tx.returned_qty }}"
-              min="0" max="{{ tx.quantity_borrowed }}"
-              class="form-control" style="width:75px;padding:4px 8px;text-align:center"
-              onchange="document.getElementById('cond-{{ tx.id }}').submit()"/>
-          </td>
-          <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
-          <td><input type="number" name="serviceable" value="{{ tx.serviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['serviceable'][0].value=this.value;this.form.submit()"/></td>
-          <td><input type="number" name="unserviceable" value="{{ tx.unserviceable }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['unserviceable'][0].value=this.value;this.form.submit()"/></td>
-          <td><input type="number" name="sealed" value="{{ tx.sealed }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['sealed'][0].value=this.value;this.form.submit()"/></td>
-          <td><input type="number" name="lent_to_students" value="{{ tx.lent_to_students }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['lent_to_students'][0].value=this.value;this.form.submit()"/></td>
-          <td><input type="number" name="box_only" value="{{ tx.box_only }}" min="0" class="form-control" style="width:75px;padding:4px 8px;text-align:center" onchange="this.form.elements['box_only'][0].value=this.value;this.form.submit()"/></td>
-        </form>
-
+        <!-- Returned Qty — AJAX auto-save on change -->
         <td>
-          {% if tx.returned_qty < tx.quantity_borrowed %}
-            <!-- Still items outstanding — show Return button -->
-            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
-          {% elif tx.status == 'returned' %}
-            <span style="color:var(--muted);font-size:12px">{{ tx.returned_at|date:"M d" }}</span>
+          <input
+            type="number"
+            class="form-control returned-qty-input"
+            style="width:75px;padding:4px 8px;text-align:center"
+            value="{{ tx.returned_qty }}"
+            min="0"
+            max="{{ tx.quantity_borrowed }}"
+            data-tx-id="{{ tx.id }}"
+            data-qty-borrowed="{{ tx.quantity_borrowed }}"
+            data-url="{% url 'update_returned_qty' tx.id %}"
+            data-csrf="{{ csrf_token }}"
+          />
+        </td>
+
+        <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
+
+        <!-- Returned On — updated live by JS -->
+        <td class="returned-on-cell" style="color:var(--muted);font-size:12px">
+          {% if tx.returned_at %}
+            {{ tx.returned_at|date:"M d, Y H:i" }}
           {% else %}
-            <span style="color:var(--muted);font-size:12px">—</span>
+            —
+          {% endif %}
+        </td>
+
+        <!-- Return button — visible while returned_qty < quantity_borrowed -->
+        <td class="return-action-cell">
+          {% if tx.returned_qty < tx.quantity_borrowed %}
+            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
+          {% else %}
+            <span style="color:var(--muted);font-size:12px">✓ Done</span>
           {% endif %}
         </td>
       </tr>
@@ -118,4 +126,81 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Debounce helper — waits until user stops typing for `delay` ms
+  function debounce(fn, delay) {
+    let timer;
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
+  function saveReturnedQty(input) {
+    const txId       = input.dataset.txId;
+    const qtyBorrowed = parseInt(input.dataset.qtyBorrowed, 10);
+    const url        = input.dataset.url;
+    const csrf       = input.dataset.csrf;
+    const newVal     = Math.max(0, Math.min(parseInt(input.value, 10) || 0, qtyBorrowed));
+
+    // Clamp the input visually too
+    input.value = newVal;
+
+    const row          = document.getElementById('tx-row-' + txId);
+    const returnedOnCell = row.querySelector('.returned-on-cell');
+    const actionCell     = row.querySelector('.return-action-cell');
+
+    // Show a subtle saving indicator
+    input.style.opacity = '0.5';
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ returned_qty: newVal, csrfmiddlewaretoken: csrf }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        input.style.opacity = '1';
+
+        if (!data.ok) {
+          console.error('Save failed:', data.error);
+          return;
+        }
+
+        // Update Returned On cell
+        returnedOnCell.textContent = data.returned_at ?? '—';
+
+        // Update Return button / done state
+        if (data.fully_returned) {
+          actionCell.innerHTML = '<span style="color:var(--muted);font-size:12px">✓ Done</span>';
+        } else {
+          // Only inject the Return link if it isn't already there
+          if (!actionCell.querySelector('a')) {
+            actionCell.innerHTML =
+              `<a href="/return/${txId}/" class="btn btn-secondary btn-sm">Return</a>`;
+          }
+        }
+
+        // Broadcast fresh pie data to dashboard (picked up on next visit)
+        if (data.pie) {
+          localStorage.setItem('pieData', JSON.stringify(data.pie));
+        }
+      })
+      .catch(() => {
+        input.style.opacity = '1';
+        console.error('Network error saving returned qty');
+      });
+  }
+
+  const debouncedSave = debounce(saveReturnedQty, 600);
+
+  document.querySelectorAll('.returned-qty-input').forEach(input => {
+    input.addEventListener('input', () => debouncedSave(input));
+  });
+})();
+</script>
 {% endblock %}

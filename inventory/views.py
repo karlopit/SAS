@@ -1,7 +1,6 @@
 import json
 import random
-from django.db import models as db_models
-from django.db.models import Sum
+from django.db.models import Sum, F, ExpressionWrapper, IntegerField
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -50,23 +49,27 @@ def index(request):
     items          = Item.objects.all()
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
+
     available_qty = sum(i.available_quantity for i in items)
 
-    from django.db.models import Sum, F, ExpressionWrapper, IntegerField
-    still_out = Transaction.objects.filter(status='borrowed').annotate(
-        still_borrowed=ExpressionWrapper(
+    agg = Transaction.objects.annotate(
+        still_out=ExpressionWrapper(
             F('quantity_borrowed') - F('returned_qty'),
             output_field=IntegerField()
         )
-    ).aggregate(total=Sum('still_borrowed'))['total'] or 0
-    borrowed_qty = max(0, still_out)
+    ).aggregate(total=Sum('still_out'))
+    borrowed_qty = max(0, agg['total'] or 0)
 
-    returned_qty = Transaction.objects.aggregate(
-        total=Sum('returned_qty')
-    )['total'] or 0
+    monitors = DeviceMonitor.objects.all()
 
-    monitors       = DeviceMonitor.objects.all()
-    offices        = list(monitors.values_list('office_college', flat=True).distinct())
+    # Build a deduplicated, sorted list of office names.
+    # values_list + distinct() alone can return duplicates in SQLite when insertion
+    # order differs — using a Python set then sorted() guarantees one bar per office.
+    offices = sorted(set(
+        monitors.values_list('office_college', flat=True)
+    ))
+
+    # Aggregate counts per unique office
     dm_serviceable = [monitors.filter(office_college=o, serviceable=True).count()     for o in offices]
     dm_non_service = [monitors.filter(office_college=o, non_serviceable=True).count() for o in offices]
     dm_sealed      = [monitors.filter(office_college=o, sealed=True).count()          for o in offices]
@@ -80,7 +83,6 @@ def index(request):
         'pending_count':  pending_count,
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
-        'returned_qty':   returned_qty,
         'dm_offices':     json.dumps(offices),
         'dm_serviceable': json.dumps(dm_serviceable),
         'dm_non_service': json.dumps(dm_non_service),
@@ -118,12 +120,12 @@ def borrow_requests(request):
 def borrow_management(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    items        = Item.objects.all()
-    transactions = Transaction.objects.all().order_by('-borrowed_at')[:20]
+    items         = Item.objects.all()
+    transactions  = Transaction.objects.all().order_by('-borrowed_at')[:20]
     pending_count = BorrowRequest.objects.filter(status='pending').count()
     return render(request, 'inventory/borrow_management.html', {
-        'items':        items,
-        'transactions': transactions,
+        'items':         items,
+        'transactions':  transactions,
         'pending_count': pending_count,
     })
 
@@ -136,7 +138,7 @@ def device_monitoring(request):
     rows          = DeviceMonitor.objects.all()
     pending_count = BorrowRequest.objects.filter(status='pending').count()
     return render(request, 'inventory/device_monitoring.html', {
-        'rows':         rows,
+        'rows':          rows,
         'pending_count': pending_count,
     })
 
@@ -148,6 +150,7 @@ def device_monitoring_save(request):
         raise PermissionDenied
 
     ids              = request.POST.getlist('row_id')
+    display_ids      = request.POST.getlist('display_id')
     offices          = request.POST.getlist('office_college')
     accountables     = request.POST.getlist('accountable_person')
     devices          = request.POST.getlist('device')
@@ -162,41 +165,38 @@ def device_monitoring_save(request):
         def get(lst, idx=i):
             return lst[idx] if idx < len(lst) else ''
 
-        is_svc  = get(serviceables)      == 'on'
-        is_ns   = get(non_serviceables)  == 'on'
-        is_seal = get(sealeds)           == 'on'
-        is_miss = get(missings)          == 'on'
-        is_inc  = get(incompletes)       == 'on'
+        is_svc  = get(serviceables)     == 'on'
+        is_ns   = get(non_serviceables) == 'on'
+        is_seal = get(sealeds)          == 'on'
+        is_miss = get(missings)         == 'on'
+        is_inc  = get(incompletes)      == 'on'
+
+        fields = dict(
+            display_id         = get(display_ids),
+            office_college     = get(offices),
+            accountable_person = get(accountables),
+            device             = get(devices) or 'Tablet',
+            serial_number      = get(serials),
+            serviceable        = is_svc,
+            non_serviceable    = is_ns,
+            sealed             = is_seal,
+            missing            = is_miss,
+            incomplete         = is_inc,
+        )
 
         if row_id == 'new':
-            DeviceMonitor.objects.create(
-                office_college     = get(offices),
-                accountable_person = get(accountables),
-                device             = get(devices) or 'Tablet',
-                serial_number      = get(serials),
-                serviceable        = is_svc,
-                non_serviceable    = is_ns,
-                sealed             = is_seal,
-                missing            = is_miss,
-                incomplete         = is_inc,
-            )
+            DeviceMonitor.objects.create(**fields)
         else:
             try:
                 obj = DeviceMonitor.objects.get(pk=int(row_id))
-                obj.office_college     = get(offices)
-                obj.accountable_person = get(accountables)
-                obj.device             = get(devices) or 'Tablet'
-                obj.serial_number      = get(serials)
-                obj.serviceable        = is_svc
-                obj.non_serviceable    = is_ns
-                obj.sealed             = is_seal
-                obj.missing            = is_miss
-                obj.incomplete         = is_inc
+                for attr, val in fields.items():
+                    setattr(obj, attr, val)
                 obj.save()
             except DeviceMonitor.DoesNotExist:
                 pass
 
     return redirect('device_monitoring')
+
 
 @login_required
 @require_POST
@@ -219,10 +219,10 @@ def staff_confirm_borrow(request, request_id):
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
             transaction = form.save(commit=False)
-            transaction.borrower        = request.user
-            transaction.borrow_request  = borrow_req
-            transaction.office_college  = borrow_req.office_college
-            transaction.status          = 'borrowed'
+            transaction.borrower       = request.user
+            transaction.borrow_request = borrow_req
+            transaction.office_college = borrow_req.office_college
+            transaction.status         = 'borrowed'
             transaction.item.available_quantity -= transaction.quantity_borrowed
             transaction.item.save()
             transaction.save()
@@ -259,14 +259,10 @@ def return_item(request, transaction_id):
         raise PermissionDenied
     transaction = get_object_or_404(Transaction, id=transaction_id)
     if request.method == 'POST' and transaction.status != 'returned':
-        qty_to_restore = transaction.returned_qty  # use what staff entered, not full qty
-        if qty_to_restore > 0:
-            transaction.item.available_quantity += qty_to_restore
-            transaction.item.save()
-        # Only fully close the transaction when everything is back
-        if transaction.returned_qty >= transaction.quantity_borrowed:
-            transaction.status      = 'returned'
-            transaction.returned_at = timezone.now()
+        # available_quantity is managed exclusively by update_returned_qty (AJAX).
+        # This view only finalises the record — never touches inventory numbers.
+        transaction.status      = 'returned'
+        transaction.returned_at = timezone.now()
         transaction.save()
         return redirect('borrow_management')
     return render(request, 'inventory/return_item.html', {'transaction': transaction})
@@ -277,9 +273,63 @@ def return_item(request, transaction_id):
 def update_condition(request, transaction_id):
     if request.user.role != 'staff':
         raise PermissionDenied
-    transaction = get_object_or_404(Transaction, id=transaction_id)
+    tx = get_object_or_404(Transaction, id=transaction_id)
     if request.method == 'POST':
-        form = TransactionConditionForm(request.POST, instance=transaction)
+        form = TransactionConditionForm(request.POST, instance=tx)
         if form.is_valid():
             form.save()
     return redirect('borrow_management')
+
+@login_required
+@require_POST
+def update_returned_qty(request, transaction_id):
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    tx = get_object_or_404(Transaction, id=transaction_id)
+
+    try:
+        new_returned = int(request.POST.get('returned_qty', 0))
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'Invalid value'}, status=400)
+
+    # Clamp to valid range
+    new_returned = max(0, min(new_returned, tx.quantity_borrowed))
+
+    old_returned = tx.returned_qty
+    delta = new_returned - old_returned
+
+    # Only adjust inventory by the DIFFERENCE from what was previously recorded.
+    # Example: was 0, now 250 → add 250. Then was 250, now 500 → add only 250 more.
+    # This prevents any double counting regardless of how many times staff edits the field.
+    if delta != 0:
+        tx.item.available_quantity = max(0, tx.item.available_quantity + delta)
+        tx.item.save()
+
+    tx.returned_qty = new_returned
+    tx.returned_at  = timezone.now() if new_returned > 0 else None
+    tx.status       = 'returned' if new_returned >= tx.quantity_borrowed else 'borrowed'
+    tx.save()
+
+    # Recompute pie chart data
+    items         = Item.objects.all()
+    available_qty = sum(i.available_quantity for i in items)
+    agg           = Transaction.objects.annotate(
+        still_out=ExpressionWrapper(
+            F('quantity_borrowed') - F('returned_qty'),
+            output_field=IntegerField()
+        )
+    ).aggregate(total=Sum('still_out'))
+    borrowed_qty = max(0, agg['total'] or 0)
+
+    return JsonResponse({
+        'ok':            True,
+        'returned_qty':  tx.returned_qty,
+        'status':        tx.status,
+        'returned_at':   tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
+        'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
+        'pie': {
+            'available': available_qty,
+            'borrowed':  borrowed_qty,
+        }
+    })
