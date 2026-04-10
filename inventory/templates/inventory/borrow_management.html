@@ -111,10 +111,10 @@
           {% endif %}
         </td>
 
-        <!-- Return button — visible while returned_qty < quantity_borrowed -->
+        <!-- Return button — conditionally rendered based on current state -->
         <td class="return-action-cell">
           {% if tx.returned_qty < tx.quantity_borrowed %}
-            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm">Return</a>
+            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm return-button" data-tx-id="{{ tx.id }}">Return</a>
           {% else %}
             <span style="color:var(--muted);font-size:12px">✓ Done</span>
           {% endif %}
@@ -174,14 +174,14 @@
         // Update Returned On cell
         returnedOnCell.textContent = data.returned_at ?? '—';
 
-        // Update Return button / done state
+        // Update Return button / done state based on server response
         if (data.fully_returned) {
           actionCell.innerHTML = '<span style="color:var(--muted);font-size:12px">✓ Done</span>';
         } else {
           // Only inject the Return link if it isn't already there
           if (!actionCell.querySelector('a')) {
             actionCell.innerHTML =
-              `<a href="/return/${txId}/" class="btn btn-secondary btn-sm">Return</a>`;
+              `<a href="/return/${txId}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${txId}">Return</a>`;
           }
         }
 
@@ -198,8 +198,37 @@
 
   const debouncedSave = debounce(saveReturnedQty, 600);
 
+  // Handle quantity input changes
   document.querySelectorAll('.returned-qty-input').forEach(input => {
     input.addEventListener('input', () => debouncedSave(input));
+  });
+
+  // Handle Return button clicks
+  function handleReturnClick(e) {
+    e.preventDefault();
+    
+    const button = this;
+    const txId = button.dataset.txId;
+    const row = document.getElementById('tx-row-' + txId);
+    const qtyInput = row.querySelector('.returned-qty-input');
+    const currentReturnedQty = parseInt(qtyInput.value, 10);
+    const totalBorrowedQty = parseInt(qtyInput.dataset.qtyBorrowed, 10);
+    
+    // If returned quantity already equals borrowed quantity, just update UI
+    if (currentReturnedQty >= totalBorrowedQty) {
+      const actionCell = row.querySelector('.return-action-cell');
+      actionCell.innerHTML = '<span style="color:var(--muted);font-size:12px">✓ Done</span>';
+      return;
+    }
+    
+    // Otherwise, redirect to the return URL
+    window.location.href = button.href;
+  }
+
+  // Attach click handlers to existing return buttons
+  document.querySelectorAll('.return-button').forEach(button => {
+    button.removeEventListener('click', handleReturnClick);
+    button.addEventListener('click', handleReturnClick);
   });
 })();
 </script>
