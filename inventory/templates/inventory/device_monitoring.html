@@ -9,7 +9,13 @@
   <div class="table-card" style="overflow-x:auto">
     <div class="table-header">
       <span class="table-title">Device Records</span>
-    </div>
+      <a href="{% url 'export_device_monitoring' %}" class="btn btn-secondary btn-sm">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Export Excel
+       </a>
+  </div>
 
     <table id="dm-table" style="min-width:1150px">
       <thead>

@@ -85,8 +85,13 @@
   <table id="items-table">
     <thead>
       <tr>
-        <th>#</th><th>Item Name</th><th>Serial Number</th>
-        <th>Description</th><th>Availability</th><th>Status</th>
+        <th>#</th>
+        <th>Item Name</th>
+        <th>Serial Number</th>
+        <th>Description</th>
+        <th>Available</th>
+        <th>Status</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -96,13 +101,23 @@
         <td style="font-weight:600">{{ item.name }}</td>
         <td style="color:var(--muted);font-size:12px">{{ item.serial|default:"—"|linebreaksbr }}</td>
         <td style="color:var(--muted)">{{ item.description|truncatechars:40|default:"—" }}</td>
-        <td><div data-qty="{{ item.available_quantity }}" data-total="{{ item.quantity }}"></div></td>
+        <td>{{ item.available_quantity }}</td>
         <td>
           {% if item.available_quantity == 0 %}
             <span class="badge badge-red">Out of Stock</span>
           {% else %}
             <span class="badge badge-green">In Stock</span>
           {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-secondary btn-sm"
+            onclick="openEditModal({{ item.id }}, '{{ item.name|escapejs }}', {{ item.available_quantity }})">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Edit
+          </button>
         </td>
       </tr>
       {% endfor %}
@@ -114,13 +129,66 @@
   </div>
   {% endif %}
 </div>
+
+<!-- Edit Item Modal -->
+<div class="modal-overlay" id="edit-item-modal"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;align-items:center;justify-content:center">
+  <div class="modal" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:420px;position:relative">
+
+    <h3 style="font-family:var(--font-head);font-size:17px;font-weight:700;margin-bottom:6px">Edit Item</h3>
+    <p id="edit-item-name" style="color:var(--muted);font-size:13px;margin-bottom:20px"></p>
+
+    <form method="post" id="edit-item-form" action="">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label">Available Quantity</label>
+        <input type="number" name="available_quantity" id="edit-avail"
+          class="form-control" min="0" required/>
+        <span class="form-hint">Current available units for this item.</span>
+      </div>
+
+      <div class="modal-actions" style="display:flex;gap:10px;margin-top:24px">
+        <button type="submit" class="btn btn-primary" id="edit-save-btn">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          Save Changes
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
+{% if request.user.role == 'admin' %}
+<script>
+function openEditModal(itemId, itemName, avail) {
+  document.getElementById('edit-item-form').action = '/item/' + itemId + '/edit/';
+  document.getElementById('edit-item-name').textContent = itemName;
+  document.getElementById('edit-avail').value = avail;
+
+  const modal = document.getElementById('edit-item-modal');
+  modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-item-modal').style.display = 'none';
+}
+
+// Close on backdrop click
+document.getElementById('edit-item-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+</script>
+{% endif %}
+
 {% if request.user.role == 'staff' %}
 <script>
-// Server-rendered baseline (used on first load)
 const SERVER_PIE = {
   available: {{ available_qty|default:0 }},
   borrowed:  {{ borrowed_qty|default:0 }},
@@ -141,14 +209,16 @@ function drawCharts() {
   if (pieChart) { pieChart.destroy(); pieChart = null; }
   if (barChart) { barChart.destroy(); barChart = null; }
 
-  // Use localStorage data if available (written by borrow_management page after AJAX saves)
-  let pieData = SERVER_PIE;
-  try {
-    const stored = localStorage.getItem('pieData');
-    if (stored) {
-      pieData = JSON.parse(stored);
-    }
-  } catch (e) {}
+  // ALWAYS initialize to ZERO first
+  let pieData = { available: 0, borrowed: 0 };
+  
+  // Only use SERVER_PIE if it has actual data (not both zeros)
+  if (SERVER_PIE.available > 0 || SERVER_PIE.borrowed > 0) {
+    pieData = SERVER_PIE;
+  }
+  
+  // Completely ignore localStorage to prevent stale data
+  // The localStorage check has been REMOVED
 
   const LABEL_COLOR = '#ffffff';
   const GRID_COLOR  = 'rgba(255,255,255,0.08)';
@@ -156,46 +226,74 @@ function drawCharts() {
   const pieCanvas = document.getElementById('pieChart');
   if (pieCanvas) {
     const total = pieData.available + pieData.borrowed;
-    pieChart = new Chart(pieCanvas.getContext('2d'), {
-      type: 'pie',
-      data: {
-        labels: ['Available', 'Borrowed'],
-        datasets: [{
-          data: [pieData.available, pieData.borrowed],
-          backgroundColor: ['#22c55e', '#f59e0b'],
-          borderWidth: 2,
-          borderColor: '#1e293b',
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: ctx => `  ${ctx.label}: ${ctx.parsed} of ${total}`
-            },
-            bodyColor: '#fff', titleColor: '#fff',
-            backgroundColor: '#1e293b',
-            borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+    
+    // If total is zero, show empty chart with message
+    if (total === 0) {
+      const ctx = pieCanvas.getContext('2d');
+      pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: ['No Data'],
+          datasets: [{
+            data: [1],
+            backgroundColor: ['#334155'],
+            borderWidth: 2,
+            borderColor: '#1e293b',
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: () => ' No inventory data available'
+              },
+              bodyColor: '#fff', titleColor: '#fff',
+              backgroundColor: '#1e293b',
+              borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+            }
           }
         }
-      }
-    });
+      });
+    } else {
+      // Draw normal chart with data
+      pieChart = new Chart(pieCanvas.getContext('2d'), {
+        type: 'pie',
+        data: {
+          labels: ['Available', 'Borrowed'],
+          datasets: [{
+            data: [pieData.available, pieData.borrowed],
+            backgroundColor: ['#22c55e', '#f59e0b'],
+            borderWidth: 2,
+            borderColor: '#1e293b',
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: ctx => `  ${ctx.label}: ${ctx.parsed} of ${total}` },
+              bodyColor: '#fff', titleColor: '#fff',
+              backgroundColor: '#1e293b',
+              borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+            }
+          }
+        }
+      });
+    }
   }
 
-  // Update the legend numbers below the pie to match
-  const legendAvail = document.getElementById('legend-available');
+  const legendAvail  = document.getElementById('legend-available');
   const legendBorrow = document.getElementById('legend-borrowed');
-  if (legendAvail) legendAvail.textContent = pieData.available;
+  if (legendAvail)  legendAvail.textContent  = pieData.available;
   if (legendBorrow) legendBorrow.textContent = pieData.borrowed;
 
   const barCanvas = document.getElementById('barChart');
   if (barCanvas) {
     const hasData = BAR_DATA.offices.length > 0;
-    barCanvas.style.height = hasData
-      ? Math.max(200, BAR_DATA.offices.length * 48) + 'px'
-      : '120px';
+    barCanvas.style.height = hasData ? Math.max(200, BAR_DATA.offices.length * 48) + 'px' : '120px';
 
     barChart = new Chart(barCanvas.getContext('2d'), {
       type: 'bar',
@@ -214,15 +312,8 @@ function drawCharts() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { color: LABEL_COLOR, padding: 14, font: { size: 12 }, boxWidth: 12 }
-          },
-          tooltip: {
-            bodyColor: '#fff', titleColor: '#fff',
-            backgroundColor: '#1e293b',
-            borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-          }
+          legend: { position: 'bottom', labels: { color: LABEL_COLOR, padding: 14, font: { size: 12 }, boxWidth: 12 } },
+          tooltip: { bodyColor: '#fff', titleColor: '#fff', backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
         },
         scales: {
           x: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
@@ -231,6 +322,20 @@ function drawCharts() {
       }
     });
   }
+}
+
+// Optional: Add a function to manually clear any stored data
+function clearPieData() {
+  localStorage.removeItem('pieData');
+  // Redraw chart with zeros
+  if (pieChart) {
+    pieChart.data.datasets[0].data = [0, 0];
+    pieChart.update();
+  }
+  const legendAvail = document.getElementById('legend-available');
+  const legendBorrow = document.getElementById('legend-borrowed');
+  if (legendAvail) legendAvail.textContent = '0';
+  if (legendBorrow) legendBorrow.textContent = '0';
 }
 
 function loadChartJs(callback) {

@@ -51,13 +51,21 @@
 <div class="table-card" style="margin-top:24px;overflow-x:auto">
   <div class="table-header">
     <span class="table-title">Recent Transactions</span>
-    <div class="table-search">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
-      </svg>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a href="{% url 'export_borrow_management' %}" class="btn btn-secondary btn-sm">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+       </svg>
+       Export Excel
+      </a>
+      <div class="table-search">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+         <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+        </svg>
       <input type="text" id="transaction-search" placeholder="Search transactions…"/>
     </div>
   </div>
+</div>
 
   <table id="transactions-table" style="min-width:900px">
     <thead>
