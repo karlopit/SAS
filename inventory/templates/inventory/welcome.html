@@ -6,6 +6,118 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Welcome — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
+  <style>
+    /* Popup Modal Styles */
+    .modal-popup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    .modal-popup-content {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      border: 1px solid var(--border);
+      animation: slideIn 0.3s ease;
+    }
+    
+    .modal-popup-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 16px;
+      background: #22c55e20;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-popup-icon svg {
+      width: 32px;
+      height: 32px;
+      color: #22c55e;
+    }
+    
+    .modal-popup-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    
+    .modal-popup-message {
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    
+    .modal-popup-transaction {
+      background: var(--surface2);
+      padding: 12px;
+      border-radius: 8px;
+      margin: 16px 0;
+      border: 1px solid var(--border);
+    }
+    
+    .modal-popup-transaction label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .modal-popup-transaction .tx-id {
+      font-family: var(--font-mono);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 4px;
+    }
+    
+    .modal-popup-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .modal-popup-btn:hover {
+      background: var(--accent-dark);
+      transform: translateY(-1px);
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideIn {
+      from {
+        transform: translateY(-30px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+  </style>
 </head>
 <body>
 <div class="auth-wrapper">
@@ -29,15 +141,6 @@
       <p style="color:var(--muted);font-size:13px;margin-bottom:16px">
         Fill out the form below. A staff member will review your request.
       </p>
-
-      {% if borrow_success %}
-        <div class="alert alert-success">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-          </svg>
-          Request submitted! Your Transaction ID is <strong>#{{ borrow_success }}</strong>. Please wait for staff approval.
-        </div>
-      {% endif %}
 
       {% if borrow_form.errors %}
         <div class="alert alert-error">Please fix the errors below.</div>
@@ -98,15 +201,59 @@
   </div>
 </div>
 
+<!-- Success Popup Modal -->
+{% if borrow_success %}
+<div id="successModal" class="modal-popup">
+  <div class="modal-popup-content">
+    <div class="modal-popup-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <h2 class="modal-popup-title">Request Submitted! 🎉</h2>
+    <div class="modal-popup-message">
+      Your borrow request has been successfully submitted.
+    </div>
+    <div class="modal-popup-transaction">
+      <label>Transaction ID</label>
+      <div class="tx-id">#{{ borrow_success }}</div>
+    </div>
+    <div class="modal-popup-message" style="font-size:13px">
+      Please wait for staff approval.
+    </div>
+    <button class="modal-popup-btn" onclick="closeSuccessModal()">
+      Got it, thanks!
+    </button>
+  </div>
+</div>
+{% endif %}
+
 <script>
 function handleRoleChange(val) {
   if (val === 'admin_staff') {
-    // Immediately redirect to login — no button needed
     window.location.href = "{% url 'login' %}";
     return;
   }
   document.getElementById('borrower-section').style.display = val === 'borrower' ? 'block' : 'none';
 }
+
+function closeSuccessModal() {
+  const modal = document.getElementById('successModal');
+  if (modal) {
+    modal.style.removeProperty('display');
+    modal.style.display = 'none';
+  }
+  // Optional: Clear the URL parameter or reload without the success flag
+  // window.history.replaceState({}, document.title, window.location.pathname);
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+  const modal = document.getElementById('successModal');
+  if (modal && e.target === modal) {
+    closeSuccessModal();
+  }
+});
 
 {% if borrow_form.errors or borrow_success %}
   document.getElementById('role-select').value = 'borrower';

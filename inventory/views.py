@@ -8,6 +8,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -25,6 +26,11 @@ def welcome(request):
     borrow_success = None
     generated_tx_id = str(random.randint(10000, 99999))
 
+    # Check if there's a success message in session
+    if 'borrow_success' in request.session:
+        borrow_success = request.session.pop('borrow_success')
+        generated_tx_id = str(random.randint(10000, 99999))  # Generate new ID for next submission
+
     if request.method == 'POST' and request.POST.get('action') == 'borrow_request':
         borrow_form = BorrowRequestForm(request.POST)
         if borrow_form.is_valid():
@@ -34,10 +40,15 @@ def welcome(request):
                 tx_id = str(random.randint(10000, 99999))
             req.transaction_id = tx_id
             req.save()
-            borrow_success = req.transaction_id
-            generated_tx_id = str(random.randint(10000, 99999))
-            borrow_form = BorrowRequestForm()
+            
+            # Store success in session instead of context
+            request.session['borrow_success'] = req.transaction_id
+            
+            # Redirect to clear POST data and show modal
             return redirect('welcome')
+        else:
+            # If form has errors, keep the generated_tx_id
+            pass
 
     return render(request, 'inventory/welcome.html', {
         'borrow_form': borrow_form,
@@ -133,7 +144,7 @@ def edit_item(request, item_id):
         else:
             messages.error(request, 'No quantity provided.')
         
-        return redirect('index')  # Redirect back to dashboard
+        return redirect('index')
     
     # If not POST, redirect to dashboard
     return redirect('index')
