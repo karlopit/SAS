@@ -46,9 +46,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
         </svg>
         Borrow Requests
-        {% if pending_count %}
-          <span style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">{{ pending_count }}</span>
-        {% endif %}
+        <span id="nav-pending-badge" style="{% if not pending_count %}display:none;{% endif %}background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">
+          {{ pending_count|default:'' }}
+        </span>
       </a>
 
       <a href="{% url 'borrow_management' %}" class="nav-item {% if request.resolver_match.url_name == 'borrow_management' %}active{% endif %}">
@@ -108,7 +108,11 @@
   <div class="main">
     <div class="topbar">
       <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
-      <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+      <div class="topbar-actions">
+        <!-- Real-time connection indicator — updated by realtime.js -->
+        <span id="rt-indicator" class="rt-indicator rt-disconnected">Connecting…</span>
+        {% block topbar_actions %}{% endblock %}
+      </div>
     </div>
     <div class="content">
       {% block content %}{% endblock %}
@@ -117,7 +121,26 @@
 </div>
 
 <div id="toast-container"></div>
+
 <script src="{% static 'inventory/js/script.js' %}"></script>
+<script src="{% static 'inventory/js/realtime.js' %}"></script>
+
 {% block extra_js %}{% endblock %}
+
+<script>
+/* ── Global: keep the sidebar pending badge in sync across all pages ── */
+(function () {
+  const badge = document.getElementById('nav-pending-badge');
+  if (!badge) return;
+
+  // Listen for any page's WS that broadcasts pending_count
+  window.addEventListener('invsys:pending_count', (e) => {
+    const count = e.detail;
+    badge.textContent = count > 0 ? count : '';
+    badge.style.display = count > 0 ? '' : 'none';
+  });
+})();
+</script>
+
 </body>
 </html>

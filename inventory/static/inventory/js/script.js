@@ -6,7 +6,7 @@ function showToast(message, type = 'success') {
   toast.innerHTML = `<span class="toast-dot"></span><span>${message}</span>`;
   container.appendChild(toast);
   setTimeout(() => {
-    toast.style.opacity = '0';
+    toast.style.opacity   = '0';
     toast.style.transform = 'translateX(16px)';
     toast.style.transition = '0.3s ease';
     setTimeout(() => toast.remove(), 300);

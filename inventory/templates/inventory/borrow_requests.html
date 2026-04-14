@@ -5,25 +5,27 @@
 {% block content %}
 <div class="table-card">
   <div class="table-header">
-    <span class="table-title">Pending Requests</span>
+    <span class="table-title">
+      Pending Requests
+      <span id="pending-count-badge" style="
+        background:var(--accent);color:#000;border-radius:10px;
+        padding:1px 8px;font-size:11px;font-weight:700;margin-left:8px;
+        {% if not pending %}display:none{% endif %}">
+        {{ pending|length }}
+      </span>
+    </span>
   </div>
 
-  {% if pending %}
   <table id="items-table">
     <thead>
       <tr>
-        <th>Transaction ID</th>
-        <th>Borrower Name</th>
-        <th>College / Office</th>
-        <th>Item Requested</th>
-        <th>Quantity</th>
-        <th>Requested On</th>
-        <th>Actions</th>
+        <th>Transaction ID</th><th>Borrower Name</th><th>College / Office</th>
+        <th>Item Requested</th><th>Quantity</th><th>Requested On</th><th>Actions</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="requests-tbody">
       {% for req in pending %}
-      <tr>
+      <tr id="req-row-{{ req.id }}">
         <td><span class="badge badge-blue">#{{ req.transaction_id }}</span></td>
         <td style="font-weight:600">{{ req.borrower_name }}</td>
         <td>{{ req.office_college }}</td>
@@ -40,13 +42,107 @@
           </div>
         </td>
       </tr>
+      {% empty %}
+      <tr id="req-empty-row">
+        <td colspan="7">
+          <div class="empty-state" style="padding:40px">
+            <p>No pending borrow requests.</p>
+          </div>
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <div class="empty-state" style="padding:40px">
-    <p>No pending borrow requests.</p>
-  </div>
-  {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+  // Track known request IDs
+  const knownIds = new Set(
+    [...document.querySelectorAll('#requests-tbody tr[id^="req-row-"]')]
+      .map(r => r.id.replace('req-row-', ''))
+  );
+
+  function renderRequests(requests) {
+    const tbody = document.getElementById('requests-tbody');
+    if (!tbody) return;
+
+    const badge = document.getElementById('pending-count-badge');
+
+    // Remove rows that are no longer pending
+    const incomingIds = new Set(requests.map(r => String(r.id)));
+    tbody.querySelectorAll('tr[id^="req-row-"]').forEach(tr => {
+      const id = tr.id.replace('req-row-', '');
+      if (!incomingIds.has(id)) tr.remove();
+    });
+
+    requests.forEach(req => {
+      const existing = document.getElementById('req-row-' + req.id);
+      const isNew    = !knownIds.has(String(req.id));
+      knownIds.add(String(req.id));
+
+      if (!existing) {
+        const tr = document.createElement('tr');
+        tr.id = 'req-row-' + req.id;
+        tr.innerHTML = `
+          <td><span class="badge badge-blue">#${req.transaction_id}</span></td>
+          <td style="font-weight:600">${req.borrower_name}</td>
+          <td>${req.office_college}</td>
+          <td>${req.item_name}</td>
+          <td>${req.quantity}</td>
+          <td style="color:var(--muted)">${req.created_at}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <a href="/borrow/confirm/${req.id}/" class="btn btn-primary btn-sm">Accept</a>
+              <form method="post" action="/requests/${req.id}/decline/" style="display:inline">
+                <input type="hidden" name="csrfmiddlewaretoken" value="${CSRF}"/>
+                <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+              </form>
+            </div>
+          </td>
+        `;
+        // Remove empty state row
+        const emptyRow = document.getElementById('req-empty-row');
+        if (emptyRow) emptyRow.remove();
+
+        tbody.prepend(tr);
+
+        if (isNew) {
+          tr.classList.add('row-new');
+          setTimeout(() => tr.classList.remove('row-new'), 1600);
+          showToast(`New request from ${req.borrower_name}`, 'success');
+        }
+      }
+    });
+
+    // Show empty state if no rows left
+    if (tbody.querySelectorAll('tr[id^="req-row-"]').length === 0 && !document.getElementById('req-empty-row')) {
+      const tr = document.createElement('tr');
+      tr.id = 'req-empty-row';
+      tr.innerHTML = '<td colspan="7"><div class="empty-state" style="padding:40px"><p>No pending borrow requests.</p></div></td>';
+      tbody.appendChild(tr);
+    }
+
+    // Update badge
+    if (badge) {
+      const count = requests.length;
+      badge.textContent = count;
+      badge.style.display = count > 0 ? '' : 'none';
+    }
+  }
+
+  function handleMessage(data) {
+    if (data.type !== 'borrow_requests.update') return;
+    renderRequests(data.pending);
+    window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.count }));
+  }
+
+  const indicator = document.getElementById('rt-indicator');
+  InvSysRT.connect('/ws/borrow-requests/', handleMessage, indicator);
+})();
+</script>
 {% endblock %}

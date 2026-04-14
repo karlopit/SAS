@@ -8,55 +8,68 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from django.urls import reverse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
 from .models import Item, Transaction, BorrowRequest, DeviceMonitor
 from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRequestForm
 from .decorators import no_cache
-from .models import Item
 from django.contrib import messages
+
+# Real-time broadcast helpers — imported lazily to avoid circular issues at
+# import time if channels isn't fully configured yet.
+def _broadcasts():
+    from inventory import broadcasts as b
+    return b
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Public / unauthenticated
+# ─────────────────────────────────────────────────────────────────────────────
 
 def welcome(request):
     if request.user.is_authenticated:
         return redirect('index')
 
-    borrow_form = BorrowRequestForm()
-    borrow_success = None
+    borrow_form     = BorrowRequestForm()
+    borrow_success  = None
     generated_tx_id = str(random.randint(10000, 99999))
 
-    # Check if there's a success message in session
     if 'borrow_success' in request.session:
-        borrow_success = request.session.pop('borrow_success')
-        generated_tx_id = str(random.randint(10000, 99999))  # Generate new ID for next submission
+        borrow_success  = request.session.pop('borrow_success')
+        generated_tx_id = str(random.randint(10000, 99999))
 
     if request.method == 'POST' and request.POST.get('action') == 'borrow_request':
         borrow_form = BorrowRequestForm(request.POST)
         if borrow_form.is_valid():
-            req = borrow_form.save(commit=False)
+            req   = borrow_form.save(commit=False)
             tx_id = request.POST.get('transaction_id', str(random.randint(10000, 99999)))
             while BorrowRequest.objects.filter(transaction_id=tx_id).exists():
                 tx_id = str(random.randint(10000, 99999))
             req.transaction_id = tx_id
             req.save()
-            
-            # Store success in session instead of context
+
             request.session['borrow_success'] = req.transaction_id
-            
-            # Redirect to clear POST data and show modal
+
+            # Notify staff on borrow-requests page & dashboard
+            b = _broadcasts()
+            b.broadcast_borrow_requests()
+            b.broadcast_dashboard()
+
             return redirect('welcome')
-        else:
-            # If form has errors, keep the generated_tx_id
-            pass
 
     return render(request, 'inventory/welcome.html', {
-        'borrow_form': borrow_form,
-        'borrow_success': borrow_success,
+        'borrow_form':     borrow_form,
+        'borrow_success':  borrow_success,
         'generated_tx_id': generated_tx_id,
         'available_items': Item.objects.filter(available_quantity__gt=0),
     })
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 @no_cache
@@ -65,8 +78,7 @@ def index(request):
     items          = Item.objects.all()
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
-
-    available_qty = sum(i.available_quantity for i in items)
+    available_qty  = sum(i.available_quantity for i in items)
 
     agg = Transaction.objects.annotate(
         still_out=ExpressionWrapper(
@@ -77,16 +89,7 @@ def index(request):
     borrowed_qty = max(0, agg['total'] or 0)
 
     monitors = DeviceMonitor.objects.all()
-
-    offices = sorted(set(
-        monitors.values_list('office_college', flat=True)
-    ))
-
-    dm_serviceable = [monitors.filter(office_college=o, serviceable=True).count()     for o in offices]
-    dm_non_service = [monitors.filter(office_college=o, non_serviceable=True).count() for o in offices]
-    dm_sealed      = [monitors.filter(office_college=o, sealed=True).count()          for o in offices]
-    dm_missing     = [monitors.filter(office_college=o, missing=True).count()         for o in offices]
-    dm_incomplete  = [monitors.filter(office_college=o, incomplete=True).count()      for o in offices]
+    offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
     return render(request, 'inventory/index.html', {
         'items':          items,
@@ -96,13 +99,52 @@ def index(request):
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
         'dm_offices':     json.dumps(offices),
-        'dm_serviceable': json.dumps(dm_serviceable),
-        'dm_non_service': json.dumps(dm_non_service),
-        'dm_sealed':      json.dumps(dm_sealed),
-        'dm_missing':     json.dumps(dm_missing),
-        'dm_incomplete':  json.dumps(dm_incomplete),
+        'dm_serviceable': json.dumps([monitors.filter(office_college=o, serviceable=True).count()     for o in offices]),
+        'dm_non_service': json.dumps([monitors.filter(office_college=o, non_serviceable=True).count() for o in offices]),
+        'dm_sealed':      json.dumps([monitors.filter(office_college=o, sealed=True).count()          for o in offices]),
+        'dm_missing':     json.dumps([monitors.filter(office_college=o, missing=True).count()         for o in offices]),
+        'dm_incomplete':  json.dumps([monitors.filter(office_college=o, incomplete=True).count()      for o in offices]),
     })
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  AJAX poll endpoint — fallback for older browsers / WS failures
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def ajax_dashboard_data(request):
+    """Returns the same payload the WS consumer would send."""
+    from inventory.consumers import _build_dashboard_payload
+    return JsonResponse(_build_dashboard_payload())
+
+
+@login_required
+def ajax_borrow_management_data(request):
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    from inventory.consumers import _build_borrow_management_payload
+    return JsonResponse(_build_borrow_management_payload())
+
+
+@login_required
+def ajax_borrow_requests_data(request):
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    from inventory.consumers import _build_borrow_requests_payload
+    return JsonResponse(_build_borrow_requests_payload())
+
+
+@login_required
+def ajax_device_monitoring_data(request):
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    from inventory.consumers import _build_device_monitoring_payload
+    return JsonResponse(_build_device_monitoring_payload())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Item management
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 @no_cache
@@ -114,49 +156,59 @@ def add_item(request):
         item = form.save(commit=False)
         item.available_quantity = item.quantity
         item.save()
+        b = _broadcasts()
+        b.broadcast_dashboard()
+        b.broadcast_borrow_management()
         return redirect('index')
     return render(request, 'inventory/add_item.html', {'form': form})
 
+
 @login_required
 def edit_item(request, item_id):
-    """Edit an item's available quantity"""
-    # Only admin can edit items
     if request.user.role != 'admin':
         messages.error(request, 'You do not have permission to edit items.')
         return redirect('index')
-    
+
     item = get_object_or_404(Item, id=item_id)
-    
+
     if request.method == 'POST':
         new_quantity = request.POST.get('available_quantity')
-        
         if new_quantity is not None:
             try:
                 new_quantity = int(new_quantity)
                 if new_quantity >= 0:
                     item.available_quantity = new_quantity
                     item.save()
-                    messages.success(request, f'Successfully updated {item.name} quantity to {item.available_quantity}')
+                    messages.success(request, f'Updated {item.name} to {item.available_quantity} units.')
+                    b = _broadcasts()
+                    b.broadcast_dashboard()
+                    b.broadcast_borrow_management()
                 else:
                     messages.error(request, 'Quantity cannot be negative.')
             except ValueError:
-                messages.error(request, 'Invalid quantity value. Please enter a valid number.')
+                messages.error(request, 'Invalid quantity value.')
         else:
             messages.error(request, 'No quantity provided.')
-        
         return redirect('index')
-    
-    # If not POST, redirect to dashboard
+
     return redirect('index')
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Borrow requests
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 @no_cache
 def borrow_requests(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    pending = BorrowRequest.objects.filter(status='pending').order_by('-created_at')
-    return render(request, 'inventory/borrow_requests.html', {'pending': pending})
+    pending       = BorrowRequest.objects.filter(status='pending').order_by('-created_at')
+    pending_count = pending.count()
+    return render(request, 'inventory/borrow_requests.html', {
+        'pending':       pending,
+        'pending_count': pending_count,
+    })
 
 
 @login_required
@@ -209,23 +261,17 @@ def device_monitoring_save(request):
         def get(lst, idx=i):
             return lst[idx] if idx < len(lst) else ''
 
-        is_svc  = get(serviceables)     == 'on'
-        is_ns   = get(non_serviceables) == 'on'
-        is_seal = get(sealeds)          == 'on'
-        is_miss = get(missings)         == 'on'
-        is_inc  = get(incompletes)      == 'on'
-
         fields = dict(
             display_id         = get(display_ids),
             office_college     = get(offices),
             accountable_person = get(accountables),
             device             = get(devices) or 'Tablet',
             serial_number      = get(serials),
-            serviceable        = is_svc,
-            non_serviceable    = is_ns,
-            sealed             = is_seal,
-            missing            = is_miss,
-            incomplete         = is_inc,
+            serviceable        = get(serviceables)     == 'on',
+            non_serviceable    = get(non_serviceables) == 'on',
+            sealed             = get(sealeds)          == 'on',
+            missing            = get(missings)         == 'on',
+            incomplete         = get(incompletes)      == 'on',
         )
 
         if row_id == 'new':
@@ -239,6 +285,9 @@ def device_monitoring_save(request):
             except DeviceMonitor.DoesNotExist:
                 pass
 
+    b = _broadcasts()
+    b.broadcast_device_monitoring()
+    b.broadcast_dashboard()          # bar chart on dashboard
     return redirect('device_monitoring')
 
 
@@ -249,8 +298,15 @@ def device_monitoring_delete(request, row_id):
         raise PermissionDenied
     obj = get_object_or_404(DeviceMonitor, pk=row_id)
     obj.delete()
+    b = _broadcasts()
+    b.broadcast_device_monitoring()
+    b.broadcast_dashboard()
     return redirect('device_monitoring')
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Staff borrow confirmation / decline
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 @no_cache
@@ -262,16 +318,19 @@ def staff_confirm_borrow(request, request_id):
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
-            transaction = form.save(commit=False)
-            transaction.borrower       = request.user
+            transaction               = form.save(commit=False)
+            transaction.borrower      = request.user
             transaction.borrow_request = borrow_req
             transaction.office_college = borrow_req.office_college
-            transaction.status         = 'borrowed'
+            transaction.status        = 'borrowed'
             transaction.item.available_quantity -= transaction.quantity_borrowed
             transaction.item.save()
             transaction.save()
             borrow_req.status = 'accepted'
             borrow_req.save()
+
+            b = _broadcasts()
+            b.broadcast_all()
             return redirect('index')
     else:
         form = StaffBorrowForm(initial={
@@ -294,8 +353,15 @@ def decline_request(request, request_id):
     if request.method == 'POST':
         borrow_req.status = 'declined'
         borrow_req.save()
+        b = _broadcasts()
+        b.broadcast_borrow_requests()
+        b.broadcast_dashboard()
     return redirect('borrow_requests')
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Return / condition
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def return_item(request, transaction_id):
@@ -306,6 +372,9 @@ def return_item(request, transaction_id):
         transaction.status      = 'returned'
         transaction.returned_at = timezone.now()
         transaction.save()
+        b = _broadcasts()
+        b.broadcast_borrow_management()
+        b.broadcast_dashboard()
         return redirect('borrow_management')
     return render(request, 'inventory/return_item.html', {'transaction': transaction})
 
@@ -320,6 +389,8 @@ def update_condition(request, transaction_id):
         form = TransactionConditionForm(request.POST, instance=tx)
         if form.is_valid():
             form.save()
+            b = _broadcasts()
+            b.broadcast_borrow_management()
     return redirect('borrow_management')
 
 
@@ -337,9 +408,7 @@ def update_returned_qty(request, transaction_id):
         return JsonResponse({'error': 'Invalid value'}, status=400)
 
     new_returned = max(0, min(new_returned, tx.quantity_borrowed))
-
-    old_returned = tx.returned_qty
-    delta = new_returned - old_returned
+    delta        = new_returned - tx.returned_qty
 
     if delta != 0:
         tx.item.available_quantity = max(0, tx.item.available_quantity + delta)
@@ -350,7 +419,13 @@ def update_returned_qty(request, transaction_id):
     tx.status       = 'returned' if new_returned >= tx.quantity_borrowed else 'borrowed'
     tx.save()
 
-    items         = Item.objects.all()
+    # Push live updates to all groups
+    b = _broadcasts()
+    b.broadcast_borrow_management()
+    b.broadcast_dashboard()
+
+    # Build pie data for the legacy JSON response
+    items        = Item.objects.all()
     available_qty = sum(i.available_quantity for i in items)
     agg           = Transaction.objects.annotate(
         still_out=ExpressionWrapper(
@@ -366,44 +441,38 @@ def update_returned_qty(request, transaction_id):
         'status':         tx.status,
         'returned_at':    tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
         'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
-        'pie': {
-            'available': available_qty,
-            'borrowed':  borrowed_qty,
-        }
+        'pie': {'available': available_qty, 'borrowed': borrowed_qty},
     })
 
 
-# ── Shared Excel helper utilities ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  Excel exports (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _xl_title(ws, text, col_count):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
     c = ws.cell(row=1, column=1)
-    c.value     = text
-    c.font      = Font(bold=True, size=14, color='00E5A0')
-    c.fill      = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
+    c.value = text; c.font = Font(bold=True, size=14, color='00E5A0')
+    c.fill = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
     c.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[1].height = 30
-
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=col_count)
     s = ws.cell(row=2, column=1)
-    s.value     = f'Generated: {timezone.now().strftime("%B %d, %Y  %H:%M")}'
-    s.font      = Font(size=9, color='6B7080')
-    s.fill      = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
+    s.value = f'Generated: {timezone.now().strftime("%B %d, %Y  %H:%M")}'
+    s.font = Font(size=9, color='6B7080')
+    s.fill = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
     s.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[2].height = 16
 
 
 def _xl_header(ws, row_num, headers):
-    fill   = PatternFill(start_color='1E2029', end_color='1E2029', fill_type='solid')
-    font   = Font(bold=True, color='00E5A0', size=11)
+    fill = PatternFill(start_color='1E2029', end_color='1E2029', fill_type='solid')
+    font = Font(bold=True, color='00E5A0', size=11)
     border = Border(bottom=Side(style='thin', color='2A2D3A'))
     align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
     for col, heading in enumerate(headers, start=1):
-        c            = ws.cell(row=row_num, column=col, value=heading)
-        c.fill       = fill
-        c.font       = font
-        c.border     = border
-        c.alignment  = align
+        c = ws.cell(row=row_num, column=col, value=heading)
+        c.fill = fill; c.font = font; c.border = border; c.alignment = align
     ws.row_dimensions[row_num].height = 22
 
 
@@ -414,131 +483,74 @@ def _xl_row(ws, row_num, values, even=False):
     border = Border(bottom=Side(style='thin', color='2A2D3A'))
     align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
     for col, val in enumerate(values, start=1):
-        c           = ws.cell(row=row_num, column=col, value=val)
-        c.fill      = fill
-        c.font      = font
-        c.border    = border
-        c.alignment = align
+        c = ws.cell(row=row_num, column=col, value=val)
+        c.fill = fill; c.font = font; c.border = border; c.alignment = align
 
 
 def _xl_response(wb, filename_prefix):
     buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
+    wb.save(buf); buf.seek(0)
     filename = f'{filename_prefix}_{timezone.now().strftime("%Y%m%d_%H%M")}.xlsx'
-    resp = HttpResponse(
-        buf.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
+    resp = HttpResponse(buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
 
-
-# ── Export: Borrow Management ─────────────────────────────────────────────────
 
 @login_required
 def export_borrow_management(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
-
     transactions = Transaction.objects.select_related(
-        'item', 'borrower', 'borrow_request'
-    ).all().order_by('-borrowed_at')
-
-    headers = [
-        'Tx ID', 'Borrower Name', 'College / Office',
-        'Item', 'Serial Number', 'Qty Borrowed',
-        'Returned Qty', 'Borrowed On', 'Returned On',
-    ]
+        'item', 'borrower', 'borrow_request').all().order_by('-borrowed_at')
+    headers    = ['Tx ID','Borrower Name','College / Office','Item','Serial Number',
+                  'Qty Borrowed','Returned Qty','Borrowed On','Returned On']
     col_widths = [12, 24, 20, 22, 20, 14, 14, 18, 22]
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Borrow Management'
+    wb = Workbook(); ws = wb.active; ws.title = 'Borrow Management'
     ws.sheet_properties.tabColor = '00E5A0'
-
     _xl_title(ws, 'Borrow Management Report', len(headers))
     _xl_header(ws, 3, headers)
-
     for i, tx in enumerate(transactions, start=1):
-        tx_id       = f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—'
-        borrower    = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
-        borrowed_on = tx.borrowed_at.strftime('%b %d, %Y')
-        returned_on = tx.returned_at.strftime('%b %d, %Y  %H:%M') if tx.returned_at else '—'
-
         _xl_row(ws, i + 3, [
-            tx_id,
-            borrower,
-            tx.office_college or '—',
-            tx.item.name,
-            tx.item.serial or '—',
-            tx.quantity_borrowed,
-            tx.returned_qty,
-            borrowed_on,
-            returned_on,
+            f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
+            tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
+            tx.office_college or '—', tx.item.name, tx.item.serial or '—',
+            tx.quantity_borrowed, tx.returned_qty,
+            tx.borrowed_at.strftime('%b %d, %Y'),
+            tx.returned_at.strftime('%b %d, %Y  %H:%M') if tx.returned_at else '—',
         ], even=(i % 2 == 0))
-
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
-
     ws.freeze_panes = 'A4'
     return _xl_response(wb, 'borrow_management')
 
-
-# ── Export: Device Monitoring ─────────────────────────────────────────────────
 
 @login_required
 def export_device_monitoring(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
-
-    rows = DeviceMonitor.objects.all().order_by('id')
-
-    headers = [
-        'ID', 'College / Office', 'Accountable Person',
-        'Device', 'Serial Number',
-        'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete',
-    ]
+    rows       = DeviceMonitor.objects.all().order_by('id')
+    headers    = ['ID','College / Office','Accountable Person','Device','Serial Number',
+                  'Serviceable','Non-Serviceable','Sealed','Missing','Incomplete']
     col_widths = [10, 20, 24, 14, 20, 14, 16, 10, 10, 12]
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Device Monitoring'
+    wb = Workbook(); ws = wb.active; ws.title = 'Device Monitoring'
     ws.sheet_properties.tabColor = '00E5A0'
-
     _xl_title(ws, 'Device Monitoring Report', len(headers))
     _xl_header(ws, 3, headers)
-
     font_yes = Font(bold=True, color='00E5A0', size=10)
     font_no  = Font(color='6B7080', size=10)
-
     for i, row in enumerate(rows, start=1):
-        bool_vals = [
-            row.serviceable,
-            row.non_serviceable,
-            row.sealed,
-            row.missing,
-            row.incomplete,
-        ]
+        bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
         _xl_row(ws, i + 3, [
-            row.display_id or str(row.id),
-            row.office_college or '—',
-            row.accountable_person or '—',
-            row.device or 'Tablet',
-            row.serial_number or '—',
-            '✓' if row.serviceable     else '—',
-            '✓' if row.non_serviceable else '—',
-            '✓' if row.sealed          else '—',
-            '✓' if row.missing         else '—',
-            '✓' if row.incomplete      else '—',
+            row.display_id or str(row.id), row.office_college or '—',
+            row.accountable_person or '—', row.device or 'Tablet', row.serial_number or '—',
+            '✓' if row.serviceable else '—', '✓' if row.non_serviceable else '—',
+            '✓' if row.sealed else '—', '✓' if row.missing else '—',
+            '✓' if row.incomplete else '—',
         ], even=(i % 2 == 0))
-
-        # Apply green/muted colour to the boolean columns (6–10)
         for col_offset, val in enumerate(bool_vals):
             ws.cell(row=i + 3, column=6 + col_offset).font = font_yes if val else font_no
-
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
-
     ws.freeze_panes = 'A4'
     return _xl_response(wb, 'device_monitoring')

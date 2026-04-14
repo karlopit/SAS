@@ -6,26 +6,26 @@
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-label">Total Items</div>
-    <div class="stat-value">{{ items.count }}</div>
+    <div class="stat-value" id="stat-items">{{ items.count }}</div>
     <div class="stat-sub">across all categories</div>
     <div class="stat-icon">📦</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Active Borrows</div>
-    <div class="stat-value" style="color:var(--warning)">{{ active_borrows }}</div>
+    <div class="stat-value" id="stat-borrows" style="color:var(--warning)">{{ active_borrows }}</div>
     <div class="stat-sub">currently borrowed</div>
     <div class="stat-icon">🔄</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Total Returns</div>
-    <div class="stat-value" style="color:var(--accent2)">{{ total_returns }}</div>
+    <div class="stat-value" id="stat-returns" style="color:var(--accent2)">{{ total_returns }}</div>
     <div class="stat-sub">all time</div>
     <div class="stat-icon">↩️</div>
   </div>
   {% if request.user.role == 'staff' %}
   <div class="stat-card" style="cursor:pointer" onclick="window.location='{% url 'borrow_requests' %}'">
     <div class="stat-label">Pending Requests</div>
-    <div class="stat-value" style="color:var(--accent)">{{ pending_count }}</div>
+    <div class="stat-value" id="stat-pending" style="color:var(--accent)">{{ pending_count }}</div>
     <div class="stat-sub">awaiting approval</div>
     <div class="stat-icon">📋</div>
   </div>
@@ -85,13 +85,8 @@
   <table id="items-table">
     <thead>
       <tr>
-        <th>#</th>
-        <th>Item Name</th>
-        <th>Serial Number</th>
-        <th>Description</th>
-        <th>Available</th>
-        <th>Status</th>
-        <th>Actions</th>
+        <th>#</th><th>Item Name</th><th>Serial Number</th>
+        <th>Description</th><th>Available</th><th>Status</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -133,28 +128,18 @@
 <!-- Edit Item Modal -->
 <div class="modal-overlay" id="edit-item-modal"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;align-items:center;justify-content:center">
-  <div class="modal" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:420px;position:relative">
-
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;width:100%;max-width:420px;position:relative">
     <h3 style="font-family:var(--font-head);font-size:17px;font-weight:700;margin-bottom:6px">Edit Item</h3>
     <p id="edit-item-name" style="color:var(--muted);font-size:13px;margin-bottom:20px"></p>
-
     <form method="post" id="edit-item-form" action="">
       {% csrf_token %}
-
       <div class="form-group">
         <label class="form-label">Available Quantity</label>
-        <input type="number" name="available_quantity" id="edit-avail"
-          class="form-control" min="0" required/>
+        <input type="number" name="available_quantity" id="edit-avail" class="form-control" min="0" required/>
         <span class="form-hint">Current available units for this item.</span>
       </div>
-
-      <div class="modal-actions" style="display:flex;gap:10px;margin-top:24px">
-        <button type="submit" class="btn btn-primary" id="edit-save-btn">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-          </svg>
-          Save Changes
-        </button>
+      <div style="display:flex;gap:10px;margin-top:24px">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
         <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
       </div>
     </form>
@@ -171,16 +156,11 @@ function openEditModal(itemId, itemName, avail) {
   document.getElementById('edit-item-form').action = '/item/' + itemId + '/edit/';
   document.getElementById('edit-item-name').textContent = itemName;
   document.getElementById('edit-avail').value = avail;
-
-  const modal = document.getElementById('edit-item-modal');
-  modal.style.display = 'flex';
+  document.getElementById('edit-item-modal').style.display = 'flex';
 }
-
 function closeEditModal() {
   document.getElementById('edit-item-modal').style.display = 'none';
 }
-
-// Close on backdrop click
 document.getElementById('edit-item-modal').addEventListener('click', function(e) {
   if (e.target === this) closeEditModal();
 });
@@ -189,164 +169,148 @@ document.getElementById('edit-item-modal').addEventListener('click', function(e)
 
 {% if request.user.role == 'staff' %}
 <script>
-const SERVER_PIE = {
+// ── Server-rendered initial values ─────────────────────────────────────────
+const INIT = {
   available: {{ available_qty|default:0 }},
   borrowed:  {{ borrowed_qty|default:0 }},
-};
-const BAR_DATA = {
-  offices:     {{ dm_offices|safe }},
-  serviceable: {{ dm_serviceable|safe }},
-  nonService:  {{ dm_non_service|safe }},
-  sealed:      {{ dm_sealed|safe }},
-  missing:     {{ dm_missing|safe }},
-  incomplete:  {{ dm_incomplete|safe }},
+  bar: {
+    offices:     {{ dm_offices|safe }},
+    serviceable: {{ dm_serviceable|safe }},
+    nonService:  {{ dm_non_service|safe }},
+    sealed:      {{ dm_sealed|safe }},
+    missing:     {{ dm_missing|safe }},
+    incomplete:  {{ dm_incomplete|safe }},
+  }
 };
 
 let pieChart = null;
 let barChart = null;
 
-function drawCharts() {
+// ── Chart drawing ───────────────────────────────────────────────────────────
+function drawPie(available, borrowed) {
+  const canvas = document.getElementById('pieChart');
+  if (!canvas) return;
+
   if (pieChart) { pieChart.destroy(); pieChart = null; }
-  if (barChart) { barChart.destroy(); barChart = null; }
 
-  // ALWAYS initialize to ZERO first
-  let pieData = { available: 0, borrowed: 0 };
-  
-  // Only use SERVER_PIE if it has actual data (not both zeros)
-  if (SERVER_PIE.available > 0 || SERVER_PIE.borrowed > 0) {
-    pieData = SERVER_PIE;
-  }
-  
-  // Completely ignore localStorage to prevent stale data
-  // The localStorage check has been REMOVED
-
+  const total = available + borrowed;
   const LABEL_COLOR = '#ffffff';
-  const GRID_COLOR  = 'rgba(255,255,255,0.08)';
 
-  const pieCanvas = document.getElementById('pieChart');
-  if (pieCanvas) {
-    const total = pieData.available + pieData.borrowed;
-    
-    // If total is zero, show empty chart with message
-    if (total === 0) {
-      const ctx = pieCanvas.getContext('2d');
-      pieChart = new Chart(ctx, {
-        type: 'pie',
-        data: {
-          labels: ['No Data'],
-          datasets: [{
-            data: [1],
-            backgroundColor: ['#334155'],
-            borderWidth: 2,
-            borderColor: '#1e293b',
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: () => ' No inventory data available'
-              },
-              bodyColor: '#fff', titleColor: '#fff',
-              backgroundColor: '#1e293b',
-              borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-            }
-          }
-        }
-      });
-    } else {
-      // Draw normal chart with data
-      pieChart = new Chart(pieCanvas.getContext('2d'), {
-        type: 'pie',
-        data: {
-          labels: ['Available', 'Borrowed'],
-          datasets: [{
-            data: [pieData.available, pieData.borrowed],
-            backgroundColor: ['#22c55e', '#f59e0b'],
-            borderWidth: 2,
-            borderColor: '#1e293b',
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: { label: ctx => `  ${ctx.label}: ${ctx.parsed} of ${total}` },
-              bodyColor: '#fff', titleColor: '#fff',
-              backgroundColor: '#1e293b',
-              borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-            }
-          }
-        }
-      });
-    }
-  }
-
-  const legendAvail  = document.getElementById('legend-available');
-  const legendBorrow = document.getElementById('legend-borrowed');
-  if (legendAvail)  legendAvail.textContent  = pieData.available;
-  if (legendBorrow) legendBorrow.textContent = pieData.borrowed;
-
-  const barCanvas = document.getElementById('barChart');
-  if (barCanvas) {
-    const hasData = BAR_DATA.offices.length > 0;
-    barCanvas.style.height = hasData ? Math.max(200, BAR_DATA.offices.length * 48) + 'px' : '120px';
-
-    barChart = new Chart(barCanvas.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: hasData ? BAR_DATA.offices : ['No data yet'],
-        datasets: hasData ? [
-          { label: 'Serviceable',     data: BAR_DATA.serviceable, backgroundColor: '#22c55e', stack: 'a' },
-          { label: 'Non-Serviceable', data: BAR_DATA.nonService,  backgroundColor: '#ef4444', stack: 'a' },
-          { label: 'Sealed',          data: BAR_DATA.sealed,      backgroundColor: '#6366f1', stack: 'a' },
-          { label: 'Missing',         data: BAR_DATA.missing,     backgroundColor: '#f59e0b', stack: 'a' },
-          { label: 'Incomplete',      data: BAR_DATA.incomplete,  backgroundColor: '#94a3b8', stack: 'a' },
-        ] : [{ label: 'No data', data: [0], backgroundColor: '#334155', stack: 'a' }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'bottom', labels: { color: LABEL_COLOR, padding: 14, font: { size: 12 }, boxWidth: 12 } },
-          tooltip: { bodyColor: '#fff', titleColor: '#fff', backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
-        },
-        scales: {
-          x: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
-          y: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } }
-        }
-      }
+  if (total === 0) {
+    pieChart = new Chart(canvas.getContext('2d'), {
+      type: 'pie',
+      data: { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: ['#334155'], borderWidth: 2, borderColor: '#1e293b' }] },
+      options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: () => ' No data' }, bodyColor: '#fff', titleColor: '#fff', backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 } } }
+    });
+  } else {
+    pieChart = new Chart(canvas.getContext('2d'), {
+      type: 'pie',
+      data: { labels: ['Available', 'Borrowed'], datasets: [{ data: [available, borrowed], backgroundColor: ['#22c55e', '#f59e0b'], borderWidth: 2, borderColor: '#1e293b' }] },
+      options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `  ${ctx.label}: ${ctx.parsed} of ${total}` }, bodyColor: '#fff', titleColor: '#fff', backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 } } }
     });
   }
+
+  const la = document.getElementById('legend-available');
+  const lb = document.getElementById('legend-borrowed');
+  if (la) la.textContent = available;
+  if (lb) lb.textContent = borrowed;
 }
 
-// Optional: Add a function to manually clear any stored data
-function clearPieData() {
-  localStorage.removeItem('pieData');
-  // Redraw chart with zeros
-  if (pieChart) {
-    pieChart.data.datasets[0].data = [0, 0];
-    pieChart.update();
-  }
-  const legendAvail = document.getElementById('legend-available');
-  const legendBorrow = document.getElementById('legend-borrowed');
-  if (legendAvail) legendAvail.textContent = '0';
-  if (legendBorrow) legendBorrow.textContent = '0';
+function drawBar(bar) {
+  const canvas = document.getElementById('barChart');
+  if (!canvas) return;
+  if (barChart) { barChart.destroy(); barChart = null; }
+
+  const hasData      = bar.offices.length > 0;
+  const LABEL_COLOR  = '#ffffff';
+  const GRID_COLOR   = 'rgba(255,255,255,0.08)';
+  canvas.style.height = hasData ? Math.max(200, bar.offices.length * 48) + 'px' : '120px';
+
+  barChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: hasData ? bar.offices : ['No data yet'],
+      datasets: hasData ? [
+        { label: 'Serviceable',     data: bar.serviceable, backgroundColor: '#22c55e', stack: 'a' },
+        { label: 'Non-Serviceable', data: bar.nonService,  backgroundColor: '#ef4444', stack: 'a' },
+        { label: 'Sealed',          data: bar.sealed,      backgroundColor: '#6366f1', stack: 'a' },
+        { label: 'Missing',         data: bar.missing,     backgroundColor: '#f59e0b', stack: 'a' },
+        { label: 'Incomplete',      data: bar.incomplete,  backgroundColor: '#94a3b8', stack: 'a' },
+      ] : [{ label: 'No data', data: [0], backgroundColor: '#334155', stack: 'a' }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: LABEL_COLOR, padding: 14, font: { size: 12 }, boxWidth: 12 } },
+        tooltip: { bodyColor: '#fff', titleColor: '#fff', backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
+        y: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } }
+      }
+    }
+  });
 }
 
-function loadChartJs(callback) {
-  if (window.Chart) { callback(); return; }
+// ── Stat card flash helper ──────────────────────────────────────────────────
+function flashStat(el, newValue) {
+  if (!el) return;
+  if (el.textContent.trim() === String(newValue)) return;
+  el.textContent = newValue;
+  el.classList.remove('flash');
+  void el.offsetWidth;   // reflow
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 300);
+}
+
+// ── Handle WS / AJAX messages ───────────────────────────────────────────────
+function handleDashboardMessage(data) {
+  if (data.type !== 'dashboard.update') return;
+
+  flashStat(document.getElementById('stat-items'),   data.items_count);
+  flashStat(document.getElementById('stat-borrows'),  data.active_borrows);
+  flashStat(document.getElementById('stat-returns'),  data.total_returns);
+  flashStat(document.getElementById('stat-pending'),  data.pending_count);
+
+  // Update sidebar badge via custom event
+  window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+
+  drawPie(data.available_qty, data.borrowed_qty);
+  if (data.bar) drawBar(data.bar);
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+function boot() {
+  drawPie(INIT.available, INIT.borrowed);
+  drawBar(INIT.bar);
+
+  const indicator = document.getElementById('rt-indicator');
+  InvSysRT.connect('/ws/dashboard/', handleDashboardMessage, indicator);
+}
+
+function loadChartJs(cb) {
+  if (window.Chart) { cb(); return; }
   const s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-  s.onload = callback;
+  s.onload = cb;
   document.head.appendChild(s);
 }
 
-window.addEventListener('pageshow', () => loadChartJs(drawCharts));
+window.addEventListener('pageshow', () => loadChartJs(boot));
+</script>
+{% endif %}
+
+{% if request.user.role == 'admin' %}
+<script>
+// Admin dashboard: just connect for pending_count badge updates
+(function () {
+  const indicator = document.getElementById('rt-indicator');
+  InvSysRT.connect('/ws/dashboard/', function(data) {
+    if (data.pending_count !== undefined) {
+      window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+    }
+  }, indicator);
+})();
 </script>
 {% endif %}
 {% endblock %}

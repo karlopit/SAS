@@ -9,13 +9,15 @@
   <div class="table-card" style="overflow-x:auto">
     <div class="table-header">
       <span class="table-title">Device Records</span>
-      <a href="{% url 'export_device_monitoring' %}" class="btn btn-secondary btn-sm">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
-        </svg>
-        Export Excel
-       </a>
-  </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a href="{% url 'export_device_monitoring' %}" class="btn btn-secondary btn-sm">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Export Excel
+        </a>
+      </div>
+    </div>
 
     <table id="dm-table" style="min-width:1150px">
       <thead>
@@ -36,49 +38,40 @@
       <tbody id="dm-tbody">
         {% for row in rows %}
         <tr data-row-id="{{ row.id }}">
-          <!-- Real DB pk — never shown, never changes -->
           <input type="hidden" name="row_id" value="{{ row.id }}"/>
-
-          <!-- Staff-entered ID — fully editable -->
           <td>
-            <input type="text" name="display_id"
-              value="{{ row.display_id }}"
-              class="form-control"
-              placeholder="e.g. T-001"
-              style="width:90px;text-align:center"/>
+            <input type="text" name="display_id" value="{{ row.display_id }}"
+              class="form-control" placeholder="e.g. T-001" style="width:90px;text-align:center"/>
           </td>
-
           <td><input type="text" name="office_college"     value="{{ row.office_college }}"     class="form-control" placeholder="e.g. CCS" style="width:60px"/></td>
           <td><input type="text" name="accountable_person" value="{{ row.accountable_person }}" class="form-control" placeholder="Full name"/></td>
-          <td><input type="text" name="device"             value="{{ row.device }}"             class="form-control"  style="width:75px"/></td>
-          <td><input type="text" name="serial_number"      value="{{ row.serial_number }}"      class="form-control" placeholder="S/N"  style="width:90px"/></td>
-
+          <td><input type="text" name="device"             value="{{ row.device }}"             class="form-control" style="width:75px"/></td>
+          <td><input type="text" name="serial_number"      value="{{ row.serial_number }}"      class="form-control" placeholder="S/N" style="width:90px"/></td>
           <td style="text-align:center">
             <input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/>
             <input type="checkbox" {% if row.serviceable %}checked{% endif %}
-              onchange="syncCheck(this); handleDmCheck(this,'serviceable')"/>
+              onchange="syncCheck(this);handleDmCheck(this,'serviceable')"/>
           </td>
           <td style="text-align:center">
             <input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/>
             <input type="checkbox" {% if row.non_serviceable %}checked{% endif %}
-              onchange="syncCheck(this); handleDmCheck(this,'non_serviceable')"/>
+              onchange="syncCheck(this);handleDmCheck(this,'non_serviceable')"/>
           </td>
           <td style="text-align:center">
             <input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/>
             <input type="checkbox" {% if row.sealed %}checked{% endif %}
-              onchange="syncCheck(this); handleDmCheck(this,'sealed')"/>
+              onchange="syncCheck(this);handleDmCheck(this,'sealed')"/>
           </td>
           <td style="text-align:center">
             <input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/>
             <input type="checkbox" {% if row.missing %}checked{% endif %}
-              onchange="syncCheck(this); handleDmCheck(this,'missing')"/>
+              onchange="syncCheck(this);handleDmCheck(this,'missing')"/>
           </td>
           <td style="text-align:center">
             <input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/>
             <input type="checkbox" {% if row.incomplete %}checked{% endif %}
-              onchange="syncCheck(this); handleDmCheck(this,'incomplete')"/>
+              onchange="syncCheck(this);handleDmCheck(this,'incomplete')"/>
           </td>
-
           <td style="text-align:center;white-space:nowrap">
             <button type="submit" name="save_row_id" value="{{ row.id }}"
               class="btn btn-primary btn-sm">✓ Save</button>
@@ -107,6 +100,7 @@
 
 {% block extra_js %}
 <script>
+/* ── Checkbox helpers ── */
 function syncCheck(cb) {
   cb.previousElementSibling.value = cb.checked ? 'on' : 'off';
 }
@@ -124,7 +118,6 @@ function getChecksInRow(row) {
 function handleDmCheck(cb, field) {
   const row = cb.closest('tr');
   const c   = getChecksInRow(row);
-
   if (cb.checked) {
     if (['non_serviceable','missing','incomplete'].includes(field)) {
       Object.keys(c).forEach(k => {
@@ -144,7 +137,6 @@ function applyLockState(row) {
   const c = getChecksInRow(row);
   const exclusiveOn = c.non_serviceable.cb.checked || c.missing.cb.checked || c.incomplete.cb.checked;
   const safeOn      = c.serviceable.cb.checked || c.sealed.cb.checked;
-
   if (exclusiveOn) {
     Object.values(c).forEach(x => { x.cb.disabled = !x.cb.checked; });
   } else if (safeOn) {
@@ -157,11 +149,12 @@ function applyLockState(row) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#dm-tbody tr').forEach(row => applyLockState(row));
+  document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
 });
 
 function addDmRow() {
   const tbody = document.getElementById('dm-tbody');
+  const CSRF  = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
   const tr    = document.createElement('tr');
   tr.innerHTML = `
     <input type="hidden" name="row_id" value="new"/>
@@ -169,27 +162,12 @@ function addDmRow() {
     <td><input type="text" name="office_college"     class="form-control" placeholder="e.g. CCS"/></td>
     <td><input type="text" name="accountable_person" class="form-control" placeholder="Full name"/></td>
     <td><input type="text" name="device" value="Tablet" class="form-control"/></td>
-    <td><input type="text" name="serial_number"      class="form-control" placeholder="S/N"/></td>
-    <td style="text-align:center">
-      <input type="hidden" name="serviceable" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable')"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="non_serviceable" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable')"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="sealed" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed')"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="missing" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing')"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="incomplete" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete')"/>
-    </td>
+    <td><input type="text" name="serial_number" class="form-control" placeholder="S/N"/></td>
+    <td style="text-align:center"><input type="hidden" name="serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable')"/></td>
+    <td style="text-align:center"><input type="hidden" name="non_serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable')"/></td>
+    <td style="text-align:center"><input type="hidden" name="sealed" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed')"/></td>
+    <td style="text-align:center"><input type="hidden" name="missing" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing')"/></td>
+    <td style="text-align:center"><input type="hidden" name="incomplete" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete')"/></td>
     <td style="text-align:center;white-space:nowrap">
       <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
       <button type="button" class="btn btn-danger btn-sm" style="margin-left:4px"
@@ -200,5 +178,68 @@ function addDmRow() {
   tr.querySelector('input[name="display_id"]').focus();
   applyLockState(tr);
 }
+
+/* ── Real-time: update rows that OTHER staff members changed ── */
+(function () {
+  // Track locally modified rows (don't overwrite while editing)
+  const dirtyRows = new Set();
+
+  document.getElementById('dm-form').addEventListener('input', e => {
+    const row = e.target.closest('tr[data-row-id]');
+    if (row) dirtyRows.add(row.dataset.rowId);
+  });
+
+  function handleMessage(data) {
+    if (data.type !== 'device_monitoring.update') return;
+
+    const tbody = document.getElementById('dm-tbody');
+    const incomingIds = new Set(data.rows.map(r => String(r.id)));
+
+    // Remove rows deleted by others
+    tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
+      const id = tr.dataset.rowId;
+      if (!incomingIds.has(id) && !dirtyRows.has(id)) tr.remove();
+    });
+
+    // Add new rows from others — don't touch dirty ones
+    data.rows.forEach(row => {
+      const strId   = String(row.id);
+      const existing = tbody.querySelector(`tr[data-row-id="${strId}"]`);
+      if (existing) {
+        if (dirtyRows.has(strId)) return;  // user is editing — leave it alone
+        // Refresh values silently
+        const setValue = (name, val) => {
+          const el = existing.querySelector(`[name="${name}"]`);
+          if (el && document.activeElement !== el) el.value = val;
+        };
+        setValue('display_id', row.display_id);
+        setValue('office_college', row.office_college);
+        setValue('accountable_person', row.accountable_person);
+        setValue('device', row.device);
+        setValue('serial_number', row.serial_number);
+
+        const updateCb = (name, val) => {
+          const hidden = existing.querySelector(`input[type=hidden][name="${name}"]`);
+          const cb     = hidden?.nextElementSibling;
+          if (cb && !cb.matches(':focus')) {
+            if (cb.checked !== val) { cb.checked = val; hidden.value = val ? 'on' : 'off'; }
+          }
+        };
+        updateCb('serviceable',     row.serviceable);
+        updateCb('non_serviceable', row.non_serviceable);
+        updateCb('sealed',          row.sealed);
+        updateCb('missing',         row.missing);
+        updateCb('incomplete',      row.incomplete);
+        applyLockState(existing);
+      }
+      // New rows added by other staff: show a toast but don't auto-insert
+      // (inserting would mess up any in-progress "Add Row" workflow)
+      // Staff refreshes the page to see them, or WS will show them on next full reload.
+    });
+  }
+
+  const indicator = document.getElementById('rt-indicator');
+  InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
+})();
 </script>
 {% endblock %}

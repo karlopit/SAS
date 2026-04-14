@@ -10,19 +10,20 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
 
-# Detect Render live URL
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 # APPLICATIONS
 INSTALLED_APPS = [
+    'daphne',                             # Must be first for ASGI
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',                           # Django Channels
     'users',
     'inventory',
 ]
@@ -30,7 +31,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -56,43 +57,61 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'inventory_project.wsgi.application'
+# ── ASGI / Channels ────────────────────────────────────────────────────────────
+ASGI_APPLICATION = 'inventory_project.asgi.application'
+WSGI_APPLICATION  = 'inventory_project.wsgi.application'
+
+# Channel Layers — Redis in production, in-memory for local dev
+REDIS_URL = config('REDIS_URL', default=None)
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL],
+            },
+        },
+    }
+else:
+    # Local dev: in-memory channel layer (no Redis needed)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
 
 # DATABASE
 if config('DATABASE_URL', default=None):
-    # Production (Render) — uses DATABASE_URL
     DATABASES = {
-        'default': dj_database_url.config(
-            default=config('DATABASE_URL')
-        )
+        'default': dj_database_url.config(default=config('DATABASE_URL'))
     }
 else:
-    # Local development — uses individual credentials from .env
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME'),
-            'USER': config('DB_USER'),
+            'ENGINE':   'django.db.backends.postgresql',
+            'NAME':     config('DB_NAME'),
+            'USER':     config('DB_USER'),
             'PASSWORD': config('DB_PASSWORD'),
-            'HOST': config('DB_HOST', default='localhost'),
-            'PORT': config('DB_PORT', default='5432'),
+            'HOST':     config('DB_HOST', default='localhost'),
+            'PORT':     config('DB_PORT', default='5432'),
         }
     }
 
 # AUTHENTICATION
-AUTH_USER_MODEL = 'users.CustomUser'
-LOGIN_URL = '/users/login/'
-LOGIN_REDIRECT_URL = '/'            # Dashboard
-LOGOUT_REDIRECT_URL = '/'           # Go to welcome page after logout
+AUTH_USER_MODEL     = 'users.CustomUser'
+LOGIN_URL           = '/users/login/'
+LOGIN_REDIRECT_URL  = '/'
+LOGOUT_REDIRECT_URL = '/'
 
-# INTERNATIONALIZATION
+# INTERNATIONALISATION
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Asia/Manila'
-USE_I18N = True
-USE_TZ = True
+TIME_ZONE     = 'Asia/Manila'
+USE_I18N      = True
+USE_TZ        = True
 
 # STATIC FILES
-STATIC_URL = '/static/'
+STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 

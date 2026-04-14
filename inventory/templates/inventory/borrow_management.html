@@ -4,6 +4,7 @@
 
 {% block content %}
 
+<!-- ── Inventory Items Table ── -->
 <div class="table-card">
   <div class="table-header">
     <span class="table-title">Inventory Items</span>
@@ -14,8 +15,6 @@
       <input type="text" id="item-search" placeholder="Search items…"/>
     </div>
   </div>
-
-  {% if items %}
   <table id="items-table">
     <thead>
       <tr>
@@ -23,7 +22,7 @@
         <th>Description</th><th>Availability</th><th>Status</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="items-tbody">
       {% for item in items %}
       <tr>
         <td style="color:var(--muted)">{{ forloop.counter }}</td>
@@ -39,15 +38,14 @@
           {% endif %}
         </td>
       </tr>
+      {% empty %}
+      <tr><td colspan="6" class="empty-state"><p>No items found.</p></td></tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <div class="empty-state"><p>No items found.</p></div>
-  {% endif %}
 </div>
 
-{% if transactions %}
+<!-- ── Transactions Table ── -->
 <div class="table-card" style="margin-top:24px;overflow-x:auto">
   <div class="table-header">
     <span class="table-title">Recent Transactions</span>
@@ -55,34 +53,27 @@
       <a href="{% url 'export_borrow_management' %}" class="btn btn-secondary btn-sm">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
-       </svg>
-       Export Excel
+        </svg>
+        Export Excel
       </a>
       <div class="table-search">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-         <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+          <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
         </svg>
-      <input type="text" id="transaction-search" placeholder="Search transactions…"/>
+        <input type="text" id="transaction-search" placeholder="Search transactions…"/>
+      </div>
     </div>
   </div>
-</div>
 
   <table id="transactions-table" style="min-width:900px">
     <thead>
       <tr>
-        <th>Tx ID</th>
-        <th>Borrower Name</th>
-        <th>College/Office</th>
-        <th>Item</th>
-        <th>Serial</th>
-        <th>Qty Borrowed</th>
-        <th>Returned Qty</th>
-        <th>Borrowed On</th>
-        <th>Returned On</th>
-        <th>Action</th>
+        <th>Tx ID</th><th>Borrower Name</th><th>College/Office</th>
+        <th>Item</th><th>Serial</th><th>Qty Borrowed</th>
+        <th>Returned Qty</th><th>Borrowed On</th><th>Returned On</th><th>Action</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="transactions-tbody">
       {% for tx in transactions %}
       <tr id="tx-row-{{ tx.id }}">
         <td><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
@@ -91,35 +82,17 @@
         <td>{{ tx.item.name }}</td>
         <td style="color:var(--muted);font-size:12px">{{ tx.item.serial|default:"—" }}</td>
         <td>{{ tx.quantity_borrowed }}</td>
-
-        <!-- Returned Qty — AJAX auto-save on change -->
         <td>
-          <input
-            type="number"
-            class="form-control returned-qty-input"
+          <input type="number" class="form-control returned-qty-input"
             style="width:75px;padding:4px 8px;text-align:center"
-            value="{{ tx.returned_qty }}"
-            min="0"
-            max="{{ tx.quantity_borrowed }}"
-            data-tx-id="{{ tx.id }}"
-            data-qty-borrowed="{{ tx.quantity_borrowed }}"
-            data-url="{% url 'update_returned_qty' tx.id %}"
-            data-csrf="{{ csrf_token }}"
-          />
+            value="{{ tx.returned_qty }}" min="0" max="{{ tx.quantity_borrowed }}"
+            data-tx-id="{{ tx.id }}" data-qty-borrowed="{{ tx.quantity_borrowed }}"
+            data-url="{% url 'update_returned_qty' tx.id %}" data-csrf="{{ csrf_token }}"/>
         </td>
-
         <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
-
-        <!-- Returned On — updated live by JS -->
         <td class="returned-on-cell" style="color:var(--muted);font-size:12px">
-          {% if tx.returned_at %}
-            {{ tx.returned_at|date:"M d, Y H:i" }}
-          {% else %}
-            —
-          {% endif %}
+          {% if tx.returned_at %}{{ tx.returned_at|date:"M d, Y H:i" }}{% else %}—{% endif %}
         </td>
-
-        <!-- Return button — conditionally rendered based on current state -->
         <td class="return-action-cell">
           {% if tx.returned_qty < tx.quantity_borrowed %}
             <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm return-button" data-tx-id="{{ tx.id }}">Return</a>
@@ -128,42 +101,36 @@
           {% endif %}
         </td>
       </tr>
+      {% empty %}
+      <tr id="tx-empty-row"><td colspan="10" class="empty-state"><p>No transactions yet.</p></td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-{% endif %}
 
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
-  // Debounce helper — waits until user stops typing for `delay` ms
+  // ── Returned-qty AJAX save (debounced) ────────────────────────────────────
   function debounce(fn, delay) {
-    let timer;
-    return function (...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => fn.apply(this, args), delay);
-    };
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
   }
 
   function saveReturnedQty(input) {
-    const txId       = input.dataset.txId;
+    const txId        = input.dataset.txId;
     const qtyBorrowed = parseInt(input.dataset.qtyBorrowed, 10);
-    const url        = input.dataset.url;
-    const csrf       = input.dataset.csrf;
-    const newVal     = Math.max(0, Math.min(parseInt(input.value, 10) || 0, qtyBorrowed));
-
-    // Clamp the input visually too
-    input.value = newVal;
-
-    const row          = document.getElementById('tx-row-' + txId);
-    const returnedOnCell = row.querySelector('.returned-on-cell');
-    const actionCell     = row.querySelector('.return-action-cell');
-
-    // Show a subtle saving indicator
+    const url         = input.dataset.url;
+    const csrf        = input.dataset.csrf;
+    const newVal      = Math.max(0, Math.min(parseInt(input.value, 10) || 0, qtyBorrowed));
+    input.value       = newVal;
     input.style.opacity = '0.5';
+
+    const row            = document.getElementById('tx-row-' + txId);
+    const returnedOnCell = row && row.querySelector('.returned-on-cell');
+    const actionCell     = row && row.querySelector('.return-action-cell');
 
     fetch(url, {
       method: 'POST',
@@ -173,71 +140,130 @@
       .then(r => r.json())
       .then(data => {
         input.style.opacity = '1';
-
-        if (!data.ok) {
-          console.error('Save failed:', data.error);
-          return;
+        if (!data.ok) return;
+        if (returnedOnCell) returnedOnCell.textContent = data.returned_at ?? '—';
+        if (actionCell) {
+          actionCell.innerHTML = data.fully_returned
+            ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
+            : (actionCell.querySelector('a') ? actionCell.innerHTML
+                : `<a href="/return/${txId}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${txId}">Return</a>`);
         }
-
-        // Update Returned On cell
-        returnedOnCell.textContent = data.returned_at ?? '—';
-
-        // Update Return button / done state based on server response
-        if (data.fully_returned) {
-          actionCell.innerHTML = '<span style="color:var(--muted);font-size:12px">✓ Done</span>';
-        } else {
-          // Only inject the Return link if it isn't already there
-          if (!actionCell.querySelector('a')) {
-            actionCell.innerHTML =
-              `<a href="/return/${txId}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${txId}">Return</a>`;
-          }
-        }
-
-        // Broadcast fresh pie data to dashboard (picked up on next visit)
-        if (data.pie) {
-          localStorage.setItem('pieData', JSON.stringify(data.pie));
-        }
+        // WS will refresh the inventory items table automatically
       })
-      .catch(() => {
-        input.style.opacity = '1';
-        console.error('Network error saving returned qty');
-      });
+      .catch(() => { input.style.opacity = '1'; });
   }
 
   const debouncedSave = debounce(saveReturnedQty, 600);
 
-  // Handle quantity input changes
-  document.querySelectorAll('.returned-qty-input').forEach(input => {
-    input.addEventListener('input', () => debouncedSave(input));
+  document.addEventListener('input', e => {
+    if (e.target.matches('.returned-qty-input')) debouncedSave(e.target);
   });
 
-  // Handle Return button clicks
-  function handleReturnClick(e) {
-    e.preventDefault();
-    
-    const button = this;
-    const txId = button.dataset.txId;
-    const row = document.getElementById('tx-row-' + txId);
-    const qtyInput = row.querySelector('.returned-qty-input');
-    const currentReturnedQty = parseInt(qtyInput.value, 10);
-    const totalBorrowedQty = parseInt(qtyInput.dataset.qtyBorrowed, 10);
-    
-    // If returned quantity already equals borrowed quantity, just update UI
-    if (currentReturnedQty >= totalBorrowedQty) {
-      const actionCell = row.querySelector('.return-action-cell');
-      actionCell.innerHTML = '<span style="color:var(--muted);font-size:12px">✓ Done</span>';
-      return;
-    }
-    
-    // Otherwise, redirect to the return URL
-    window.location.href = button.href;
+  // ── Real-time WebSocket updates ───────────────────────────────────────────
+  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+  function renderItems(items) {
+    const tbody = document.getElementById('items-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = items.map((item, i) => {
+      const pct  = item.quantity ? Math.round((item.available_quantity / item.quantity) * 100) : 0;
+      const cls  = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
+      const badge = item.available_quantity === 0
+        ? '<span class="badge badge-red">Out of Stock</span>'
+        : '<span class="badge badge-green">In Stock</span>';
+      return `<tr>
+        <td style="color:var(--muted)">${i + 1}</td>
+        <td style="font-weight:600">${item.name}</td>
+        <td style="color:var(--muted);font-size:12px">${(item.serial || '—').replace(/\n/g,'<br>')}</td>
+        <td style="color:var(--muted)">${(item.description || '—').substring(0,40)}</td>
+        <td>
+          <div class="qty-bar">
+            <div class="qty-track"><div class="qty-fill ${cls}" style="width:${pct}%"></div></div>
+            <span>${item.available_quantity}/${item.quantity}</span>
+          </div>
+        </td>
+        <td>${badge}</td>
+      </tr>`;
+    }).join('');
   }
 
-  // Attach click handlers to existing return buttons
-  document.querySelectorAll('.return-button').forEach(button => {
-    button.removeEventListener('click', handleReturnClick);
-    button.addEventListener('click', handleReturnClick);
-  });
+  // Track known tx IDs so we can flash new rows
+  const knownTxIds = new Set(
+    [...document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]')]
+      .map(r => r.id.replace('tx-row-', ''))
+  );
+
+  function renderTransactions(txs) {
+    const tbody = document.getElementById('transactions-tbody');
+    if (!tbody) return;
+
+    // Keep a map of currently focused inputs so we don't clobber them
+    const focusedTxId = document.activeElement?.dataset?.txId;
+
+    txs.forEach(tx => {
+      const existing = document.getElementById('tx-row-' + tx.id);
+      const isNew    = !knownTxIds.has(String(tx.id));
+      knownTxIds.add(String(tx.id));
+
+      const actionHtml = tx.fully_returned
+        ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
+        : `<a href="/return/${tx.id}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${tx.id}">Return</a>`;
+
+      if (existing) {
+        // Update cells — but skip the qty input if user is currently editing it
+        const qtyCell = existing.querySelector('.returned-qty-input');
+        if (qtyCell && String(tx.id) !== focusedTxId) {
+          qtyCell.value = tx.returned_qty;
+        }
+        const onCell = existing.querySelector('.returned-on-cell');
+        if (onCell) onCell.textContent = tx.returned_at;
+        const acCell = existing.querySelector('.return-action-cell');
+        if (acCell) acCell.innerHTML = actionHtml;
+      } else {
+        // New row — prepend to tbody
+        const tr = document.createElement('tr');
+        tr.id = 'tx-row-' + tx.id;
+        tr.innerHTML = `
+          <td><span class="badge badge-blue">${tx.tx_id}</span></td>
+          <td style="font-weight:600">${tx.borrower_name}</td>
+          <td>${tx.office_college}</td>
+          <td>${tx.item_name}</td>
+          <td style="color:var(--muted);font-size:12px">${tx.item_serial}</td>
+          <td>${tx.qty_borrowed}</td>
+          <td>
+            <input type="number" class="form-control returned-qty-input"
+              style="width:75px;padding:4px 8px;text-align:center"
+              value="${tx.returned_qty}" min="0" max="${tx.qty_borrowed}"
+              data-tx-id="${tx.id}" data-qty-borrowed="${tx.qty_borrowed}"
+              data-url="/transaction/${tx.id}/returned-qty/"
+              data-csrf="${CSRF}"/>
+          </td>
+          <td style="color:var(--muted)">${tx.borrowed_at}</td>
+          <td class="returned-on-cell" style="color:var(--muted);font-size:12px">${tx.returned_at}</td>
+          <td class="return-action-cell">${actionHtml}</td>
+        `;
+        // Remove "no transactions" placeholder if present
+        const emptyRow = document.getElementById('tx-empty-row');
+        if (emptyRow) emptyRow.remove();
+        tbody.prepend(tr);
+        if (isNew) {
+          tr.classList.add('row-new');
+          setTimeout(() => tr.classList.remove('row-new'), 1600);
+        }
+      }
+    });
+  }
+
+  function handleMessage(data) {
+    if (data.type !== 'borrow_management.update') return;
+    renderItems(data.items);
+    renderTransactions(data.transactions);
+    // Sync pending badge in sidebar
+    window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+  }
+
+  const indicator = document.getElementById('rt-indicator');
+  InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
 })();
 </script>
 {% endblock %}
