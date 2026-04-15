@@ -252,6 +252,7 @@ def device_monitoring_save(request):
     box_numbers      = request.POST.getlist('box_number')
     offices          = request.POST.getlist('office_college')
     accountables     = request.POST.getlist('accountable_person')
+    borrower_types   = request.POST.getlist('borrower_type')  # ← ADD THIS LINE
     accountable_officers = request.POST.getlist('accountable_officer')
     devices          = request.POST.getlist('device')
     serials          = request.POST.getlist('serial_number')
@@ -269,6 +270,7 @@ def device_monitoring_save(request):
             box_number          = get(box_numbers),
             office_college      = get(offices),
             accountable_person  = get(accountables),
+            borrower_type       = get(borrower_types),  # ← ADD THIS LINE
             accountable_officer = get(accountable_officers),
             device              = get(devices) or 'Tablet',
             serial_number       = get(serials),
@@ -350,11 +352,11 @@ def staff_confirm_borrow(request, request_id):
                 # Get the corresponding box number for this serial number
                 box_number = box_numbers[i] if i < len(box_numbers) else ''
                 
-                # REMOVED: display_id field
                 device_monitor = DeviceMonitor(
                     box_number=box_number,
                     office_college=borrow_req.office_college,
                     accountable_person=borrow_req.borrower_name,
+                    borrower_type=borrow_req.borrower_type,  # ← ADD THIS LINE
                     accountable_officer=accountable_officer,
                     device=transaction.item.name,
                     serial_number=serial,
@@ -585,10 +587,9 @@ def export_device_monitoring(request):
         raise PermissionDenied
 
     rows       = DeviceMonitor.objects.all().order_by('id')
-    # Removed 'ID' column header since display_id is gone
-    headers    = ['Box Number', 'College / Office', 'Accountable Person', 'Accountable Officer', 'Device', 'Serial Number',
+    headers    = ['Box Number', 'College / Office', 'Accountable Person', 'Borrower Type', 'Accountable Officer', 'Device', 'Serial Number',
                   'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete']
-    col_widths = [15, 20, 24, 24, 14, 20, 14, 16, 10, 10, 12]
+    col_widths = [15, 20, 24, 12, 24, 14, 20, 14, 16, 10, 10, 12]
 
     wb = Workbook(); ws = wb.active; ws.title = 'Device Monitoring'
     ws.sheet_properties.tabColor = '00E5A0'
@@ -599,10 +600,12 @@ def export_device_monitoring(request):
 
     for i, row in enumerate(rows, start=1):
         bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
+        borrower_type_display = 'Student' if row.borrower_type == 'student' else 'Employee' if row.borrower_type == 'employee' else '—'
         _xl_row(ws, i + 3, [
             row.box_number or '—',
             row.office_college or '—',
             row.accountable_person or '—',
+            borrower_type_display,
             row.accountable_officer or '—',
             row.device or 'Tablet',
             row.serial_number or '—',
@@ -613,7 +616,7 @@ def export_device_monitoring(request):
             '✓' if row.incomplete      else '—',
         ], even=(i % 2 == 0))
         for col_offset, val in enumerate(bool_vals):
-            ws.cell(row=i + 3, column=7 + col_offset).font = font_yes if val else font_no
+            ws.cell(row=i + 3, column=8 + col_offset).font = font_yes if val else font_no
 
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width

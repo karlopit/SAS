@@ -88,10 +88,11 @@ class Transaction(models.Model):
 
 
 class DeviceMonitor(models.Model):
-    box_number          = models.CharField(max_length=100, blank=True, help_text="Box number for the device")
+    box_number          = models.CharField(max_length=100, blank=True)
     office_college      = models.CharField(max_length=255, blank=True)
     accountable_person  = models.CharField(max_length=255, blank=True)
-    accountable_officer = models.CharField(max_length=255, blank=True, help_text="Accountable Officer name")
+    borrower_type       = models.CharField(max_length=20, choices=[('student', 'Student'), ('employee', 'Employee')], null=True, blank=True)  # ← ADD THIS LINE
+    accountable_officer = models.CharField(max_length=255, blank=True)
     device              = models.CharField(max_length=255, default='Tablet')
     serial_number       = models.CharField(max_length=255, blank=True)
     serviceable         = models.BooleanField(default=False)

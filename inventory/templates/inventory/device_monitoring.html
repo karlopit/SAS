@@ -7,60 +7,52 @@
 <!-- ── Filter Bar ── -->
 <div class="table-card" style="padding:16px 20px;margin-bottom:16px">
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-    <!-- Search - searches across ALL columns -->
     <div class="table-search" style="flex:1;min-width:180px;max-width:300px">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
       </svg>
-      <input type="text" id="dm-search" placeholder="Search..." style="width:100%"/>
+      <input type="text" id="dm-search" placeholder="Search across all columns..." style="width:100%"/>
     </div>
-
-    <!-- Filter: College / Office with placeholder -->
     <select id="dm-filter-college" class="filter-select" style="max-width:170px">
-      <option value="">Colleges/Offices</option>
+      <option value="">All Colleges/Offices</option>
       {% for row in rows %}
         {% if row.office_college and row.office_college not in seen_colleges %}
           <option value="{{ row.office_college }}">{{ row.office_college }}</option>
         {% endif %}
       {% endfor %}
     </select>
-
-    <!-- Filter: Accountable Person with placeholder -->
     <select id="dm-filter-person" class="filter-select" style="max-width:180px">
-      <option value="">Accountable Persons</option>
+      <option value="">All Accountable Persons</option>
       {% for row in rows %}
         {% if row.accountable_person and row.accountable_person not in seen_persons %}
           <option value="{{ row.accountable_person }}">{{ row.accountable_person }}</option>
         {% endif %}
       {% endfor %}
     </select>
-
-    <!-- Filter: Accountable Officer -->
+    <select id="dm-filter-borrower-type" class="filter-select" style="max-width:160px">
+      <option value="">All Borrower Types</option>
+      <option value="student">Student</option>
+      <option value="employee">Employee</option>
+    </select>
     <select id="dm-filter-officer" class="filter-select" style="max-width:180px">
-      <option value="">Accountable Officers</option>
+      <option value="">All Accountable Officers</option>
       {% for row in rows %}
         {% if row.accountable_officer and row.accountable_officer not in seen_officers %}
           <option value="{{ row.accountable_officer }}">{{ row.accountable_officer }}</option>
         {% endif %}
       {% endfor %}
     </select>
-
-    <!-- Filter: Status with placeholder -->
     <select id="dm-filter-status" class="filter-select" style="max-width:170px">
-      <option value="">Status</option>
+      <option value="">All Statuses</option>
       <option value="serviceable">Serviceable</option>
       <option value="non_serviceable">Non-Serviceable</option>
       <option value="sealed">Sealed</option>
       <option value="missing">Missing</option>
       <option value="incomplete">Incomplete</option>
     </select>
-
-    <!-- Clear button -->
     <button id="dm-clear-filters" onclick="clearDmFilters()" class="btn btn-secondary btn-sm" style="display:none">
       × Clear All Filters
     </button>
-
-    <!-- Result count -->
     <span id="dm-filter-status-label" style="font-size:12px;color:var(--muted);display:none;margin-left:4px">
       Showing <strong id="dm-visible-count">0</strong> of <strong id="dm-total-count">0</strong>
     </span>
@@ -71,7 +63,7 @@
 <form method="post" action="{% url 'device_monitoring_save' %}" id="dm-form">
   {% csrf_token %}
 
-  <div class="table-card" style="overflow-x:auto">
+  <div class="table-card">
     <div class="table-header">
       <span class="table-title">Device Records</span>
       <div style="display:flex;gap:8px;align-items:center">
@@ -84,106 +76,73 @@
       </div>
     </div>
 
-    <table id="dm-table" style="min-width:1250px">
-      <thead>
-        <tr>
-          <th style="width:100px">Box Number</th>
-          <th>College / Office</th>
-          <th>Accountable Person</th>
-          <th>Accountable Officer</th>
-          <th>Device</th>
-          <th>Serial Number</th>
-          <th style="text-align:center">Serviceable</th>
-          <th style="text-align:center">Non-Serviceable</th>
-          <th style="text-align:center">Sealed</th>
-          <th style="text-align:center">Missing</th>
-          <th style="text-align:center">Incomplete</th>
-          <th style="width:110px"></th>
-        </tr>
-      </thead>
-      <tbody id="dm-tbody">
-        {% for row in rows %}
-        <tr data-row-id="{{ row.id }}"
-            data-box="{{ row.box_number|lower|default:'' }}"
-            data-college="{{ row.office_college|lower|default:'' }}"
-            data-person="{{ row.accountable_person|lower|default:'' }}"
-            data-officer="{{ row.accountable_officer|lower|default:'' }}"
-            data-device="{{ row.device|lower|default:'' }}"
-            data-serial="{{ row.serial_number|lower|default:'' }}"
-            data-serviceable="{{ row.serviceable|yesno:'1,0' }}"
-            data-non-serviceable="{{ row.non_serviceable|yesno:'1,0' }}"
-            data-sealed="{{ row.sealed|yesno:'1,0' }}"
-            data-missing="{{ row.missing|yesno:'1,0' }}"
-            data-incomplete="{{ row.incomplete|yesno:'1,0' }}">
+    <div style="overflow-x:auto">
+      <table id="dm-table" style="width:100%;margin:0 auto;min-width:1500px">
+        <thead>
+          <tr>
+            <th style="text-align:center;width:7%">Box Number</th>
+            <th style="text-align:center;width:9%">College / Office</th>
+            <th style="text-align:center;width:10%">Borrower</th>
+            <th style="text-align:center;width:8%">Borrower Type</th>
+            <th style="text-align:center;width:11%">Accountable Officer</th>
+            <th style="text-align:center;width:9%">Device</th>
+            <th style="text-align:center;width:11%">Serial Number</th>
+            <th style="text-align:center;width:7%">Serviceable</th>
+            <th style="text-align:center;width:7%">Non-Serviceable</th>
+            <th style="text-align:center;width:5%">Sealed</th>
+            <th style="text-align:center;width:5%">Missing</th>
+            <th style="text-align:center;width:5%">Incomplete</th>
+            <th style="text-align:center;width:10%">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="dm-tbody">
+          {% for row in rows %}
+          <tr data-row-id="{{ row.id }}"
+              data-box="{{ row.box_number|lower|default:'' }}"
+              data-college="{{ row.office_college|lower|default:'' }}"
+              data-person="{{ row.accountable_person|lower|default:'' }}"
+              data-borrower-type="{{ row.borrower_type|lower|default:'' }}"
+              data-officer="{{ row.accountable_officer|lower|default:'' }}"
+              data-device="{{ row.device|lower|default:'' }}"
+              data-serial="{{ row.serial_number|lower|default:'' }}"
+              data-serviceable="{{ row.serviceable|yesno:'1,0' }}"
+              data-non-serviceable="{{ row.non_serviceable|yesno:'1,0' }}"
+              data-sealed="{{ row.sealed|yesno:'1,0' }}"
+              data-missing="{{ row.missing|yesno:'1,0' }}"
+              data-incomplete="{{ row.incomplete|yesno:'1,0' }}">
+            <input type="hidden" name="row_id" value="{{ row.id }}"/>
+            <td style="text-align:center"><input type="text" name="box_number" value="{{ row.box_number|default:'' }}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="office_college" value="{{ row.office_college|default:'' }}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center">
+              <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+                <option value="">— Select —</option>
+                <option value="student" {% if row.borrower_type == 'student' %}selected{% endif %}>Student</option>
+                <option value="employee" {% if row.borrower_type == 'employee' %}selected{% endif %}>Employee</option>
+              </select>
+            </td>
+            <td style="text-align:center"><input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="device" value="{{ row.device|default:'Tablet' }}" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <td style="text-align:center"><input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.non_serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <td style="text-align:center"><input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/><input type="checkbox" {% if row.sealed %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <td style="text-align:center"><input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/><input type="checkbox" {% if row.missing %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <td style="text-align:center"><input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/><input type="checkbox" {% if row.incomplete %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <td style="text-align:center;white-space:nowrap">
+              <button type="submit" name="save_row_id" value="{{ row.id }}" class="btn btn-primary btn-sm">✓ Save</button>
+              <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this row?')">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
-          <input type="hidden" name="row_id" value="{{ row.id }}"/>
-
-          <td>
-            <input type="text" name="box_number" value="{{ row.box_number|default:'' }}"
-              class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/>
-          </td>
-          <td>
-            <input type="text" name="office_college" value="{{ row.office_college|default:'' }}"
-              class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/>
-          </td>
-          <td>
-            <input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}"
-              class="form-control dm-person-input" placeholder="Full name" style="width:150px"/>
-          </td>
-          <td>
-            <input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}"
-              class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/>
-          </td>
-          <td>
-            <input type="text" name="device" value="{{ row.device|default:'Tablet' }}"
-              class="form-control dm-device-input" style="width:100px"/>
-          </td>
-          <td>
-            <input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}"
-              class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/>
-          </td>
-
-          <td style="text-align:center">
-            <input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/>
-            <input type="checkbox" {% if row.serviceable %}checked{% endif %}
-              onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/>
-            <input type="checkbox" {% if row.non_serviceable %}checked{% endif %}
-              onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/>
-            <input type="checkbox" {% if row.sealed %}checked{% endif %}
-              onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/>
-            <input type="checkbox" {% if row.missing %}checked{% endif %}
-              onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/>
-            <input type="checkbox" {% if row.incomplete %}checked{% endif %}
-              onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)"/>
-          </td>
-
-          <td style="text-align:center;white-space:nowrap">
-            <button type="submit" name="save_row_id" value="{{ row.id }}"
-              class="btn btn-primary btn-sm">✓ Save</button>
-            <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-danger btn-sm"
-                onclick="return confirm('Delete this row?')">✕</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    <div style="padding:16px">
+    <div style="padding:16px;text-align:center">
       <button type="button" class="btn btn-secondary" onclick="addDmRow()">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" width="16" height="16">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -243,6 +202,47 @@ tr.row-new {
 .dm-toast.show {
   opacity: 1;
   transform: translateY(0);
+}
+
+#dm-table td, #dm-table th {
+  vertical-align: middle;
+  padding: 10px 6px;
+}
+
+.form-control {
+  text-align: center;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin: 0 auto;
+  display: block;
+}
+
+/* Badge styles for display */
+.badge-student {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.badge-employee {
+  background: rgba(156, 39, 176, 0.15);
+  color: #ce93d8;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
 }
 </style>
 
@@ -379,6 +379,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       applyDmFilters();
     }
+    if (e.target.matches('.dm-borrower-type-select')) {
+      const row = e.target.closest('tr[data-row-id]');
+      if (row) {
+        row.dataset.borrowerType = e.target.value.toLowerCase();
+      }
+      applyDmFilters();
+    }
     if (e.target.matches('.dm-officer-input')) {
       const row = e.target.closest('tr[data-row-id]');
       if (row) {
@@ -402,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dm-search').addEventListener('input', applyDmFilters);
   document.getElementById('dm-filter-college').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-person').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-borrower-type').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-officer').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-status').addEventListener('change', applyDmFilters);
 });
@@ -410,6 +418,7 @@ function applyDmFilters() {
   const search    = document.getElementById('dm-search').value.toLowerCase().trim();
   const college   = document.getElementById('dm-filter-college').value;
   const person    = document.getElementById('dm-filter-person').value;
+  const borrowerType = document.getElementById('dm-filter-borrower-type').value;
   const officer   = document.getElementById('dm-filter-officer').value;
   const status    = document.getElementById('dm-filter-status').value;
 
@@ -421,6 +430,7 @@ function applyDmFilters() {
     const boxNum = (row.dataset.box || '').toLowerCase();
     const collegeName = (row.dataset.college || '').toLowerCase();
     const personName = (row.dataset.person || '').toLowerCase();
+    const borrowerTypeValue = (row.dataset.borrowerType || '').toLowerCase();
     const officerName = (row.dataset.officer || '').toLowerCase();
     const deviceName = (row.dataset.device || '').toLowerCase();
     const serialNum = (row.dataset.serial || '').toLowerCase();
@@ -431,6 +441,7 @@ function applyDmFilters() {
                     boxNum.includes(search) ||
                     collegeName.includes(search) ||
                     personName.includes(search) ||
+                    borrowerTypeValue.includes(search) ||
                     officerName.includes(search) ||
                     deviceName.includes(search) ||
                     serialNum.includes(search);
@@ -438,6 +449,7 @@ function applyDmFilters() {
 
     const matchCollege = !college || collegeName === college.toLowerCase();
     const matchPerson  = !person  || personName === person.toLowerCase();
+    const matchBorrowerType = !borrowerType || borrowerTypeValue === borrowerType.toLowerCase();
     const matchOfficer = !officer || officerName === officer.toLowerCase();
 
     let matchStatus = true;
@@ -446,12 +458,12 @@ function applyDmFilters() {
       matchStatus = row.getAttribute(attrKey) === '1';
     }
 
-    const show = matchSearch && matchCollege && matchPerson && matchOfficer && matchStatus;
+    const show = matchSearch && matchCollege && matchPerson && matchBorrowerType && matchOfficer && matchStatus;
     row.style.display = show ? '' : 'none';
     if (show) visible++;
   });
 
-  const hasFilter = search || college || person || officer || status;
+  const hasFilter = search || college || person || borrowerType || officer || status;
   const statusLbl = document.getElementById('dm-filter-status-label');
   const clearBtn  = document.getElementById('dm-clear-filters');
   statusLbl.style.display = hasFilter ? 'inline-flex' : 'none';
@@ -465,11 +477,13 @@ window.clearDmFilters = function () {
   
   const collegeSelect = document.getElementById('dm-filter-college');
   const personSelect = document.getElementById('dm-filter-person');
+  const borrowerTypeSelect = document.getElementById('dm-filter-borrower-type');
   const officerSelect = document.getElementById('dm-filter-officer');
   const statusSelect = document.getElementById('dm-filter-status');
   
   if (collegeSelect.options.length > 0) collegeSelect.selectedIndex = 0;
   if (personSelect.options.length > 0) personSelect.selectedIndex = 0;
+  if (borrowerTypeSelect.options.length > 0) borrowerTypeSelect.selectedIndex = 0;
   if (officerSelect.options.length > 0) officerSelect.selectedIndex = 0;
   if (statusSelect.options.length > 0) statusSelect.selectedIndex = 0;
   
@@ -485,6 +499,7 @@ function addDmRow() {
   tr.setAttribute('data-box', '');
   tr.setAttribute('data-college', '');
   tr.setAttribute('data-person',  '');
+  tr.setAttribute('data-borrower-type', '');
   tr.setAttribute('data-officer', '');
   tr.setAttribute('data-device',  '');
   tr.setAttribute('data-serial',  '');
@@ -496,32 +511,24 @@ function addDmRow() {
 
   tr.innerHTML = `
     <input type="hidden" name="row_id" value="new"/>
-    <td><input type="text" name="box_number" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/></td>
-    <td><input type="text" name="office_college" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/></td>
-    <td><input type="text" name="accountable_person" class="form-control dm-person-input" placeholder="Full name" style="width:150px"/></td>
-    <td><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/></td>
-    <td><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:100px"/></td>
-    <td><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/></td>
+    <td style="text-align:center"><input type="text" name="box_number" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="office_college" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="accountable_person" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
     <td style="text-align:center">
-      <input type="hidden" name="serviceable" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
+      <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+        <option value="">— Select —</option>
+        <option value="student">Student</option>
+        <option value="employee">Employee</option>
+      </select>
     </td>
-    <td style="text-align:center">
-      <input type="hidden" name="non_serviceable" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="sealed" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="missing" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)"/>
-    </td>
-    <td style="text-align:center">
-      <input type="hidden" name="incomplete" value="off"/>
-      <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)"/>
-    </td>
+    <td style="text-align:center"><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="hidden" name="serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+    <td style="text-align:center"><input type="hidden" name="non_serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+    <td style="text-align:center"><input type="hidden" name="sealed" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+    <td style="text-align:center"><input type="hidden" name="missing" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+    <td style="text-align:center"><input type="hidden" name="incomplete" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
     <td style="text-align:center;white-space:nowrap">
       <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
       <button type="button" class="btn btn-danger btn-sm" style="margin-left:4px"
@@ -582,6 +589,7 @@ function addDmRow() {
         setValue('box_number',          row.box_number);
         setValue('office_college',      row.office_college);
         setValue('accountable_person',  row.accountable_person);
+        setValue('borrower_type',       row.borrower_type);
         setValue('accountable_officer', row.accountable_officer);
         setValue('device',              row.device);
         setValue('serial_number',       row.serial_number);
@@ -589,6 +597,7 @@ function addDmRow() {
         existing.dataset.box            = (row.box_number || '').toLowerCase();
         existing.dataset.college        = (row.office_college || '').toLowerCase();
         existing.dataset.person         = (row.accountable_person || '').toLowerCase();
+        existing.dataset.borrowerType   = (row.borrower_type || '').toLowerCase();
         existing.dataset.officer        = (row.accountable_officer || '').toLowerCase();
         existing.dataset.device         = (row.device || '').toLowerCase();
         existing.dataset.serial         = (row.serial_number || '').toLowerCase();
@@ -617,6 +626,7 @@ function addDmRow() {
         tr.setAttribute('data-box', (row.box_number || '').toLowerCase());
         tr.setAttribute('data-college', (row.office_college || '').toLowerCase());
         tr.setAttribute('data-person', (row.accountable_person || '').toLowerCase());
+        tr.setAttribute('data-borrower-type', (row.borrower_type || '').toLowerCase());
         tr.setAttribute('data-officer', (row.accountable_officer || '').toLowerCase());
         tr.setAttribute('data-device', (row.device || '').toLowerCase());
         tr.setAttribute('data-serial', (row.serial_number || '').toLowerCase());
@@ -628,32 +638,24 @@ function addDmRow() {
 
         tr.innerHTML = `
           <input type="hidden" name="row_id" value="${strId}"/>
-          <td><input type="text" name="box_number" value="${row.box_number || ''}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/></td>
-          <td><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/></td>
-          <td><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name" style="width:150px"/></td>
-          <td><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/></td>
-          <td><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:100px"/></td>
-          <td><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/></td>
+          <td style="text-align:center"><input type="text" name="box_number" value="${row.box_number || ''}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
           <td style="text-align:center">
-            <input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/>
-            <input type="checkbox" ${row.serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
+            <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+              <option value="">— Select —</option>
+              <option value="student" ${row.borrower_type === 'student' ? 'selected' : ''}>Student</option>
+              <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
+            </select>
           </td>
-          <td style="text-align:center">
-            <input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/>
-            <input type="checkbox" ${row.non_serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/>
-            <input type="checkbox" ${row.sealed ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/>
-            <input type="checkbox" ${row.missing ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)"/>
-          </td>
-          <td style="text-align:center">
-            <input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/>
-            <input type="checkbox" ${row.incomplete ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)"/>
-          </td>
+          <td style="text-align:center"><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" ${row.serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+          <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" ${row.non_serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+          <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" ${row.sealed ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+          <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" ${row.missing ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+          <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" ${row.incomplete ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
           <td style="text-align:center;white-space:nowrap">
             <button type="submit" name="save_row_id" value="${strId}" class="btn btn-primary btn-sm">✓ Save</button>
             <form method="post" action="/device-monitoring/${strId}/delete/" style="display:inline;margin-left:4px">
