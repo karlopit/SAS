@@ -87,7 +87,7 @@
     <table id="dm-table" style="min-width:1250px">
       <thead>
         <tr>
-          <th style="width:110px">ID</th>
+          <th style="width:100px">Box Number</th>
           <th>College / Office</th>
           <th>Accountable Person</th>
           <th>Accountable Officer</th>
@@ -104,12 +104,12 @@
       <tbody id="dm-tbody">
         {% for row in rows %}
         <tr data-row-id="{{ row.id }}"
+            data-box="{{ row.box_number|lower|default:'' }}"
             data-college="{{ row.office_college|lower|default:'' }}"
             data-person="{{ row.accountable_person|lower|default:'' }}"
             data-officer="{{ row.accountable_officer|lower|default:'' }}"
             data-device="{{ row.device|lower|default:'' }}"
             data-serial="{{ row.serial_number|lower|default:'' }}"
-            data-display="{{ row.display_id|lower|default:'' }}"
             data-serviceable="{{ row.serviceable|yesno:'1,0' }}"
             data-non-serviceable="{{ row.non_serviceable|yesno:'1,0' }}"
             data-sealed="{{ row.sealed|yesno:'1,0' }}"
@@ -119,28 +119,28 @@
           <input type="hidden" name="row_id" value="{{ row.id }}"/>
 
           <td>
-            <input type="text" name="display_id" value="{{ row.display_id|default:'' }}"
-              class="form-control dm-display-input" placeholder="e.g. T-001" style="width:90px;text-align:center"/>
+            <input type="text" name="box_number" value="{{ row.box_number|default:'' }}"
+              class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/>
           </td>
           <td>
             <input type="text" name="office_college" value="{{ row.office_college|default:'' }}"
-              class="form-control dm-college-input" placeholder="e.g. CCS" style="width:80px"/>
+              class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/>
           </td>
           <td>
             <input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}"
-              class="form-control dm-person-input" placeholder="Full name"/>
+              class="form-control dm-person-input" placeholder="Full name" style="width:150px"/>
           </td>
           <td>
             <input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}"
-              class="form-control dm-officer-input" placeholder="Officer name"/>
+              class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/>
           </td>
           <td>
             <input type="text" name="device" value="{{ row.device|default:'Tablet' }}"
-              class="form-control dm-device-input" style="width:75px"/>
+              class="form-control dm-device-input" style="width:100px"/>
           </td>
           <td>
             <input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}"
-              class="form-control dm-serial-input" placeholder="S/N" style="width:90px"/>
+              class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/>
           </td>
 
           <td style="text-align:center">
@@ -246,23 +246,6 @@ tr.row-new {
 }
 </style>
 
-<style>
-.filter-select {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-.filter-select:focus { border-color: var(--accent); }
-.filter-select option { background: var(--surface2); }
-</style>
-
 <script>
 /* ── Checkbox helpers ── */
 function syncCheck(cb) {
@@ -299,7 +282,7 @@ function handleDmCheck(cb, field) {
 
 function applyLockState(row) {
   const c = getChecksInRow(row);
-  if (!c.serviceable.cb) return; // new unsaved row may not have all fields
+  if (!c.serviceable.cb) return;
   const exclusiveOn = c.non_serviceable.cb.checked || c.missing.cb.checked || c.incomplete.cb.checked;
   const safeOn      = c.serviceable.cb.checked || c.sealed.cb.checked;
   if (exclusiveOn) {
@@ -313,7 +296,6 @@ function applyLockState(row) {
   }
 }
 
-/* Update row data-attrs when checkboxes change (so filters still work) */
 function updateRowDataAttrs(cb) {
   const row = cb.closest('tr[data-row-id]');
   if (!row) return;
@@ -326,24 +308,15 @@ function updateRowDataAttrs(cb) {
   applyDmFilters();
 }
 
-// Populate filter dropdowns with unique values
 function populateFilterDropdowns() {
   const collegeSelect = document.getElementById('dm-filter-college');
   const personSelect = document.getElementById('dm-filter-person');
   const officerSelect = document.getElementById('dm-filter-officer');
   
-  // Clear existing options (keep the first "All" option)
-  while (collegeSelect.options.length > 1) {
-    collegeSelect.remove(1);
-  }
-  while (personSelect.options.length > 1) {
-    personSelect.remove(1);
-  }
-  while (officerSelect.options.length > 1) {
-    officerSelect.remove(1);
-  }
+  while (collegeSelect.options.length > 1) collegeSelect.remove(1);
+  while (personSelect.options.length > 1) personSelect.remove(1);
+  while (officerSelect.options.length > 1) officerSelect.remove(1);
   
-  // Get unique values from table rows
   const colleges = new Set();
   const persons = new Set();
   const officers = new Set();
@@ -358,7 +331,6 @@ function populateFilterDropdowns() {
     if (officer && officer.trim()) officers.add(officer);
   });
   
-  // Add college options
   Array.from(colleges).sort().forEach(college => {
     const option = document.createElement('option');
     option.value = college;
@@ -366,7 +338,6 @@ function populateFilterDropdowns() {
     collegeSelect.appendChild(option);
   });
   
-  // Add person options
   Array.from(persons).sort().forEach(person => {
     const option = document.createElement('option');
     option.value = person;
@@ -374,7 +345,6 @@ function populateFilterDropdowns() {
     personSelect.appendChild(option);
   });
   
-  // Add officer options
   Array.from(officers).sort().forEach(officer => {
     const option = document.createElement('option');
     option.value = officer;
@@ -385,17 +355,18 @@ function populateFilterDropdowns() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
-  
-  // Populate filter dropdowns initially
   populateFilterDropdowns();
   
-  // Keep data-attrs in sync when text inputs change
   document.addEventListener('input', e => {
+    if (e.target.matches('.dm-box-input')) {
+      const row = e.target.closest('tr[data-row-id]');
+      if (row) row.dataset.box = e.target.value.toLowerCase();
+      applyDmFilters();
+    }
     if (e.target.matches('.dm-college-input')) {
       const row = e.target.closest('tr[data-row-id]');
       if (row) {
         row.dataset.college = e.target.value.toLowerCase();
-        // Update filter dropdowns when college changes
         populateFilterDropdowns();
       }
       applyDmFilters();
@@ -404,7 +375,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const row = e.target.closest('tr[data-row-id]');
       if (row) {
         row.dataset.person = e.target.value.toLowerCase();
-        // Update filter dropdowns when person changes
         populateFilterDropdowns();
       }
       applyDmFilters();
@@ -413,7 +383,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const row = e.target.closest('tr[data-row-id]');
       if (row) {
         row.dataset.officer = e.target.value.toLowerCase();
-        // Update filter dropdowns when officer changes
         populateFilterDropdowns();
       }
       applyDmFilters();
@@ -428,23 +397,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (row) row.dataset.serial = e.target.value.toLowerCase();
       applyDmFilters();
     }
-    if (e.target.matches('.dm-display-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) row.dataset.display = e.target.value.toLowerCase();
-      applyDmFilters();
-    }
   });
 
-  // Search
   document.getElementById('dm-search').addEventListener('input', applyDmFilters);
-  // Filter dropdowns
   document.getElementById('dm-filter-college').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-person').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-officer').addEventListener('change', applyDmFilters);
   document.getElementById('dm-filter-status').addEventListener('change', applyDmFilters);
 });
 
-/* ── Filter logic - searches across ALL columns ── */
 function applyDmFilters() {
   const search    = document.getElementById('dm-search').value.toLowerCase().trim();
   const college   = document.getElementById('dm-filter-college').value;
@@ -456,22 +417,18 @@ function applyDmFilters() {
   let   visible = 0;
 
   rows.forEach(row => {
-    // Get all text content from the row for searching across all columns
     const rowText = row.textContent.toLowerCase();
-    
-    // Also get individual field values for more targeted searching
-    const displayId = (row.dataset.display || '').toLowerCase();
+    const boxNum = (row.dataset.box || '').toLowerCase();
     const collegeName = (row.dataset.college || '').toLowerCase();
     const personName = (row.dataset.person || '').toLowerCase();
     const officerName = (row.dataset.officer || '').toLowerCase();
     const deviceName = (row.dataset.device || '').toLowerCase();
     const serialNum = (row.dataset.serial || '').toLowerCase();
     
-    // Check if search term matches ANY column
     let matchSearch = true;
     if (search) {
       matchSearch = rowText.includes(search) || 
-                    displayId.includes(search) ||
+                    boxNum.includes(search) ||
                     collegeName.includes(search) ||
                     personName.includes(search) ||
                     officerName.includes(search) ||
@@ -494,7 +451,6 @@ function applyDmFilters() {
     if (show) visible++;
   });
 
-  // Status bar
   const hasFilter = search || college || person || officer || status;
   const statusLbl = document.getElementById('dm-filter-status-label');
   const clearBtn  = document.getElementById('dm-clear-filters');
@@ -505,10 +461,8 @@ function applyDmFilters() {
 }
 
 window.clearDmFilters = function () {
-  // Clear search input
   document.getElementById('dm-search').value = '';
   
-  // Reset dropdowns to first option (the placeholder)
   const collegeSelect = document.getElementById('dm-filter-college');
   const personSelect = document.getElementById('dm-filter-person');
   const officerSelect = document.getElementById('dm-filter-officer');
@@ -519,26 +473,21 @@ window.clearDmFilters = function () {
   if (officerSelect.options.length > 0) officerSelect.selectedIndex = 0;
   if (statusSelect.options.length > 0) statusSelect.selectedIndex = 0;
   
-  // Re-populate dropdowns to ensure they have current values
   populateFilterDropdowns();
-  
-  // Trigger filter to show all rows
   applyDmFilters();
 };
 
-/* ── Add Row ── */
 function addDmRow() {
   const tbody = document.getElementById('dm-tbody');
   const tr    = document.createElement('tr');
-  // New rows don't have a DB id yet — use 'new' sentinel
   const newId = 'new_' + Date.now();
   tr.setAttribute('data-row-id', newId);
+  tr.setAttribute('data-box', '');
   tr.setAttribute('data-college', '');
   tr.setAttribute('data-person',  '');
   tr.setAttribute('data-officer', '');
   tr.setAttribute('data-device',  '');
   tr.setAttribute('data-serial',  '');
-  tr.setAttribute('data-display', '');
   tr.setAttribute('data-serviceable',    '0');
   tr.setAttribute('data-non-serviceable','0');
   tr.setAttribute('data-sealed',   '0');
@@ -547,12 +496,12 @@ function addDmRow() {
 
   tr.innerHTML = `
     <input type="hidden" name="row_id" value="new"/>
-    <td><input type="text" name="display_id" class="form-control dm-display-input" placeholder="e.g. T-001" style="width:90px;text-align:center"/></td>
-    <td><input type="text" name="office_college"     class="form-control dm-college-input" placeholder="e.g. CCS" style="width:80px"/></td>
-    <td><input type="text" name="accountable_person" class="form-control dm-person-input"  placeholder="Full name"/></td>
-    <td><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name"/></td>
-    <td><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:75px"/></td>
-    <td><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:90px"/></td>
+    <td><input type="text" name="box_number" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/></td>
+    <td><input type="text" name="office_college" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/></td>
+    <td><input type="text" name="accountable_person" class="form-control dm-person-input" placeholder="Full name" style="width:150px"/></td>
+    <td><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/></td>
+    <td><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:100px"/></td>
+    <td><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/></td>
     <td style="text-align:center">
       <input type="hidden" name="serviceable" value="off"/>
       <input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
@@ -580,13 +529,12 @@ function addDmRow() {
     </td>
   `;
   tbody.appendChild(tr);
-  tr.querySelector('input[name="display_id"]').focus();
+  tr.querySelector('input[name="box_number"]').focus();
   applyLockState(tr);
   populateFilterDropdowns();
   applyDmFilters();
 }
 
-/* ── Real-time WebSocket ── */
 (function () {
   const dirtyRows = new Set();
   const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
@@ -599,159 +547,151 @@ function addDmRow() {
   });
 
   function handleMessage(data) {
-  if (data.type !== 'device_monitoring.update') return;
+    if (data.type !== 'device_monitoring.update') return;
 
-  const tbody = document.getElementById('dm-tbody');
-  const incomingIds = new Set(data.rows.map(r => String(r.id)));
+    const tbody = document.getElementById('dm-tbody');
+    const incomingIds = new Set(data.rows.map(r => String(r.id)));
 
-  // Keep track of existing IDs to detect new rows
-  const existingIds = new Set();
-  tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
-    const id = tr.dataset.rowId;
-    if (id && !id.startsWith('new_')) {
-      existingIds.add(id);
-    }
-  });
-
-  // Remove rows deleted by others (skip dirty ones)
-  tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
-    const id = tr.dataset.rowId;
-    if (id && !id.startsWith('new_') && !incomingIds.has(id) && !dirtyRows.has(id)) {
-      tr.remove();
-    }
-  });
-
-  data.rows.forEach(row => {
-    const strId = String(row.id);
-    const existing = tbody.querySelector(`tr[data-row-id="${strId}"]`);
-    const isNew = !existingIds.has(strId);
-
-    if (existing) {
-      if (dirtyRows.has(strId)) return;
-
-      const setValue = (name, val) => {
-        const el = existing.querySelector(`[name="${name}"]`);
-        if (el && document.activeElement !== el) el.value = val || '';
-      };
-      setValue('display_id',         row.display_id);
-      setValue('office_college',      row.office_college);
-      setValue('accountable_person',  row.accountable_person);
-      setValue('accountable_officer', row.accountable_officer);
-      setValue('device',              row.device);
-      setValue('serial_number',       row.serial_number);
-
-      // Update data-attrs
-      existing.dataset.display       = (row.display_id        || '').toLowerCase();
-      existing.dataset.college        = (row.office_college     || '').toLowerCase();
-      existing.dataset.person         = (row.accountable_person || '').toLowerCase();
-      existing.dataset.officer        = (row.accountable_officer || '').toLowerCase();
-      existing.dataset.device         = (row.device             || '').toLowerCase();
-      existing.dataset.serial         = (row.serial_number      || '').toLowerCase();
-      existing.dataset.serviceable    = row.serviceable     ? '1' : '0';
-      existing.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
-      existing.dataset.sealed         = row.sealed          ? '1' : '0';
-      existing.dataset.missing        = row.missing         ? '1' : '0';
-      existing.dataset.incomplete     = row.incomplete      ? '1' : '0';
-
-      const updateCb = (name, val) => {
-        const hidden = existing.querySelector(`input[type=hidden][name="${name}"]`);
-        const cb     = hidden?.nextElementSibling;
-        if (cb && !cb.matches(':focus')) {
-          if (cb.checked !== val) { cb.checked = val; hidden.value = val ? 'on' : 'off'; }
-        }
-      };
-      updateCb('serviceable',     row.serviceable);
-      updateCb('non_serviceable', row.non_serviceable);
-      updateCb('sealed',          row.sealed);
-      updateCb('missing',         row.missing);
-      updateCb('incomplete',      row.incomplete);
-      applyLockState(existing);
-    } else {
-      // Create new row
-      const tr = document.createElement('tr');
-      tr.setAttribute('data-row-id', strId);
-      tr.setAttribute('data-college', (row.office_college || '').toLowerCase());
-      tr.setAttribute('data-person', (row.accountable_person || '').toLowerCase());
-      tr.setAttribute('data-officer', (row.accountable_officer || '').toLowerCase());
-      tr.setAttribute('data-device', (row.device || '').toLowerCase());
-      tr.setAttribute('data-serial', (row.serial_number || '').toLowerCase());
-      tr.setAttribute('data-display', (row.display_id || '').toLowerCase());
-      tr.setAttribute('data-serviceable', row.serviceable ? '1' : '0');
-      tr.setAttribute('data-non-serviceable', row.non_serviceable ? '1' : '0');
-      tr.setAttribute('data-sealed', row.sealed ? '1' : '0');
-      tr.setAttribute('data-missing', row.missing ? '1' : '0');
-      tr.setAttribute('data-incomplete', row.incomplete ? '1' : '0');
-
-      tr.innerHTML = `
-        <input type="hidden" name="row_id" value="${strId}"/>
-        <td><input type="text" name="display_id" value="${row.display_id || ''}" class="form-control dm-display-input" placeholder="e.g. T-001" style="width:90px;text-align:center"/></td>
-        <td><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:80px"/></td>
-        <td><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name"/></td>
-        <td><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name"/></td>
-        <td><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:75px"/></td>
-        <td><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:90px"/></td>
-        <td style="text-align:center">
-          <input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/>
-          <input type="checkbox" ${row.serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
-        </td>
-        <td style="text-align:center">
-          <input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/>
-          <input type="checkbox" ${row.non_serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)"/>
-        </td>
-        <td style="text-align:center">
-          <input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/>
-          <input type="checkbox" ${row.sealed ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)"/>
-        </td>
-        <td style="text-align:center">
-          <input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/>
-          <input type="checkbox" ${row.missing ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)"/>
-        </td>
-        <td style="text-align:center">
-          <input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/>
-          <input type="checkbox" ${row.incomplete ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)"/>
-        </td>
-        <td style="text-align:center;white-space:nowrap">
-          <button type="submit" name="save_row_id" value="${strId}" class="btn btn-primary btn-sm">✓ Save</button>
-          <form method="post" action="/device-monitoring/${strId}/delete/" style="display:inline;margin-left:4px">
-            <input type="hidden" name="csrfmiddlewaretoken" value="${CSRF}"/>
-            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this row?')">✕</button>
-          </form>
-        </td>
-      `;
-
-      const emptyRow = document.getElementById('tx-empty-row');
-      if (emptyRow) emptyRow.remove();
-      tbody.prepend(tr);
-
-      // Add highlight animation for new rows
-      if (isNew) {
-        tr.classList.add('row-new');
-        setTimeout(() => tr.classList.remove('row-new'), 2000);
-
-        // Show toast notification
-        showToast(`New device added: ${row.device || 'Device'} (${row.serial_number || 'No SN'})`);
+    const existingIds = new Set();
+    tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
+      const id = tr.dataset.rowId;
+      if (id && !id.startsWith('new_')) {
+        existingIds.add(id);
       }
+    });
 
-      applyLockState(tr);
-    }
-  });
+    tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
+      const id = tr.dataset.rowId;
+      if (id && !id.startsWith('new_') && !incomingIds.has(id) && !dirtyRows.has(id)) {
+        tr.remove();
+      }
+    });
 
-  populateFilterDropdowns();
-  applyDmFilters();
-}
+    data.rows.forEach(row => {
+      const strId = String(row.id);
+      const existing = tbody.querySelector(`tr[data-row-id="${strId}"]`);
+      const isNew = !existingIds.has(strId);
 
-// Toast notification function
-function showToast(message) {
-  let toast = document.querySelector('.dm-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.className = 'dm-toast';
-    document.body.appendChild(toast);
+      if (existing) {
+        if (dirtyRows.has(strId)) return;
+
+        const setValue = (name, val) => {
+          const el = existing.querySelector(`[name="${name}"]`);
+          if (el && document.activeElement !== el) el.value = val || '';
+        };
+        setValue('box_number',          row.box_number);
+        setValue('office_college',      row.office_college);
+        setValue('accountable_person',  row.accountable_person);
+        setValue('accountable_officer', row.accountable_officer);
+        setValue('device',              row.device);
+        setValue('serial_number',       row.serial_number);
+
+        existing.dataset.box            = (row.box_number || '').toLowerCase();
+        existing.dataset.college        = (row.office_college || '').toLowerCase();
+        existing.dataset.person         = (row.accountable_person || '').toLowerCase();
+        existing.dataset.officer        = (row.accountable_officer || '').toLowerCase();
+        existing.dataset.device         = (row.device || '').toLowerCase();
+        existing.dataset.serial         = (row.serial_number || '').toLowerCase();
+        existing.dataset.serviceable    = row.serviceable ? '1' : '0';
+        existing.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
+        existing.dataset.sealed         = row.sealed ? '1' : '0';
+        existing.dataset.missing        = row.missing ? '1' : '0';
+        existing.dataset.incomplete     = row.incomplete ? '1' : '0';
+
+        const updateCb = (name, val) => {
+          const hidden = existing.querySelector(`input[type=hidden][name="${name}"]`);
+          const cb = hidden?.nextElementSibling;
+          if (cb && !cb.matches(':focus')) {
+            if (cb.checked !== val) { cb.checked = val; hidden.value = val ? 'on' : 'off'; }
+          }
+        };
+        updateCb('serviceable', row.serviceable);
+        updateCb('non_serviceable', row.non_serviceable);
+        updateCb('sealed', row.sealed);
+        updateCb('missing', row.missing);
+        updateCb('incomplete', row.incomplete);
+        applyLockState(existing);
+      } else {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-row-id', strId);
+        tr.setAttribute('data-box', (row.box_number || '').toLowerCase());
+        tr.setAttribute('data-college', (row.office_college || '').toLowerCase());
+        tr.setAttribute('data-person', (row.accountable_person || '').toLowerCase());
+        tr.setAttribute('data-officer', (row.accountable_officer || '').toLowerCase());
+        tr.setAttribute('data-device', (row.device || '').toLowerCase());
+        tr.setAttribute('data-serial', (row.serial_number || '').toLowerCase());
+        tr.setAttribute('data-serviceable', row.serviceable ? '1' : '0');
+        tr.setAttribute('data-non-serviceable', row.non_serviceable ? '1' : '0');
+        tr.setAttribute('data-sealed', row.sealed ? '1' : '0');
+        tr.setAttribute('data-missing', row.missing ? '1' : '0');
+        tr.setAttribute('data-incomplete', row.incomplete ? '1' : '0');
+
+        tr.innerHTML = `
+          <input type="hidden" name="row_id" value="${strId}"/>
+          <td><input type="text" name="box_number" value="${row.box_number || ''}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center"/></td>
+          <td><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:100px"/></td>
+          <td><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name" style="width:150px"/></td>
+          <td><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name" style="width:150px"/></td>
+          <td><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:100px"/></td>
+          <td><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:120px"/></td>
+          <td style="text-align:center">
+            <input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/>
+            <input type="checkbox" ${row.serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)"/>
+          </td>
+          <td style="text-align:center">
+            <input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/>
+            <input type="checkbox" ${row.non_serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)"/>
+          </td>
+          <td style="text-align:center">
+            <input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/>
+            <input type="checkbox" ${row.sealed ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)"/>
+          </td>
+          <td style="text-align:center">
+            <input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/>
+            <input type="checkbox" ${row.missing ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)"/>
+          </td>
+          <td style="text-align:center">
+            <input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/>
+            <input type="checkbox" ${row.incomplete ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)"/>
+          </td>
+          <td style="text-align:center;white-space:nowrap">
+            <button type="submit" name="save_row_id" value="${strId}" class="btn btn-primary btn-sm">✓ Save</button>
+            <form method="post" action="/device-monitoring/${strId}/delete/" style="display:inline;margin-left:4px">
+              <input type="hidden" name="csrfmiddlewaretoken" value="${CSRF}"/>
+              <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this row?')">✕</button>
+            </form>
+          </td>
+        `;
+
+        const emptyRow = document.getElementById('tx-empty-row');
+        if (emptyRow) emptyRow.remove();
+        tbody.prepend(tr);
+
+        if (isNew) {
+          tr.classList.add('row-new');
+          setTimeout(() => tr.classList.remove('row-new'), 2000);
+          showToast(`New device added: ${row.device || 'Device'} (Box: ${row.box_number || 'No Box'})`);
+        }
+
+        applyLockState(tr);
+      }
+    });
+
+    populateFilterDropdowns();
+    applyDmFilters();
   }
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3000);
-}
+
+  function showToast(message) {
+    let toast = document.querySelector('.dm-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'dm-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
 
   const indicator = document.getElementById('rt-indicator');
   if (typeof InvSysRT !== 'undefined') {

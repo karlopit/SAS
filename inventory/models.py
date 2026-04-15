@@ -88,7 +88,7 @@ class Transaction(models.Model):
 
 
 class DeviceMonitor(models.Model):
-    display_id          = models.CharField(max_length=100, blank=True)
+    box_number          = models.CharField(max_length=100, blank=True, help_text="Box number for the device")
     office_college      = models.CharField(max_length=255, blank=True)
     accountable_person  = models.CharField(max_length=255, blank=True)
     accountable_officer = models.CharField(max_length=255, blank=True, help_text="Accountable Officer name")
@@ -106,4 +106,4 @@ class DeviceMonitor(models.Model):
         ordering = ['id']
 
     def __str__(self):
-        return f"{self.office_college} — {self.device} ({self.serial_number})"
+        return f"{self.box_number} - {self.device} ({self.serial_number})"

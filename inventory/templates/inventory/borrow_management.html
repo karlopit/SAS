@@ -84,21 +84,20 @@
     </div>
   </div>
 
-  <table id="transactions-table" style="min-width:1100px">
+  <table id="transactions-table" style="min-width:1200px;width:100%">
     <thead>
       <tr>
-        <th>Tx ID</th>
-        <th>Borrower Name</th>
-        <th>Borrower Type</th>
-        <th>Accountable Officer</th>
-        <th>College/Office</th>
-        <th>Item</th>
-        <th>Device Serial #</th>
-        <th>Qty Borrowed</th>
-        <th>Returned Qty</th>
-        <th>Borrowed On</th>
-        <th>Returned On</th>
-        <th>Action</th>
+        <th style="width:8%">Tx ID</th>
+        <th style="width:12%">Borrower Name</th>
+        <th style="width:8%">Borrower Type</th>
+        <th style="width:12%">Accountable Officer</th>
+        <th style="width:10%">College/Office</th>
+        <th style="width:10%">Item</th>
+        <th style="width:7%">Qty Borrowed</th>
+        <th style="width:10%">Returned Qty</th>
+        <th style="width:9%">Borrowed On</th>
+        <th style="width:9%">Returned On</th>
+        <th style="width:5%">Status</th>
       </tr>
     </thead>
     <tbody id="transactions-tbody">
@@ -120,33 +119,30 @@
         <td style="font-weight:600;color:var(--accent2)">{{ tx.borrower.get_full_name|default:tx.borrower.username }}</td>
         <td>{{ tx.office_college|default:"—" }}</td>
         <td>{{ tx.item.name }}</td>
-        <td>
-          <code style="background:var(--surface2);padding:4px 8px;border-radius:4px;font-size:12px;">
-            {{ tx.serial_number|default:"—" }}
-          </code>
-        </td>
         <td>{{ tx.quantity_borrowed }}</td>
         <td>
-          <input type="number" class="form-control returned-qty-input"
-            style="width:75px;padding:4px 8px;text-align:center"
-            value="{{ tx.returned_qty }}" min="0" max="{{ tx.quantity_borrowed }}"
-            data-tx-id="{{ tx.id }}" data-qty-borrowed="{{ tx.quantity_borrowed }}"
-            data-url="{% url 'update_returned_qty' tx.id %}" data-csrf="{{ csrf_token }}"/>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <input type="number" class="form-control returned-qty-input"
+              style="width:70px;padding:4px 8px;text-align:center"
+              value="{{ tx.returned_qty }}" min="0" max="{{ tx.quantity_borrowed }}"
+              data-tx-id="{{ tx.id }}" data-qty-borrowed="{{ tx.quantity_borrowed }}"
+              data-url="{% url 'update_returned_qty' tx.id %}" data-csrf="{{ csrf_token }}"/>
+          </div>
         </td>
         <td style="color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
         <td class="returned-on-cell" style="color:var(--muted);font-size:12px">
           {% if tx.returned_at %}{{ tx.returned_at|date:"M d, Y H:i" }}{% else %}—{% endif %}
         </td>
-        <td class="return-action-cell">
-          {% if tx.returned_qty < tx.quantity_borrowed %}
-            <a href="{% url 'return_item' tx.id %}" class="btn btn-secondary btn-sm return-button" data-tx-id="{{ tx.id }}">Return</a>
+        <td class="status-cell" style="text-align:center">
+          {% if tx.returned_qty >= tx.quantity_borrowed %}
+            <span class="badge badge-returned">✓ Returned</span>
           {% else %}
-            <span style="color:var(--muted);font-size:12px">✓ Done</span>
+            <span class="badge badge-borrowed">Borrowed</span>
           {% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr id="tx-empty-row"><td colspan="12" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
+      <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -181,6 +177,96 @@
 .badge-purple {
   background: rgba(156,39,176,0.15);
   color: #ce93d8;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.badge-returned {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+  text-align: center;
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.badge-borrowed {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+  text-align: center;
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.badge-green {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.badge-blue {
+  background: rgba(0, 100, 255, 0.15);
+  color: #448aff;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.badge-red {
+  background: rgba(255, 68, 68, 0.15);
+  color: #ff4444;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+#transactions-table td {
+  vertical-align: middle;
+  padding: 12px 8px;
+}
+
+#transactions-table th {
+  padding: 12px 8px;
+  white-space: nowrap;
+}
+
+.returned-qty-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.returned-qty-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 </style>
 
@@ -203,7 +289,7 @@
 
     const row            = document.getElementById('tx-row-' + txId);
     const returnedOnCell = row && row.querySelector('.returned-on-cell');
-    const actionCell     = row && row.querySelector('.return-action-cell');
+    const statusCell     = row && row.querySelector('.status-cell');
 
     fetch(url, {
       method: 'POST',
@@ -215,11 +301,12 @@
         input.style.opacity = '1';
         if (!data.ok) return;
         if (returnedOnCell) returnedOnCell.textContent = data.returned_at ?? '—';
-        if (actionCell) {
-          actionCell.innerHTML = data.fully_returned
-            ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
-            : (actionCell.querySelector('a') ? actionCell.innerHTML
-                : `<a href="/return/${txId}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${txId}">Return</a>`);
+        if (statusCell) {
+          if (data.fully_returned) {
+            statusCell.innerHTML = '<span class="badge badge-returned">✓ Returned</span>';
+          } else {
+            statusCell.innerHTML = '<span class="badge badge-borrowed">Borrowed</span>';
+          }
         }
       })
       .catch(() => { input.style.opacity = '1'; });
@@ -353,9 +440,9 @@
       const isNew    = !knownTxIds.has(String(tx.id));
       knownTxIds.add(String(tx.id));
 
-      const actionHtml = tx.fully_returned
-        ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
-        : `<a href="/return/${tx.id}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${tx.id}">Return</a>`;
+      const statusHtml = tx.fully_returned
+        ? '<span class="badge badge-returned">✓ Returned</span>'
+        : '<span class="badge badge-borrowed">Borrowed</span>';
 
       if (existing) {
         // Update data-attributes for filtering
@@ -366,8 +453,8 @@
         if (qtyCell && String(tx.id) !== focusedTxId) qtyCell.value = tx.returned_qty;
         const onCell = existing.querySelector('.returned-on-cell');
         if (onCell) onCell.textContent = tx.returned_at;
-        const acCell = existing.querySelector('.return-action-cell');
-        if (acCell) acCell.innerHTML = actionHtml;
+        const statusCell = existing.querySelector('.status-cell');
+        if (statusCell) statusCell.innerHTML = statusHtml;
       } else {
         // New row
         const tr = document.createElement('tr');
@@ -381,19 +468,20 @@
           <td style="font-weight:600;color:var(--accent2)">${tx.accountable_officer}</td>
           <td>${tx.office_college}</td>
           <td>${tx.item_name}</td>
-          <td><code style="background:var(--surface2);padding:4px 8px;border-radius:4px;font-size:12px;">${tx.serial_number || '—'}</code></td>
           <td>${tx.qty_borrowed}</td>
           <td>
-            <input type="number" class="form-control returned-qty-input"
-              style="width:75px;padding:4px 8px;text-align:center"
-              value="${tx.returned_qty}" min="0" max="${tx.qty_borrowed}"
-              data-tx-id="${tx.id}" data-qty-borrowed="${tx.qty_borrowed}"
-              data-url="/transaction/${tx.id}/returned-qty/"
-              data-csrf="${CSRF}"/>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <input type="number" class="form-control returned-qty-input"
+                style="width:70px;padding:4px 8px;text-align:center"
+                value="${tx.returned_qty}" min="0" max="${tx.qty_borrowed}"
+                data-tx-id="${tx.id}" data-qty-borrowed="${tx.qty_borrowed}"
+                data-url="/transaction/${tx.id}/returned-qty/"
+                data-csrf="${CSRF}"/>
+            </div>
           </td>
           <td style="color:var(--muted)">${tx.borrowed_at}</td>
           <td class="returned-on-cell" style="color:var(--muted);font-size:12px">${tx.returned_at}</td>
-          <td class="return-action-cell">${actionHtml}</td>
+          <td class="status-cell" style="text-align:center">${statusHtml}</td>
         `;
         const emptyRow = document.getElementById('tx-empty-row');
         if (emptyRow) emptyRow.remove();
@@ -453,7 +541,9 @@
   }
 
   const indicator = document.getElementById('rt-indicator');
-  InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
+  if (typeof InvSysRT !== 'undefined') {
+    InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
+  }
 })();
 </script>
 {% endblock %}

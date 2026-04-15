@@ -249,9 +249,10 @@ def device_monitoring_save(request):
         raise PermissionDenied
 
     ids              = request.POST.getlist('row_id')
-    display_ids      = request.POST.getlist('display_id')
+    box_numbers      = request.POST.getlist('box_number')
     offices          = request.POST.getlist('office_college')
     accountables     = request.POST.getlist('accountable_person')
+    accountable_officers = request.POST.getlist('accountable_officer')
     devices          = request.POST.getlist('device')
     serials          = request.POST.getlist('serial_number')
     serviceables     = request.POST.getlist('serviceable')
@@ -265,16 +266,17 @@ def device_monitoring_save(request):
             return lst[idx] if idx < len(lst) else ''
 
         fields = dict(
-            display_id         = get(display_ids),
-            office_college     = get(offices),
-            accountable_person = get(accountables),
-            device             = get(devices) or 'Tablet',
-            serial_number      = get(serials),
-            serviceable        = get(serviceables)     == 'on',
-            non_serviceable    = get(non_serviceables) == 'on',
-            sealed             = get(sealeds)          == 'on',
-            missing            = get(missings)         == 'on',
-            incomplete         = get(incompletes)      == 'on',
+            box_number          = get(box_numbers),
+            office_college      = get(offices),
+            accountable_person  = get(accountables),
+            accountable_officer = get(accountable_officers),
+            device              = get(devices) or 'Tablet',
+            serial_number       = get(serials),
+            serviceable         = get(serviceables)     == 'on',
+            non_serviceable     = get(non_serviceables) == 'on',
+            sealed              = get(sealeds)          == 'on',
+            missing             = get(missings)         == 'on',
+            incomplete          = get(incompletes)      == 'on',
         )
 
         if row_id == 'new':
@@ -321,7 +323,8 @@ def staff_confirm_borrow(request, request_id):
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
-            serial_numbers = form.cleaned_data['serial_numbers']  # This is a list of serial numbers
+            serial_numbers = form.cleaned_data['serial_numbers']  # List of serial numbers
+            box_numbers = form.cleaned_data['box_numbers']  # List of box numbers
             quantity = form.cleaned_data['quantity_borrowed']
             
             # Create ONE Transaction record (for borrow management)
@@ -339,13 +342,17 @@ def staff_confirm_borrow(request, request_id):
             borrow_req.status = 'accepted'
             borrow_req.save()
             
-            # ── Create MULTIPLE Device Monitor records (one per serial number) ──
+            # ── Create MULTIPLE Device Monitor records (one per serial/box pair) ──
             accountable_officer = request.user.get_full_name() or request.user.username
             
             device_monitors = []
-            for serial in serial_numbers:
+            for i, serial in enumerate(serial_numbers):
+                # Get the corresponding box number for this serial number
+                box_number = box_numbers[i] if i < len(box_numbers) else ''
+                
+                # REMOVED: display_id field
                 device_monitor = DeviceMonitor(
-                    display_id='',  # Blank, staff can edit later
+                    box_number=box_number,
                     office_college=borrow_req.office_college,
                     accountable_person=borrow_req.borrower_name,
                     accountable_officer=accountable_officer,
@@ -364,7 +371,7 @@ def staff_confirm_borrow(request, request_id):
             # ─────────────────────────────────────────────────────────────
 
             b = _broadcasts()
-            b.broadcast_all()  # This updates both borrow management and device monitoring
+            b.broadcast_all()
             return redirect('index')
     else:
         form = StaffBorrowForm(initial={
@@ -578,9 +585,10 @@ def export_device_monitoring(request):
         raise PermissionDenied
 
     rows       = DeviceMonitor.objects.all().order_by('id')
-    headers    = ['ID','College / Office','Accountable Person','Device','Serial Number',
-                  'Serviceable','Non-Serviceable','Sealed','Missing','Incomplete']
-    col_widths = [10, 20, 24, 14, 20, 14, 16, 10, 10, 12]
+    # Removed 'ID' column header since display_id is gone
+    headers    = ['Box Number', 'College / Office', 'Accountable Person', 'Accountable Officer', 'Device', 'Serial Number',
+                  'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete']
+    col_widths = [15, 20, 24, 24, 14, 20, 14, 16, 10, 10, 12]
 
     wb = Workbook(); ws = wb.active; ws.title = 'Device Monitoring'
     ws.sheet_properties.tabColor = '00E5A0'
@@ -592,9 +600,10 @@ def export_device_monitoring(request):
     for i, row in enumerate(rows, start=1):
         bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
         _xl_row(ws, i + 3, [
-            row.display_id or str(row.id),
+            row.box_number or '—',
             row.office_college or '—',
             row.accountable_person or '—',
+            row.accountable_officer or '—',
             row.device or 'Tablet',
             row.serial_number or '—',
             '✓' if row.serviceable     else '—',
@@ -604,7 +613,7 @@ def export_device_monitoring(request):
             '✓' if row.incomplete      else '—',
         ], even=(i % 2 == 0))
         for col_offset, val in enumerate(bool_vals):
-            ws.cell(row=i + 3, column=6 + col_offset).font = font_yes if val else font_no
+            ws.cell(row=i + 3, column=7 + col_offset).font = font_yes if val else font_no
 
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width

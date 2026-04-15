@@ -122,10 +122,10 @@ def _build_device_monitoring_payload():
     for r in rows_qs:
         rows.append({
             'id':                 r.id,
-            'display_id':         r.display_id,
+            'box_number':         r.box_number,  # Now the primary identifier
             'office_college':     r.office_college,
             'accountable_person': r.accountable_person,
-            'accountable_officer': r.accountable_officer,  # Added this field
+            'accountable_officer': r.accountable_officer,
             'device':             r.device,
             'serial_number':      r.serial_number,
             'serviceable':        r.serviceable,

@@ -75,12 +75,10 @@ class BorrowRequestForm(forms.ModelForm):
         
         # Populate borrower name and type based on role
         if self.cleaned_data['borrower_role'] == 'student':
-            # Combine name: First Name + Middle Initial + Last Name
             first_name = self.cleaned_data['student_first_name']
             middle_initial = self.cleaned_data['student_middle_initial']
             last_name = self.cleaned_data['student_last_name']
             
-            # Build full name
             full_name = first_name
             if middle_initial:
                 full_name += f" {middle_initial}."
@@ -92,18 +90,14 @@ class BorrowRequestForm(forms.ModelForm):
             instance.year_section = self.cleaned_data['year_section']
             instance.college = self.cleaned_data['college']
             instance.academic_year = self.cleaned_data['academic_year']
-            # Clear employee fields
             instance.employee_id = None
             instance.office = None
-            # Set office_college to college for students
             instance.office_college = self.cleaned_data['college']
         else:
-            # Combine name: First Name + Middle Initial + Last Name
             first_name = self.cleaned_data['employee_first_name']
             middle_initial = self.cleaned_data['employee_middle_initial']
             last_name = self.cleaned_data['employee_last_name']
             
-            # Build full name
             full_name = first_name
             if middle_initial:
                 full_name += f" {middle_initial}."
@@ -113,12 +107,10 @@ class BorrowRequestForm(forms.ModelForm):
             instance.borrower_type = 'employee'
             instance.employee_id = self.cleaned_data['employee_id']
             instance.office = self.cleaned_data['office']
-            # Clear student fields
             instance.student_id = None
             instance.year_section = None
             instance.college = None
             instance.academic_year = None
-            # Set office_college to office for employees
             instance.office_college = self.cleaned_data['office']
         
         if commit:
@@ -139,6 +131,18 @@ class StaffBorrowForm(forms.ModelForm):
         })
     )
     
+    # Dynamic field for multiple box numbers
+    box_numbers = forms.CharField(
+        required=True,
+        label="Box Numbers",
+        help_text="Enter one box number per line. Must match the quantity and correspond to the serial numbers (first box number with first serial number).",
+        widget=forms.Textarea(attrs={
+            'rows': 4,
+            'placeholder': 'BOX-001\nBOX-002\nBOX-003',
+            'class': 'form-control'
+        })
+    )
+    
     class Meta:
         model = Transaction
         fields = ['item', 'quantity_borrowed', 'office_college']
@@ -155,17 +159,14 @@ class StaffBorrowForm(forms.ModelForm):
         if not serial_numbers_text:
             raise forms.ValidationError('Please enter serial numbers.')
         
-        # Split by newline and strip whitespace
         serials = [s.strip() for s in serial_numbers_text.split('\n') if s.strip()]
         
         if len(serials) != quantity:
             raise forms.ValidationError(f'You entered {len(serials)} serial number(s), but requested quantity is {quantity}. Please enter exactly {quantity} serial number(s).')
         
-        # Check for duplicate serial numbers
         if len(serials) != len(set(serials)):
             raise forms.ValidationError('Duplicate serial numbers found. Each serial number must be unique.')
         
-        # Check if any serial number is already borrowed and not returned
         existing_serials = Transaction.objects.filter(
             serial_number__in=serials,
             status='borrowed'
@@ -175,6 +176,31 @@ class StaffBorrowForm(forms.ModelForm):
             raise forms.ValidationError(f'The following serial numbers are already borrowed: {", ".join(existing_serials)}')
         
         return serials
+    
+    def clean_box_numbers(self):
+        box_numbers_text = self.cleaned_data.get('box_numbers')
+        quantity = self.cleaned_data.get('quantity_borrowed')
+        serials = self.cleaned_data.get('serial_numbers')
+        
+        if not box_numbers_text:
+            raise forms.ValidationError('Please enter box numbers.')
+        
+        boxes = [b.strip() for b in box_numbers_text.split('\n') if b.strip()]
+        
+        if len(boxes) != quantity:
+            raise forms.ValidationError(f'You entered {len(boxes)} box number(s), but requested quantity is {quantity}. Please enter exactly {quantity} box number(s).')
+        
+        return boxes
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        serials = cleaned_data.get('serial_numbers')
+        boxes = cleaned_data.get('box_numbers')
+        
+        if serials and boxes and len(serials) != len(boxes):
+            self.add_error('box_numbers', 'Number of box numbers must match number of serial numbers.')
+        
+        return cleaned_data
 
 
 class ItemForm(forms.ModelForm):
