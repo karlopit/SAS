@@ -73,7 +73,7 @@
       </div>
       <div>
         <div class="form-label" style="margin-bottom:4px">Requested Quantity</div>
-        <div>{{ borrow_req.quantity }}</div>
+        <div><strong style="color:var(--accent);font-size:18px">{{ borrow_req.quantity }}</strong> item(s)</div>
       </div>
       <div>
         <div class="form-label" style="margin-bottom:4px">Item Requested</div>
@@ -124,14 +124,15 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.serial_number.id_for_label }}">Device Serial Number</label>
-      <input type="text" id="{{ form.serial_number.id_for_label }}"
-        name="{{ form.serial_number.html_name }}"
+      <label class="form-label" for="{{ form.serial_numbers.id_for_label }}">Device Serial Numbers <span style="color:red;">*</span></label>
+      <textarea id="{{ form.serial_numbers.id_for_label }}"
+        name="{{ form.serial_numbers.html_name }}"
         class="form-control"
-        placeholder="{{ form.serial_number.field.widget.attrs.placeholder }}"
-        value="{{ form.serial_number.value|default:'' }}"/>
-      <span class="form-hint">{{ form.serial_number.field.help_text }}</span>
-      {% if form.serial_number.errors %}<span class="form-error">{{ form.serial_number.errors.0 }}</span>{% endif %}
+        rows="5"
+        placeholder="Enter one serial number per line&#10;Example:&#10;SN-001&#10;SN-002&#10;SN-003"></textarea>
+      <span class="form-hint">{{ form.serial_numbers.help_text }}</span>
+      <div id="serial-count-hint" class="form-hint" style="color:var(--accent);margin-top:8px"></div>
+      {% if form.serial_numbers.errors %}<span class="form-error">{{ form.serial_numbers.errors.0 }}</span>{% endif %}
     </div>
 
     <div class="form-group">
@@ -173,6 +174,32 @@ document.getElementById('{{ form.item.id_for_label }}').addEventListener('change
     hintSpan.textContent = 'Select an item to see availability.';
   }
 });
+
+// Count serial numbers in real-time
+const serialNumbersTextarea = document.getElementById('{{ form.serial_numbers.id_for_label }}');
+const quantityInput = document.getElementById('{{ form.quantity_borrowed.id_for_label }}');
+const serialCountHint = document.getElementById('serial-count-hint');
+
+function updateSerialCount() {
+  const text = serialNumbersTextarea.value;
+  const serials = text.split('\n').filter(s => s.trim().length > 0);
+  const count = serials.length;
+  const requiredQty = parseInt(quantityInput.value) || 0;
+  
+  if (count === 0) {
+    serialCountHint.innerHTML = '';
+  } else if (count === requiredQty) {
+    serialCountHint.innerHTML = `✓ ${count} of ${requiredQty} serial numbers entered. Ready to submit!`;
+    serialCountHint.style.color = '#00e5a0';
+  } else {
+    serialCountHint.innerHTML = `⚠️ ${count} of ${requiredQty} serial numbers entered. Need ${requiredQty - count} more.`;
+    serialCountHint.style.color = '#ffc107';
+  }
+}
+
+serialNumbersTextarea.addEventListener('input', updateSerialCount);
+quantityInput.addEventListener('change', updateSerialCount);
+updateSerialCount();
 </script>
 
 <style>
@@ -194,4 +221,4 @@ document.getElementById('{{ form.item.id_for_label }}').addEventListener('change
   font-weight: 500;
 }
 </style>
-{% endblock %}x
+{% endblock %}

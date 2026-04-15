@@ -1,3 +1,7 @@
+"""
+Patch notes — only the borrow_management view changes meaningfully.
+The full views.py is reproduced here so it can be dropped in as a replacement.
+"""
 import io
 import json
 import random
@@ -17,8 +21,7 @@ from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRe
 from .decorators import no_cache
 from django.contrib import messages
 
-# Real-time broadcast helpers — imported lazily to avoid circular issues at
-# import time if channels isn't fully configured yet.
+
 def _broadcasts():
     from inventory import broadcasts as b
     return b
@@ -42,12 +45,8 @@ def welcome(request):
 
     if request.method == 'POST' and request.POST.get('action') == 'borrow_request':
         borrow_form = BorrowRequestForm(request.POST)
-        
-        # Debug: Print POST data
-        print("POST data:", request.POST)
-        
         if borrow_form.is_valid():
-            req = borrow_form.save(commit=False)
+            req   = borrow_form.save(commit=False)
             tx_id = request.POST.get('transaction_id', str(random.randint(10000, 99999)))
             while BorrowRequest.objects.filter(transaction_id=tx_id).exists():
                 tx_id = str(random.randint(10000, 99999))
@@ -55,17 +54,10 @@ def welcome(request):
             req.save()
 
             request.session['borrow_success'] = req.transaction_id
-
-            # Notify staff on borrow-requests page & dashboard
             b = _broadcasts()
             b.broadcast_borrow_requests()
             b.broadcast_dashboard()
-
             return redirect('welcome')
-        else:
-            # Debug: Print form errors
-            print("Form errors:", borrow_form.errors)
-            # Pass the form with errors back to template
 
     return render(request, 'inventory/welcome.html', {
         'borrow_form':     borrow_form,
@@ -116,12 +108,11 @@ def index(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  AJAX poll endpoint — fallback for older browsers / WS failures
+#  AJAX poll endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def ajax_dashboard_data(request):
-    """Returns the same payload the WS consumer would send."""
     from inventory.consumers import _build_dashboard_payload
     return JsonResponse(_build_dashboard_payload())
 
@@ -224,9 +215,13 @@ def borrow_requests(request):
 def borrow_management(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    items         = Item.objects.all()
-    transactions  = Transaction.objects.all().order_by('-borrowed_at')[:20]
+
+    items        = Item.objects.all()
+    transactions = Transaction.objects.select_related(
+        'item', 'borrower', 'borrow_request'
+    ).order_by('-borrowed_at')[:50]
     pending_count = BorrowRequest.objects.filter(status='pending').count()
+
     return render(request, 'inventory/borrow_management.html', {
         'items':         items,
         'transactions':  transactions,
@@ -295,7 +290,7 @@ def device_monitoring_save(request):
 
     b = _broadcasts()
     b.broadcast_device_monitoring()
-    b.broadcast_dashboard()          # bar chart on dashboard
+    b.broadcast_dashboard()
     return redirect('device_monitoring')
 
 
@@ -326,19 +321,50 @@ def staff_confirm_borrow(request, request_id):
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
+            serial_numbers = form.cleaned_data['serial_numbers']  # This is a list of serial numbers
+            quantity = form.cleaned_data['quantity_borrowed']
+            
+            # Create ONE Transaction record (for borrow management)
             transaction = form.save(commit=False)
             transaction.borrower = request.user
             transaction.borrow_request = borrow_req
             transaction.office_college = borrow_req.office_college
             transaction.status = 'borrowed'
-            transaction.item.available_quantity -= transaction.quantity_borrowed
+            transaction.serial_number = ', '.join(serial_numbers)  # Store all serials as comma-separated
+            transaction.item.available_quantity -= quantity
             transaction.item.save()
             transaction.save()
+            
+            # Update borrow request status
             borrow_req.status = 'accepted'
             borrow_req.save()
+            
+            # ── Create MULTIPLE Device Monitor records (one per serial number) ──
+            accountable_officer = request.user.get_full_name() or request.user.username
+            
+            device_monitors = []
+            for serial in serial_numbers:
+                device_monitor = DeviceMonitor(
+                    display_id='',  # Blank, staff can edit later
+                    office_college=borrow_req.office_college,
+                    accountable_person=borrow_req.borrower_name,
+                    accountable_officer=accountable_officer,
+                    device=transaction.item.name,
+                    serial_number=serial,
+                    serviceable=True,
+                    non_serviceable=False,
+                    sealed=False,
+                    missing=False,
+                    incomplete=False,
+                )
+                device_monitors.append(device_monitor)
+            
+            # Bulk create all device monitor records
+            DeviceMonitor.objects.bulk_create(device_monitors)
+            # ─────────────────────────────────────────────────────────────
 
             b = _broadcasts()
-            b.broadcast_all()
+            b.broadcast_all()  # This updates both borrow management and device monitoring
             return redirect('index')
     else:
         form = StaffBorrowForm(initial={
@@ -427,13 +453,11 @@ def update_returned_qty(request, transaction_id):
     tx.status       = 'returned' if new_returned >= tx.quantity_borrowed else 'borrowed'
     tx.save()
 
-    # Push live updates to all groups
     b = _broadcasts()
     b.broadcast_borrow_management()
     b.broadcast_dashboard()
 
-    # Build pie data for the legacy JSON response
-    items        = Item.objects.all()
+    items         = Item.objects.all()
     available_qty = sum(i.available_quantity for i in items)
     agg           = Transaction.objects.annotate(
         still_out=ExpressionWrapper(
@@ -454,7 +478,7 @@ def update_returned_qty(request, transaction_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Excel exports (unchanged)
+#  Excel exports
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _xl_title(ws, text, col_count):
@@ -509,24 +533,39 @@ def _xl_response(wb, filename_prefix):
 def export_borrow_management(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
+
     transactions = Transaction.objects.select_related(
-        'item', 'borrower', 'borrow_request').all().order_by('-borrowed_at')
-    headers    = ['Tx ID','Borrower Name','College / Office','Item','Serial Number',
-                  'Qty Borrowed','Returned Qty','Borrowed On','Returned On']
-    col_widths = [12, 24, 20, 22, 20, 14, 14, 18, 22]
+        'item', 'borrower', 'borrow_request'
+    ).all().order_by('-borrowed_at')
+
+    # Updated headers to include Accountable Officer
+    headers    = [
+        'Tx ID', 'Borrower Name', 'Accountable Officer', 'College / Office',
+        'Item', 'Device Serial #', 'Qty Borrowed', 'Returned Qty',
+        'Borrowed On', 'Returned On',
+    ]
+    col_widths = [12, 24, 22, 20, 20, 18, 14, 14, 16, 20]
+
     wb = Workbook(); ws = wb.active; ws.title = 'Borrow Management'
     ws.sheet_properties.tabColor = '00E5A0'
     _xl_title(ws, 'Borrow Management Report', len(headers))
     _xl_header(ws, 3, headers)
+
     for i, tx in enumerate(transactions, start=1):
+        officer = tx.borrower.get_full_name() or tx.borrower.username
         _xl_row(ws, i + 3, [
             f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
             tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
-            tx.office_college or '—', tx.item.name, tx.item.serial or '—',
-            tx.quantity_borrowed, tx.returned_qty,
+            officer,
+            tx.office_college or '—',
+            tx.item.name,
+            tx.serial_number or '—',
+            tx.quantity_borrowed,
+            tx.returned_qty,
             tx.borrowed_at.strftime('%b %d, %Y'),
             tx.returned_at.strftime('%b %d, %Y  %H:%M') if tx.returned_at else '—',
         ], even=(i % 2 == 0))
+
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.freeze_panes = 'A4'
@@ -537,27 +576,36 @@ def export_borrow_management(request):
 def export_device_monitoring(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
+
     rows       = DeviceMonitor.objects.all().order_by('id')
     headers    = ['ID','College / Office','Accountable Person','Device','Serial Number',
                   'Serviceable','Non-Serviceable','Sealed','Missing','Incomplete']
     col_widths = [10, 20, 24, 14, 20, 14, 16, 10, 10, 12]
+
     wb = Workbook(); ws = wb.active; ws.title = 'Device Monitoring'
     ws.sheet_properties.tabColor = '00E5A0'
     _xl_title(ws, 'Device Monitoring Report', len(headers))
     _xl_header(ws, 3, headers)
     font_yes = Font(bold=True, color='00E5A0', size=10)
     font_no  = Font(color='6B7080', size=10)
+
     for i, row in enumerate(rows, start=1):
         bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
         _xl_row(ws, i + 3, [
-            row.display_id or str(row.id), row.office_college or '—',
-            row.accountable_person or '—', row.device or 'Tablet', row.serial_number or '—',
-            '✓' if row.serviceable else '—', '✓' if row.non_serviceable else '—',
-            '✓' if row.sealed else '—', '✓' if row.missing else '—',
-            '✓' if row.incomplete else '—',
+            row.display_id or str(row.id),
+            row.office_college or '—',
+            row.accountable_person or '—',
+            row.device or 'Tablet',
+            row.serial_number or '—',
+            '✓' if row.serviceable     else '—',
+            '✓' if row.non_serviceable else '—',
+            '✓' if row.sealed          else '—',
+            '✓' if row.missing         else '—',
+            '✓' if row.incomplete      else '—',
         ], even=(i % 2 == 0))
         for col_offset, val in enumerate(bool_vals):
             ws.cell(row=i + 3, column=6 + col_offset).font = font_yes if val else font_no
+
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.freeze_panes = 'A4'

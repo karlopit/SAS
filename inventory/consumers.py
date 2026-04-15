@@ -1,24 +1,12 @@
 """
 inventory/consumers.py
-
-WebSocket consumers that push live data to connected clients.
-
-Groups used:
-  dashboard          — all authenticated users on the dashboard
-  borrow_management  — staff on the Borrow Management page
-  borrow_requests    — staff on the Borrow Requests page
-  device_monitoring  — staff on Device Monitoring
 """
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.utils import timezone
 
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 def _build_dashboard_payload():
-    """Synchronous DB read — called via database_sync_to_async."""
     from django.db.models import Sum, F, ExpressionWrapper, IntegerField
     from inventory.models import Item, Transaction, BorrowRequest, DeviceMonitor
 
@@ -40,17 +28,17 @@ def _build_dashboard_payload():
     offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
     bar = {
-        'offices':      offices,
-        'serviceable':  [monitors.filter(office_college=o, serviceable=True).count()     for o in offices],
-        'nonService':   [monitors.filter(office_college=o, non_serviceable=True).count() for o in offices],
-        'sealed':       [monitors.filter(office_college=o, sealed=True).count()          for o in offices],
-        'missing':      [monitors.filter(office_college=o, missing=True).count()         for o in offices],
-        'incomplete':   [monitors.filter(office_college=o, incomplete=True).count()      for o in offices],
+        'offices':     offices,
+        'serviceable': [monitors.filter(office_college=o, serviceable=True).count()     for o in offices],
+        'nonService':  [monitors.filter(office_college=o, non_serviceable=True).count() for o in offices],
+        'sealed':      [monitors.filter(office_college=o, sealed=True).count()          for o in offices],
+        'missing':     [monitors.filter(office_college=o, missing=True).count()         for o in offices],
+        'incomplete':  [monitors.filter(office_college=o, incomplete=True).count()      for o in offices],
     }
 
     return {
-        'type':          'dashboard.update',
-        'items_count':   items.count(),
+        'type':           'dashboard.update',
+        'items_count':    items.count(),
         'active_borrows': active_borrows,
         'total_returns':  total_returns,
         'pending_count':  pending_count,
@@ -70,25 +58,26 @@ def _build_borrow_management_payload():
 
     txs_qs = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
-    ).order_by('-borrowed_at')[:20]
+    ).order_by('-borrowed_at')[:50]
 
     transactions = []
     for tx in txs_qs:
         transactions.append({
-            'id':              tx.id,
-            'tx_id':           f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
-            'borrower_name':   tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
-            'borrower_type':   tx.borrow_request.borrower_type if tx.borrow_request else None,
-            'office_college':  tx.office_college or '—',
-            'item_name':       tx.item.name,
-            'item_serial':     tx.item.serial or '—',
-            'serial_number':   tx.serial_number or '—',  # Add this line
-            'qty_borrowed':    tx.quantity_borrowed,
-            'returned_qty':    tx.returned_qty,
-            'borrowed_at':     tx.borrowed_at.strftime('%b %d, %Y'),
-            'returned_at':     tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—',
-            'fully_returned':  tx.returned_qty >= tx.quantity_borrowed,
-            'status':          tx.status,
+            'id':                  tx.id,
+            'tx_id':               f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
+            'borrower_name':       tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
+            'borrower_type':       tx.borrow_request.borrower_type if tx.borrow_request else None,
+            'accountable_officer': tx.borrower.get_full_name() or tx.borrower.username,
+            'office_college':      tx.office_college or '—',
+            'item_name':           tx.item.name,
+            'item_serial':         tx.item.serial or '—',
+            'serial_number':       tx.serial_number or '—',
+            'qty_borrowed':        tx.quantity_borrowed,
+            'returned_qty':        tx.returned_qty,
+            'borrowed_at':         tx.borrowed_at.strftime('%b %d, %Y'),
+            'returned_at':         tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—',
+            'fully_returned':      tx.returned_qty >= tx.quantity_borrowed,
+            'status':              tx.status,
         })
 
     return {
@@ -109,13 +98,13 @@ def _build_borrow_requests_payload():
     pending = []
     for r in pending_qs:
         pending.append({
-            'id':            r.id,
+            'id':             r.id,
             'transaction_id': r.transaction_id,
-            'borrower_name': r.borrower_name,
+            'borrower_name':  r.borrower_name,
             'office_college': r.office_college,
-            'item_name':     r.item.name if r.item else '—',
-            'quantity':      r.quantity,
-            'created_at':    r.created_at.strftime('%b %d, %Y — %H:%M'),
+            'item_name':      r.item.name if r.item else '—',
+            'quantity':       r.quantity,
+            'created_at':     r.created_at.strftime('%b %d, %Y — %H:%M'),
         })
 
     return {
@@ -136,6 +125,7 @@ def _build_device_monitoring_payload():
             'display_id':         r.display_id,
             'office_college':     r.office_college,
             'accountable_person': r.accountable_person,
+            'accountable_officer': r.accountable_officer,  # Added this field
             'device':             r.device,
             'serial_number':      r.serial_number,
             'serviceable':        r.serviceable,
@@ -154,10 +144,6 @@ def _build_device_monitoring_payload():
 # ── Base Consumer ─────────────────────────────────────────────────────────────
 
 class BaseConsumer(AsyncWebsocketConsumer):
-    """
-    Shared connect/disconnect logic.
-    Sub-classes set `group_name` and override `build_payload()`.
-    """
     group_name = None
 
     async def connect(self):
@@ -166,7 +152,6 @@ class BaseConsumer(AsyncWebsocketConsumer):
             return
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        # Send initial snapshot immediately on connect
         payload = await database_sync_to_async(self.build_payload)()
         await self.send(text_data=json.dumps(payload))
 
@@ -176,7 +161,6 @@ class BaseConsumer(AsyncWebsocketConsumer):
     def build_payload(self):
         raise NotImplementedError
 
-    # Generic group-broadcast handler — message type must match group name pattern
     async def _broadcast(self, event):
         await self.send(text_data=json.dumps(event))
 

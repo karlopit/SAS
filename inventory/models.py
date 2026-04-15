@@ -91,6 +91,7 @@ class DeviceMonitor(models.Model):
     display_id          = models.CharField(max_length=100, blank=True)
     office_college      = models.CharField(max_length=255, blank=True)
     accountable_person  = models.CharField(max_length=255, blank=True)
+    accountable_officer = models.CharField(max_length=255, blank=True, help_text="Accountable Officer name")
     device              = models.CharField(max_length=255, default='Tablet')
     serial_number       = models.CharField(max_length=255, blank=True)
     serviceable         = models.BooleanField(default=False)

@@ -39,7 +39,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" class="empty-state"><p>No items found.</p></td></tr>
+      <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No items found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -47,9 +47,28 @@
 
 <!-- ── Transactions Table ── -->
 <div class="table-card" style="margin-top:24px;overflow-x:auto">
-  <div class="table-header">
+  <div class="table-header" style="flex-wrap:wrap;gap:12px">
     <span class="table-title">Recent Transactions</span>
-    <div style="display:flex;gap:10px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
+
+      <!-- Filter: College/Office -->
+      <select id="filter-college" class="filter-select">
+        <option value="">All Colleges/Offices</option>
+        {% for tx in transactions %}
+          <option value="{{ tx.office_college }}">{{ tx.office_college }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Filter: Accountable Officer -->
+      <select id="filter-officer" class="filter-select">
+        <option value="">All Officers</option>
+        {% for tx in transactions %}
+          <option value="{{ tx.borrower.get_full_name|default:tx.borrower.username }}">
+            {{ tx.borrower.get_full_name|default:tx.borrower.username }}
+          </option>
+        {% endfor %}
+      </select>
+
       <a href="{% url 'export_borrow_management' %}" class="btn btn-secondary btn-sm">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
@@ -65,12 +84,13 @@
     </div>
   </div>
 
-  <table id="transactions-table" style="min-width:1000px">
+  <table id="transactions-table" style="min-width:1100px">
     <thead>
       <tr>
         <th>Tx ID</th>
         <th>Borrower Name</th>
         <th>Borrower Type</th>
+        <th>Accountable Officer</th>
         <th>College/Office</th>
         <th>Item</th>
         <th>Device Serial #</th>
@@ -83,7 +103,9 @@
     </thead>
     <tbody id="transactions-tbody">
       {% for tx in transactions %}
-      <tr id="tx-row-{{ tx.id }}">
+      <tr id="tx-row-{{ tx.id }}"
+          data-college="{{ tx.office_college|default:'' }}"
+          data-officer="{{ tx.borrower.get_full_name|default:tx.borrower.username }}">
         <td><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
         <td style="font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
         <td>
@@ -92,13 +114,14 @@
           {% elif tx.borrow_request.borrower_type == 'employee' %}
             <span class="badge badge-purple">Employee</span>
           {% else %}
-            <span class="badge badge-gray">—</span>
+            <span style="color:var(--muted)">—</span>
           {% endif %}
         </td>
+        <td style="font-weight:600;color:var(--accent2)">{{ tx.borrower.get_full_name|default:tx.borrower.username }}</td>
         <td>{{ tx.office_college|default:"—" }}</td>
         <td>{{ tx.item.name }}</td>
         <td>
-          <code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+          <code style="background:var(--surface2);padding:4px 8px;border-radius:4px;font-size:12px;">
             {{ tx.serial_number|default:"—" }}
           </code>
         </td>
@@ -123,15 +146,44 @@
         </td>
       </tr>
       {% empty %}
-      <tr id="tx-empty-row"><td colspan="11" class="empty-state"><p>No transactions yet.</p></td></tr>
+      <tr id="tx-empty-row"><td colspan="12" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+
+  <!-- Active filters indicator -->
+  <div id="filter-status" style="padding:10px 20px;font-size:12px;color:var(--muted);display:none">
+    Showing <strong id="filter-count">0</strong> of <strong id="filter-total">0</strong> transactions
+    <button onclick="clearFilters()" style="margin-left:10px;background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;font-family:var(--font-mono)">× Clear filters</button>
+  </div>
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
+<style>
+.filter-select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  max-width: 160px;
+}
+.filter-select:focus { border-color: var(--accent); }
+.filter-select option { background: var(--surface2); }
+
+.badge-purple {
+  background: rgba(156,39,176,0.15);
+  color: #ce93d8;
+}
+</style>
+
 <script>
 (function () {
   // ── Returned-qty AJAX save (debounced) ────────────────────────────────────
@@ -169,16 +221,87 @@
             : (actionCell.querySelector('a') ? actionCell.innerHTML
                 : `<a href="/return/${txId}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${txId}">Return</a>`);
         }
-        // WS will refresh the inventory items table automatically
       })
       .catch(() => { input.style.opacity = '1'; });
   }
 
   const debouncedSave = debounce(saveReturnedQty, 600);
-
   document.addEventListener('input', e => {
     if (e.target.matches('.returned-qty-input')) debouncedSave(e.target);
   });
+
+  // ── Filter & search logic ─────────────────────────────────────────────────
+  let searchQuery    = '';
+  let filterCollege  = '';
+  let filterOfficer  = '';
+
+  function applyFilters() {
+    const rows   = document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]');
+    let visible  = 0;
+    const total  = rows.length;
+
+    rows.forEach(row => {
+      const text    = row.textContent.toLowerCase();
+      const college = (row.dataset.college || '').toLowerCase();
+      const officer = (row.dataset.officer || '').toLowerCase();
+
+      const matchSearch  = !searchQuery  || text.includes(searchQuery);
+      const matchCollege = !filterCollege || college === filterCollege.toLowerCase();
+      const matchOfficer = !filterOfficer || officer === filterOfficer.toLowerCase();
+
+      const show = matchSearch && matchCollege && matchOfficer;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    // Update status bar
+    const statusEl = document.getElementById('filter-status');
+    const hasFilter = searchQuery || filterCollege || filterOfficer;
+    statusEl.style.display = hasFilter ? '' : 'none';
+    document.getElementById('filter-count').textContent = visible;
+    document.getElementById('filter-total').textContent = total;
+  }
+
+  // Deduplicate <select> options
+  function dedupeSelect(sel) {
+    const seen = new Set();
+    seen.add(''); // keep blank
+    [...sel.options].forEach(opt => {
+      if (seen.has(opt.value)) {
+        opt.remove();
+      } else {
+        seen.add(opt.value);
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    dedupeSelect(document.getElementById('filter-college'));
+    dedupeSelect(document.getElementById('filter-officer'));
+
+    document.getElementById('transaction-search').addEventListener('input', e => {
+      searchQuery = e.target.value.toLowerCase().trim();
+      applyFilters();
+    });
+
+    document.getElementById('filter-college').addEventListener('change', e => {
+      filterCollege = e.target.value;
+      applyFilters();
+    });
+
+    document.getElementById('filter-officer').addEventListener('change', e => {
+      filterOfficer = e.target.value;
+      applyFilters();
+    });
+  });
+
+  window.clearFilters = function () {
+    searchQuery = ''; filterCollege = ''; filterOfficer = '';
+    document.getElementById('transaction-search').value = '';
+    document.getElementById('filter-college').value     = '';
+    document.getElementById('filter-officer').value     = '';
+    applyFilters();
+  };
 
   // ── Real-time WebSocket updates ───────────────────────────────────────────
   const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
@@ -187,8 +310,8 @@
     const tbody = document.getElementById('items-tbody');
     if (!tbody) return;
     tbody.innerHTML = items.map((item, i) => {
-      const pct  = item.quantity ? Math.round((item.available_quantity / item.quantity) * 100) : 0;
-      const cls  = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
+      const pct   = item.quantity ? Math.round((item.available_quantity / item.quantity) * 100) : 0;
+      const cls   = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
       const badge = item.available_quantity === 0
         ? '<span class="badge badge-red">Out of Stock</span>'
         : '<span class="badge badge-green">In Stock</span>';
@@ -208,17 +331,21 @@
     }).join('');
   }
 
-  // Track known tx IDs so we can flash new rows
   const knownTxIds = new Set(
     [...document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]')]
       .map(r => r.id.replace('tx-row-', ''))
   );
 
+  function borrowerTypeBadge(type) {
+    if (type === 'student')  return '<span class="badge badge-green">Student</span>';
+    if (type === 'employee') return '<span class="badge badge-purple">Employee</span>';
+    return '<span style="color:var(--muted)">—</span>';
+  }
+
   function renderTransactions(txs) {
     const tbody = document.getElementById('transactions-tbody');
     if (!tbody) return;
 
-    // Keep a map of currently focused inputs so we don't clobber them
     const focusedTxId = document.activeElement?.dataset?.txId;
 
     txs.forEach(tx => {
@@ -230,39 +357,31 @@
         ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
         : `<a href="/return/${tx.id}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${tx.id}">Return</a>`;
 
-      const borrowerTypeBadge = tx.borrower_type === 'student' 
-        ? '<span class="badge badge-green">Student</span>'
-        : tx.borrower_type === 'employee'
-        ? '<span class="badge badge-purple">Employee</span>'
-        : '<span class="badge badge-gray">—</span>';
-
       if (existing) {
-        // Update cells — but skip the qty input if user is currently editing it
+        // Update data-attributes for filtering
+        existing.dataset.college = tx.office_college;
+        existing.dataset.officer = tx.accountable_officer;
+
         const qtyCell = existing.querySelector('.returned-qty-input');
-        if (qtyCell && String(tx.id) !== focusedTxId) {
-          qtyCell.value = tx.returned_qty;
-        }
+        if (qtyCell && String(tx.id) !== focusedTxId) qtyCell.value = tx.returned_qty;
         const onCell = existing.querySelector('.returned-on-cell');
         if (onCell) onCell.textContent = tx.returned_at;
         const acCell = existing.querySelector('.return-action-cell');
         if (acCell) acCell.innerHTML = actionHtml;
-        
-        // Update serial number display
-        const serialCell = existing.querySelector('.serial-number-cell');
-        if (serialCell) {
-          serialCell.innerHTML = `<code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${tx.serial_number || '—'}</code>`;
-        }
       } else {
-        // New row — prepend to tbody
+        // New row
         const tr = document.createElement('tr');
         tr.id = 'tx-row-' + tx.id;
+        tr.dataset.college = tx.office_college;
+        tr.dataset.officer = tx.accountable_officer;
         tr.innerHTML = `
           <td><span class="badge badge-blue">${tx.tx_id}</span></td>
           <td style="font-weight:600">${tx.borrower_name}</td>
-          <td>${borrowerTypeBadge}</td>
+          <td>${borrowerTypeBadge(tx.borrower_type)}</td>
+          <td style="font-weight:600;color:var(--accent2)">${tx.accountable_officer}</td>
           <td>${tx.office_college}</td>
           <td>${tx.item_name}</td>
-          <td class="serial-number-cell"><code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${tx.serial_number || '—'}</code></td>
+          <td><code style="background:var(--surface2);padding:4px 8px;border-radius:4px;font-size:12px;">${tx.serial_number || '—'}</code></td>
           <td>${tx.qty_borrowed}</td>
           <td>
             <input type="number" class="form-control returned-qty-input"
@@ -276,15 +395,53 @@
           <td class="returned-on-cell" style="color:var(--muted);font-size:12px">${tx.returned_at}</td>
           <td class="return-action-cell">${actionHtml}</td>
         `;
-        // Remove "no transactions" placeholder if present
         const emptyRow = document.getElementById('tx-empty-row');
         if (emptyRow) emptyRow.remove();
         tbody.prepend(tr);
+
+        // Refresh filter dropdowns with new officer/college values
+        refreshFilterOptions();
+
         if (isNew) {
           tr.classList.add('row-new');
           setTimeout(() => tr.classList.remove('row-new'), 1600);
         }
       }
+    });
+
+    // Re-apply active filters after DOM update
+    applyFilters();
+  }
+
+  function refreshFilterOptions() {
+    const collegeSelect  = document.getElementById('filter-college');
+    const officerSelect  = document.getElementById('filter-officer');
+    const rows           = document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]');
+
+    const colleges = new Set(), officers = new Set();
+    rows.forEach(r => {
+      if (r.dataset.college) colleges.add(r.dataset.college);
+      if (r.dataset.officer) officers.add(r.dataset.officer);
+    });
+
+    const currentCollege = collegeSelect.value;
+    const currentOfficer = officerSelect.value;
+
+    // Rebuild options
+    collegeSelect.innerHTML = '<option value="">All Colleges/Offices</option>';
+    [...colleges].sort().forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      if (c === currentCollege) opt.selected = true;
+      collegeSelect.appendChild(opt);
+    });
+
+    officerSelect.innerHTML = '<option value="">All Officers</option>';
+    [...officers].sort().forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o; opt.textContent = o;
+      if (o === currentOfficer) opt.selected = true;
+      officerSelect.appendChild(opt);
     });
   }
 
@@ -292,7 +449,6 @@
     if (data.type !== 'borrow_management.update') return;
     renderItems(data.items);
     renderTransactions(data.transactions);
-    // Sync pending badge in sidebar
     window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
   }
 
@@ -300,33 +456,4 @@
   InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
 })();
 </script>
-
-<style>
-.badge-green {
-  background: rgba(0, 229, 160, 0.15);
-  color: #00e5a0;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge-purple {
-  background: rgba(156, 39, 176, 0.15);
-  color: #ce93d8;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge-gray {
-  background: rgba(128, 128, 128, 0.15);
-  color: #999;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-</style>
 {% endblock %}

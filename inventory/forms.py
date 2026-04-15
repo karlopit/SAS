@@ -127,34 +127,54 @@ class BorrowRequestForm(forms.ModelForm):
 
 
 class StaffBorrowForm(forms.ModelForm):
-    serial_number = forms.CharField(
-        max_length=100, 
-        required=True, 
-        label="Device Serial Number",
-        help_text="Enter the serial number of the device being borrowed"
+    # Dynamic field for multiple serial numbers
+    serial_numbers = forms.CharField(
+        required=True,
+        label="Device Serial Numbers",
+        help_text="Enter one serial number per line. You need to enter exactly the same number as the quantity requested.",
+        widget=forms.Textarea(attrs={
+            'rows': 4,
+            'placeholder': 'SN-001\nSN-002\nSN-003',
+            'class': 'form-control'
+        })
     )
     
     class Meta:
         model = Transaction
-        fields = ['item', 'quantity_borrowed', 'office_college', 'serial_number']
+        fields = ['item', 'quantity_borrowed', 'office_college']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['item'].queryset = Item.objects.filter(available_quantity__gt=0)
         self.fields['quantity_borrowed'].widget.attrs['min'] = 1
-        self.fields['serial_number'].widget.attrs['placeholder'] = 'e.g., SN-12345-67890'
     
-    def clean_serial_number(self):
-        serial_number = self.cleaned_data.get('serial_number')
-        if serial_number:
-            # Check if serial number already exists in active transactions
-            existing = Transaction.objects.filter(
-                serial_number=serial_number, 
-                status='borrowed'
-            ).exists()
-            if existing:
-                raise forms.ValidationError('This serial number is already borrowed and not yet returned.')
-        return serial_number
+    def clean_serial_numbers(self):
+        serial_numbers_text = self.cleaned_data.get('serial_numbers')
+        quantity = self.cleaned_data.get('quantity_borrowed')
+        
+        if not serial_numbers_text:
+            raise forms.ValidationError('Please enter serial numbers.')
+        
+        # Split by newline and strip whitespace
+        serials = [s.strip() for s in serial_numbers_text.split('\n') if s.strip()]
+        
+        if len(serials) != quantity:
+            raise forms.ValidationError(f'You entered {len(serials)} serial number(s), but requested quantity is {quantity}. Please enter exactly {quantity} serial number(s).')
+        
+        # Check for duplicate serial numbers
+        if len(serials) != len(set(serials)):
+            raise forms.ValidationError('Duplicate serial numbers found. Each serial number must be unique.')
+        
+        # Check if any serial number is already borrowed and not returned
+        existing_serials = Transaction.objects.filter(
+            serial_number__in=serials,
+            status='borrowed'
+        ).values_list('serial_number', flat=True)
+        
+        if existing_serials:
+            raise forms.ValidationError(f'The following serial numbers are already borrowed: {", ".join(existing_serials)}')
+        
+        return serials
 
 
 class ItemForm(forms.ModelForm):
