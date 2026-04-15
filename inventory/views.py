@@ -42,8 +42,12 @@ def welcome(request):
 
     if request.method == 'POST' and request.POST.get('action') == 'borrow_request':
         borrow_form = BorrowRequestForm(request.POST)
+        
+        # Debug: Print POST data
+        print("POST data:", request.POST)
+        
         if borrow_form.is_valid():
-            req   = borrow_form.save(commit=False)
+            req = borrow_form.save(commit=False)
             tx_id = request.POST.get('transaction_id', str(random.randint(10000, 99999)))
             while BorrowRequest.objects.filter(transaction_id=tx_id).exists():
                 tx_id = str(random.randint(10000, 99999))
@@ -58,6 +62,10 @@ def welcome(request):
             b.broadcast_dashboard()
 
             return redirect('welcome')
+        else:
+            # Debug: Print form errors
+            print("Form errors:", borrow_form.errors)
+            # Pass the form with errors back to template
 
     return render(request, 'inventory/welcome.html', {
         'borrow_form':     borrow_form,
@@ -318,11 +326,11 @@ def staff_confirm_borrow(request, request_id):
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
-            transaction               = form.save(commit=False)
-            transaction.borrower      = request.user
+            transaction = form.save(commit=False)
+            transaction.borrower = request.user
             transaction.borrow_request = borrow_req
             transaction.office_college = borrow_req.office_college
-            transaction.status        = 'borrowed'
+            transaction.status = 'borrowed'
             transaction.item.available_quantity -= transaction.quantity_borrowed
             transaction.item.save()
             transaction.save()
@@ -335,11 +343,11 @@ def staff_confirm_borrow(request, request_id):
     else:
         form = StaffBorrowForm(initial={
             'quantity_borrowed': borrow_req.quantity,
-            'office_college':    borrow_req.office_college,
+            'office_college': borrow_req.office_college,
         })
 
     return render(request, 'inventory/staff_confirm_borrow.html', {
-        'form':       form,
+        'form': form,
         'borrow_req': borrow_req,
     })
 

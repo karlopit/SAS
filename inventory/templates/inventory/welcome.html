@@ -117,6 +117,68 @@
         opacity: 1;
       }
     }
+
+    /* Radio Group Styles */
+    .radio-group {
+      display: flex;
+      gap: 20px;
+      margin-top: 8px;
+    }
+    
+    .radio-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    
+    .radio-label input[type="radio"] {
+      width: auto;
+      margin: 0;
+      cursor: pointer;
+    }
+    
+    .radio-label span {
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+    
+    .form-hint {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    
+    /* Dynamic Form Sections */
+    .dynamic-form-section {
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    
+    .dynamic-form-section h4 {
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    
+    /* Name fields row layout */
+    .name-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.8fr;
+      gap: 10px;
+    }
+    
+    @media (max-width: 480px) {
+      .name-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -143,54 +205,184 @@
       </p>
 
       {% if borrow_form.errors %}
-        <div class="alert alert-error">Please fix the errors below.</div>
+        <div class="alert alert-error">
+          Please fix the errors below:
+          <ul>
+            {% for field, errors in borrow_form.errors.items %}
+              {% for error in errors %}
+                <li>{{ field }}: {{ error }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
       {% endif %}
 
       <form method="post" id="borrower-form">
         {% csrf_token %}
         <input type="hidden" name="action" value="borrow_request"/>
 
+        <!-- Borrower Type Selection -->
         <div class="form-group">
-          <label class="form-label">Your Name</label>
-          <input type="text" name="borrower_name" class="form-control" placeholder="Full name" required
-            value="{{ borrow_form.borrower_name.value|default:'' }}"/>
-          {% if borrow_form.borrower_name.errors %}<span class="form-error">{{ borrow_form.borrower_name.errors.0 }}</span>{% endif %}
+          <label class="form-label">Borrower Type <span style="color:red;">*</span></label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="borrower_role" value="student" 
+                     {% if borrow_form.borrower_role.value == 'student' %}checked{% endif %}
+                     onchange="toggleBorrowerForms()" required>
+              <span>Student</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="borrower_role" value="employee"
+                     {% if borrow_form.borrower_role.value == 'employee' %}checked{% endif %}
+                     onchange="toggleBorrowerForms()" required>
+              <span>Employee</span>
+            </label>
+          </div>
+          {% if borrow_form.borrower_role.errors %}
+            <span class="form-error">{{ borrow_form.borrower_role.errors.0 }}</span>
+          {% endif %}
         </div>
 
-        <div class="form-group">
-          <label class="form-label">College / Office</label>
-          <input type="text" name="office_college" class="form-control" placeholder="e.g. CCS, Dean's Office" required
-            value="{{ borrow_form.office_college.value|default:'' }}"/>
-          {% if borrow_form.office_college.errors %}<span class="form-error">{{ borrow_form.office_college.errors.0 }}</span>{% endif %}
+        <!-- Student Dynamic Form -->
+        <div id="student-form" style="display: none;" class="dynamic-form-section">
+          <h4>📚 Student Information</h4>
+          
+          <div class="form-group">
+            <label class="form-label">Student Name <span style="color:red;">*</span></label>
+            <div class="name-row">
+              <input type="text" name="student_last_name" 
+                     class="form-control" placeholder="Last Name"
+                     value="{{ borrow_form.student_last_name.value|default:'' }}">
+              <input type="text" name="student_first_name" 
+                     class="form-control" placeholder="First Name"
+                     value="{{ borrow_form.student_first_name.value|default:'' }}">
+              <input type="text" name="student_middle_initial" 
+                     class="form-control" placeholder="M.I."
+                     value="{{ borrow_form.student_middle_initial.value|default:'' }}" maxlength="2">
+            </div>
+            {% if borrow_form.student_last_name.errors %}
+              <span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Year & Section <span style="color:red;">*</span></label>
+            <input type="text" name="year_section" 
+                   class="form-control" placeholder="e.g., 3rd Year - Section A"
+                   value="{{ borrow_form.year_section.value|default:'' }}">
+            {% if borrow_form.year_section.errors %}
+              <span class="form-error">{{ borrow_form.year_section.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Student ID <span style="color:red;">*</span></label>
+            <input type="text" name="student_id" 
+                   class="form-control" placeholder="Student ID Number"
+                   value="{{ borrow_form.student_id.value|default:'' }}">
+            {% if borrow_form.student_id.errors %}
+              <span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">College <span style="color:red;">*</span></label>
+            <input type="text" name="college" 
+                   class="form-control" placeholder="College/Department"
+                   value="{{ borrow_form.college.value|default:'' }}">
+            {% if borrow_form.college.errors %}
+              <span class="form-error">{{ borrow_form.college.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Academic Year <span style="color:red;">*</span></label>
+            <input type="text" name="academic_year" 
+                   class="form-control" placeholder="e.g., 2024-2025"
+                   value="{{ borrow_form.academic_year.value|default:'' }}">
+            {% if borrow_form.academic_year.errors %}
+              <span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>
+            {% endif %}
+          </div>
         </div>
 
+        <!-- Employee Dynamic Form -->
+        <div id="employee-form" style="display: none;" class="dynamic-form-section">
+          <h4>💼 Employee Information</h4>
+          
+          <div class="form-group">
+            <label class="form-label">Employee Name <span style="color:red;">*</span></label>
+            <div class="name-row">
+              <input type="text" name="employee_last_name" 
+                     class="form-control" placeholder="Last Name"
+                     value="{{ borrow_form.employee_last_name.value|default:'' }}">
+              <input type="text" name="employee_first_name" 
+                     class="form-control" placeholder="First Name"
+                     value="{{ borrow_form.employee_first_name.value|default:'' }}">
+              <input type="text" name="employee_middle_initial" 
+                     class="form-control" placeholder="M.I."
+                     value="{{ borrow_form.employee_middle_initial.value|default:'' }}" maxlength="2">
+            </div>
+            {% if borrow_form.employee_last_name.errors %}
+              <span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Employee ID <span style="color:red;">*</span></label>
+            <input type="text" name="employee_id" 
+                   class="form-control" placeholder="Employee ID Number"
+                   value="{{ borrow_form.employee_id.value|default:'' }}">
+            {% if borrow_form.employee_id.errors %}
+              <span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>
+            {% endif %}
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Office <span style="color:red;">*</span></label>
+            <input type="text" name="office" 
+                   class="form-control" placeholder="Office/Department"
+                   value="{{ borrow_form.office.value|default:'' }}">
+            {% if borrow_form.office.errors %}
+              <span class="form-error">{{ borrow_form.office.errors.0 }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Common Fields -->
         <div class="form-group">
-          <label class="form-label">Item to Borrow</label>
-          <select name="item" class="form-control" required>
+          <label class="form-label">Item to Borrow <span style="color:red;">*</span></label>
+          <select name="item" id="item-select" class="form-control" required>
             <option value="">— Select an item —</option>
             {% for item in available_items %}
-              <option value="{{ item.id }}"
+              <option value="{{ item.id }}" 
                 {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>
                 {{ item.name }}
               </option>
             {% endfor %}
           </select>
-          {% if borrow_form.item.errors %}<span class="form-error">{{ borrow_form.item.errors.0 }}</span>{% endif %}
+          {% if borrow_form.item.errors %}
+            <span class="form-error">{{ borrow_form.item.errors.0 }}</span>
+          {% endif %}
         </div>
 
         <div class="form-group">
-          <label class="form-label">Quantity Needed</label>
-          <input type="number" name="quantity" class="form-control" placeholder="1" min="1" required
+          <label class="form-label">Quantity Needed <span style="color:red;">*</span></label>
+          <input type="number" name="quantity" id="quantity-input" class="form-control" placeholder="1" min="1" required
             value="{{ borrow_form.quantity.value|default:'' }}"/>
-          {% if borrow_form.quantity.errors %}<span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>{% endif %}
+          {% if borrow_form.quantity.errors %}
+            <span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>
+          {% endif %}
         </div>
 
-        <div class="form-group" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-          <div class="form-label" style="margin-bottom:4px">Transaction ID</div>
-          <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">
-            #{{ generated_tx_id }}
+        <div class="form-group">
+          <label class="form-label">Transaction ID</label>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">
+              #{{ generated_tx_id }}
+            </div>
+            <input type="hidden" name="transaction_id" value="{{ generated_tx_id }}"/>
           </div>
-          <input type="hidden" name="transaction_id" value="{{ generated_tx_id }}"/>
         </div>
 
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
@@ -229,6 +421,7 @@
 {% endif %}
 
 <script>
+// Role selection handler
 function handleRoleChange(val) {
   if (val === 'admin_staff') {
     window.location.href = "{% url 'login' %}";
@@ -237,15 +430,84 @@ function handleRoleChange(val) {
   document.getElementById('borrower-section').style.display = val === 'borrower' ? 'block' : 'none';
 }
 
+// Toggle between student and employee forms
+function toggleBorrowerForms() {
+  const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
+  const studentForm = document.getElementById('student-form');
+  const employeeForm = document.getElementById('employee-form');
+  
+  if (selectedRole) {
+    if (selectedRole.value === 'student') {
+      studentForm.style.display = 'block';
+      employeeForm.style.display = 'none';
+      
+      // Enable student fields
+      const studentFields = ['student_last_name', 'student_first_name', 'student_middle_initial', 
+                            'year_section', 'student_id', 'college', 'academic_year'];
+      studentFields.forEach(field => {
+        const element = document.querySelector(`[name="${field}"]`);
+        if (element) element.disabled = false;
+      });
+      
+      // Disable employee fields
+      const employeeFields = ['employee_last_name', 'employee_first_name', 'employee_middle_initial', 
+                             'employee_id', 'office'];
+      employeeFields.forEach(field => {
+        const element = document.querySelector(`[name="${field}"]`);
+        if (element) element.disabled = true;
+      });
+    } else {
+      studentForm.style.display = 'none';
+      employeeForm.style.display = 'block';
+      
+      // Disable student fields
+      const studentFields = ['student_last_name', 'student_first_name', 'student_middle_initial',
+                            'year_section', 'student_id', 'college', 'academic_year'];
+      studentFields.forEach(field => {
+        const element = document.querySelector(`[name="${field}"]`);
+        if (element) element.disabled = true;
+      });
+      
+      // Enable employee fields
+      const employeeFields = ['employee_last_name', 'employee_first_name', 'employee_middle_initial',
+                             'employee_id', 'office'];
+      employeeFields.forEach(field => {
+        const element = document.querySelector(`[name="${field}"]`);
+        if (element) element.disabled = false;
+      });
+    }
+  }
+}
+
+// Close modal function
 function closeSuccessModal() {
   const modal = document.getElementById('successModal');
   if (modal) {
-    modal.style.removeProperty('display');
     modal.style.display = 'none';
   }
-  // Optional: Clear the URL parameter or reload without the success flag
-  // window.history.replaceState({}, document.title, window.location.pathname);
 }
+
+// Initialize everything on page load
+document.addEventListener('DOMContentLoaded', function() {
+  // Hide both dynamic forms initially
+  const studentForm = document.getElementById('student-form');
+  const employeeForm = document.getElementById('employee-form');
+  
+  if (studentForm) studentForm.style.display = 'none';
+  if (employeeForm) employeeForm.style.display = 'none';
+  
+  // Check if a role is selected and show appropriate form
+  const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
+  if (selectedRole) {
+    toggleBorrowerForms();
+  }
+});
+
+// Show borrower section if there are form errors or success
+{% if borrow_form.errors or borrow_success %}
+  document.getElementById('role-select').value = 'borrower';
+  document.getElementById('borrower-section').style.display = 'block';
+{% endif %}
 
 // Close modal when clicking outside
 document.addEventListener('click', function(e) {
@@ -254,11 +516,6 @@ document.addEventListener('click', function(e) {
     closeSuccessModal();
   }
 });
-
-{% if borrow_form.errors or borrow_success %}
-  document.getElementById('role-select').value = 'borrower';
-  document.getElementById('borrower-section').style.display = 'block';
-{% endif %}
 </script>
 <script src="{% static 'inventory/js/script.js' %}"></script>
 </body>

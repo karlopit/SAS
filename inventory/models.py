@@ -29,13 +29,29 @@ class BorrowRequest(models.Model):
         ('accepted', 'Accepted'),
         ('declined', 'Declined'),
     ]
+    BORROWER_TYPE_CHOICES = [
+        ('student', 'Student'),
+        ('employee', 'Employee'),
+    ]
+    
     transaction_id = models.CharField(max_length=5, unique=True)
     borrower_name = models.CharField(max_length=255)
-    office_college = models.CharField(max_length=255)
+    borrower_type = models.CharField(max_length=20, choices=BORROWER_TYPE_CHOICES, null=True, blank=True)
+    office_college = models.CharField(max_length=255, blank=True, null=True)
     item = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True, related_name='borrow_requests')
     quantity = models.PositiveIntegerField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Student-specific fields
+    student_id = models.CharField(max_length=50, null=True, blank=True)
+    year_section = models.CharField(max_length=100, null=True, blank=True)
+    college = models.CharField(max_length=200, null=True, blank=True)
+    academic_year = models.CharField(max_length=50, null=True, blank=True)
+    
+    # Employee-specific fields
+    employee_id = models.CharField(max_length=50, null=True, blank=True)
+    office = models.CharField(max_length=200, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.transaction_id:
@@ -57,6 +73,7 @@ class Transaction(models.Model):
     office_college = models.CharField(max_length=255)
     quantity_borrowed = models.PositiveIntegerField()
     returned_qty = models.PositiveIntegerField(default=0)
+    serial_number = models.CharField(max_length=100, blank=True, null=True, help_text="Device serial number")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='borrowed')
     borrowed_at = models.DateTimeField(auto_now_add=True)
     returned_at = models.DateTimeField(null=True, blank=True)
@@ -71,7 +88,7 @@ class Transaction(models.Model):
 
 
 class DeviceMonitor(models.Model):
-    display_id          = models.CharField(max_length=100, blank=True)  # staff-entered ID
+    display_id          = models.CharField(max_length=100, blank=True)
     office_college      = models.CharField(max_length=255, blank=True)
     accountable_person  = models.CharField(max_length=255, blank=True)
     device              = models.CharField(max_length=255, default='Tablet')

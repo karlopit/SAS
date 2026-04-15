@@ -78,9 +78,11 @@ def _build_borrow_management_payload():
             'id':              tx.id,
             'tx_id':           f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
             'borrower_name':   tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
+            'borrower_type':   tx.borrow_request.borrower_type if tx.borrow_request else None,
             'office_college':  tx.office_college or '—',
             'item_name':       tx.item.name,
             'item_serial':     tx.item.serial or '—',
+            'serial_number':   tx.serial_number or '—',  # Add this line
             'qty_borrowed':    tx.quantity_borrowed,
             'returned_qty':    tx.returned_qty,
             'borrowed_at':     tx.borrowed_at.strftime('%b %d, %Y'),

@@ -23,23 +23,76 @@
         <span class="badge badge-blue" style="font-size:14px">#{{ borrow_req.transaction_id }}</span>
       </div>
       <div>
-        <div class="form-label" style="margin-bottom:4px">Borrower Name</div>
+        <div class="form-label" style="margin-bottom:4px">Borrower Type</div>
+        <div>
+          <span class="badge {% if borrow_req.borrower_type == 'student' %}badge-green{% else %}badge-purple{% endif %}" style="font-size:14px">
+            {{ borrow_req.get_borrower_type_display }}
+          </span>
+        </div>
+      </div>
+      
+      {% if borrow_req.borrower_type == 'student' %}
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Student Name</div>
         <div style="font-weight:600">{{ borrow_req.borrower_name }}</div>
       </div>
       <div>
-        <div class="form-label" style="margin-bottom:4px">College / Office</div>
+        <div class="form-label" style="margin-bottom:4px">Student ID</div>
+        <div>{{ borrow_req.student_id }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Year & Section</div>
+        <div>{{ borrow_req.year_section }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">College</div>
+        <div>{{ borrow_req.college }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Academic Year</div>
+        <div>{{ borrow_req.academic_year }}</div>
+      </div>
+      {% else %}
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Employee Name</div>
+        <div style="font-weight:600">{{ borrow_req.borrower_name }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Employee ID</div>
+        <div>{{ borrow_req.employee_id }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Office</div>
+        <div>{{ borrow_req.office }}</div>
+      </div>
+      {% endif %}
+      
+      <div>
+        <div class="form-label" style="margin-bottom:4px">College / Office (Location)</div>
         <div>{{ borrow_req.office_college }}</div>
       </div>
       <div>
         <div class="form-label" style="margin-bottom:4px">Requested Quantity</div>
         <div>{{ borrow_req.quantity }}</div>
       </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Item Requested</div>
+        <div>{{ borrow_req.item.name|default:"Not specified" }}</div>
+      </div>
+      <div>
+        <div class="form-label" style="margin-bottom:4px">Request Date</div>
+        <div>{{ borrow_req.created_at|date:"F j, Y g:i A" }}</div>
+      </div>
     </div>
   </div>
 
   {% if form.errors %}
     <div class="alert alert-error">
-      {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+      {% for field, errors in form.errors.items %}
+        {% for error in errors %}
+          <div>{{ field }}: {{ error }}</div>
+        {% endfor %}
+      {% endfor %}
     </div>
   {% endif %}
 
@@ -66,11 +119,23 @@
         name="{{ form.quantity_borrowed.html_name }}"
         class="form-control" min="1"
         value="{{ form.quantity_borrowed.value|default:borrow_req.quantity }}"/>
+      <span id="qty-hint" class="form-hint">Maximum available will be shown when item is selected.</span>
       {% if form.quantity_borrowed.errors %}<span class="form-error">{{ form.quantity_borrowed.errors.0 }}</span>{% endif %}
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.office_college.id_for_label }}">College / Office</label>
+      <label class="form-label" for="{{ form.serial_number.id_for_label }}">Device Serial Number</label>
+      <input type="text" id="{{ form.serial_number.id_for_label }}"
+        name="{{ form.serial_number.html_name }}"
+        class="form-control"
+        placeholder="{{ form.serial_number.field.widget.attrs.placeholder }}"
+        value="{{ form.serial_number.value|default:'' }}"/>
+      <span class="form-hint">{{ form.serial_number.field.help_text }}</span>
+      {% if form.serial_number.errors %}<span class="form-error">{{ form.serial_number.errors.0 }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.office_college.id_for_label }}">College / Office (Location)</label>
       <input type="text" id="{{ form.office_college.id_for_label }}"
         name="{{ form.office_college.html_name }}"
         class="form-control"
@@ -89,4 +154,44 @@
     </div>
   </form>
 </div>
-{% endblock %}
+
+<script>
+// Update quantity hint when item changes
+document.getElementById('{{ form.item.id_for_label }}').addEventListener('change', function() {
+  const selectedOption = this.options[this.selectedIndex];
+  const maxQty = selectedOption.getAttribute('data-available');
+  const quantityInput = document.getElementById('{{ form.quantity_borrowed.id_for_label }}');
+  const hintSpan = document.getElementById('qty-hint');
+  
+  if (maxQty && maxQty !== 'None') {
+    quantityInput.max = maxQty;
+    hintSpan.textContent = `Maximum available: ${maxQty}`;
+    if (quantityInput.value > maxQty) {
+      quantityInput.value = maxQty;
+    }
+  } else {
+    hintSpan.textContent = 'Select an item to see availability.';
+  }
+});
+</script>
+
+<style>
+.badge-green {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-purple {
+  background: rgba(156, 39, 176, 0.15);
+  color: #ce93d8;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+</style>
+{% endblock %}x

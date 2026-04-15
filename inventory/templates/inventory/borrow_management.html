@@ -65,12 +65,20 @@
     </div>
   </div>
 
-  <table id="transactions-table" style="min-width:900px">
+  <table id="transactions-table" style="min-width:1000px">
     <thead>
       <tr>
-        <th>Tx ID</th><th>Borrower Name</th><th>College/Office</th>
-        <th>Item</th><th>Serial</th><th>Qty Borrowed</th>
-        <th>Returned Qty</th><th>Borrowed On</th><th>Returned On</th><th>Action</th>
+        <th>Tx ID</th>
+        <th>Borrower Name</th>
+        <th>Borrower Type</th>
+        <th>College/Office</th>
+        <th>Item</th>
+        <th>Device Serial #</th>
+        <th>Qty Borrowed</th>
+        <th>Returned Qty</th>
+        <th>Borrowed On</th>
+        <th>Returned On</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody id="transactions-tbody">
@@ -78,9 +86,22 @@
       <tr id="tx-row-{{ tx.id }}">
         <td><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
         <td style="font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
+        <td>
+          {% if tx.borrow_request.borrower_type == 'student' %}
+            <span class="badge badge-green">Student</span>
+          {% elif tx.borrow_request.borrower_type == 'employee' %}
+            <span class="badge badge-purple">Employee</span>
+          {% else %}
+            <span class="badge badge-gray">—</span>
+          {% endif %}
+        </td>
         <td>{{ tx.office_college|default:"—" }}</td>
         <td>{{ tx.item.name }}</td>
-        <td style="color:var(--muted);font-size:12px">{{ tx.item.serial|default:"—" }}</td>
+        <td>
+          <code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+            {{ tx.serial_number|default:"—" }}
+          </code>
+        </td>
         <td>{{ tx.quantity_borrowed }}</td>
         <td>
           <input type="number" class="form-control returned-qty-input"
@@ -102,7 +123,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr id="tx-empty-row"><td colspan="10" class="empty-state"><p>No transactions yet.</p></td></tr>
+      <tr id="tx-empty-row"><td colspan="11" class="empty-state"><p>No transactions yet.</p></td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -209,6 +230,12 @@
         ? '<span style="color:var(--muted);font-size:12px">✓ Done</span>'
         : `<a href="/return/${tx.id}/" class="btn btn-secondary btn-sm return-button" data-tx-id="${tx.id}">Return</a>`;
 
+      const borrowerTypeBadge = tx.borrower_type === 'student' 
+        ? '<span class="badge badge-green">Student</span>'
+        : tx.borrower_type === 'employee'
+        ? '<span class="badge badge-purple">Employee</span>'
+        : '<span class="badge badge-gray">—</span>';
+
       if (existing) {
         // Update cells — but skip the qty input if user is currently editing it
         const qtyCell = existing.querySelector('.returned-qty-input');
@@ -219,6 +246,12 @@
         if (onCell) onCell.textContent = tx.returned_at;
         const acCell = existing.querySelector('.return-action-cell');
         if (acCell) acCell.innerHTML = actionHtml;
+        
+        // Update serial number display
+        const serialCell = existing.querySelector('.serial-number-cell');
+        if (serialCell) {
+          serialCell.innerHTML = `<code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${tx.serial_number || '—'}</code>`;
+        }
       } else {
         // New row — prepend to tbody
         const tr = document.createElement('tr');
@@ -226,9 +259,10 @@
         tr.innerHTML = `
           <td><span class="badge badge-blue">${tx.tx_id}</span></td>
           <td style="font-weight:600">${tx.borrower_name}</td>
+          <td>${borrowerTypeBadge}</td>
           <td>${tx.office_college}</td>
           <td>${tx.item_name}</td>
-          <td style="color:var(--muted);font-size:12px">${tx.item_serial}</td>
+          <td class="serial-number-cell"><code style="background: var(--surface2); padding: 4px 8px; border-radius: 4px; font-size: 12px;">${tx.serial_number || '—'}</code></td>
           <td>${tx.qty_borrowed}</td>
           <td>
             <input type="number" class="form-control returned-qty-input"
@@ -266,4 +300,33 @@
   InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
 })();
 </script>
+
+<style>
+.badge-green {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-purple {
+  background: rgba(156, 39, 176, 0.15);
+  color: #ce93d8;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-gray {
+  background: rgba(128, 128, 128, 0.15);
+  color: #999;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+</style>
 {% endblock %}
