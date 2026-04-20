@@ -2,8 +2,127 @@
 {% block title %}Manage Users — InvSys{% endblock %}
 {% block page_title %}Manage Users{% endblock %}
 
+{% block topbar_actions %}
+  <button class="btn btn-primary" onclick="openAddUserModal()">
+    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+    </svg>
+    Add User
+  </button>
+{% endblock %}
+
 {% block content %}
 
+<!-- ══════════════════════════════════════════════════════════
+     ADD USER MODAL
+══════════════════════════════════════════════════════════ -->
+<div id="addUserModal" class="au-overlay" style="display:none" onclick="closeAddUserModal(event)">
+  <div class="au-box">
+
+    <div class="au-header">
+      <div>
+        <h3 class="au-title">Add New User</h3>
+        <p class="au-subtitle">Create a staff or admin account</p>
+      </div>
+      <button class="au-close" onclick="closeAddUserModal()">&times;</button>
+    </div>
+
+    <form method="post" id="add-user-form">
+      {% csrf_token %}
+      <input type="hidden" name="_action" value="add_user"/>
+
+      <div class="au-body">
+
+        {% if add_errors %}
+          <div class="alert alert-error" style="margin-bottom:16px">
+            {% for field, errs in add_errors.items %}
+              {% for e in errs %}
+                <div>{% if field != '__all__' %}<strong>{{ field }}:</strong> {% endif %}{{ e }}</div>
+              {% endfor %}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <!-- Username -->
+        <div class="form-group">
+          <label class="form-label">Username <span style="color:var(--danger)">*</span></label>
+          <input type="text" name="username" class="form-control"
+                 placeholder="e.g. jsmith"
+                 value="{{ add_form.username.value|default:'' }}" required/>
+        </div>
+
+        <!-- Name row -->
+        <div class="form-group">
+          <label class="form-label">Full Name <span style="color:var(--danger)">*</span></label>
+          <div class="au-name-row">
+            <div>
+              <input type="text" name="first_name" class="form-control"
+                     placeholder="First Name"
+                     value="{{ add_form.first_name.value|default:'' }}" required/>
+            </div>
+            <div style="max-width:90px">
+              <input type="text" name="middle_initial" class="form-control"
+                     placeholder="M.I."
+                     value="{{ add_form.middle_initial.value|default:'' }}"
+                     maxlength="5"/>
+            </div>
+            <div>
+              <input type="text" name="last_name" class="form-control"
+                     placeholder="Last Name"
+                     value="{{ add_form.last_name.value|default:'' }}" required/>
+            </div>
+          </div>
+          <span class="form-hint">Name will display as: First MI. Last</span>
+        </div>
+
+        <!-- Role -->
+        <div class="form-group">
+          <label class="form-label">Role <span style="color:var(--danger)">*</span></label>
+          <select name="role" class="form-control" required>
+            <option value="staff"
+              {% if add_form.role.value == 'staff' or not add_form.role.value %}selected{% endif %}>
+              Staff
+            </option>
+            <option value="admin"
+              {% if add_form.role.value == 'admin' %}selected{% endif %}>
+              Admin
+            </option>
+          </select>
+        </div>
+
+        <!-- Password -->
+        <div class="au-pw-row">
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Password <span style="color:var(--danger)">*</span></label>
+            <input type="password" name="password" class="form-control"
+                   placeholder="Min. 6 characters" required minlength="6"/>
+          </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">Confirm Password <span style="color:var(--danger)">*</span></label>
+            <input type="password" name="confirm_password" class="form-control"
+                   placeholder="Repeat password" required/>
+          </div>
+        </div>
+
+      </div><!-- /au-body -->
+
+      <div class="au-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAddUserModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          Create User
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     USER LIST TABLE
+══════════════════════════════════════════════════════════ -->
 {% if messages %}
   {% for message in messages %}
     <div class="alert alert-success" style="margin-bottom:16px">{{ message }}</div>
@@ -27,6 +146,7 @@
       <tr>
         <th>#</th>
         <th>Username</th>
+        <th>Display Name</th>
         <th>Email</th>
         <th>Role</th>
         <th>Date Joined</th>
@@ -38,7 +158,8 @@
       {% for u in users %}
       <tr>
         <td style="color:var(--muted)">{{ forloop.counter }}</td>
-        <td style="font-weight:600">{{ u.username }}</td>
+        <td style="font-weight:600;font-family:var(--font-mono)">{{ u.username }}</td>
+        <td style="font-weight:600">{{ u.get_full_name }}</td>
         <td style="color:var(--muted)">{{ u.email|default:"—" }}</td>
         <td>
           <span class="badge {% if u.role == 'admin' %}badge-blue{% else %}badge-yellow{% endif %}">
@@ -69,4 +190,153 @@
   </div>
   {% endif %}
 </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ══════════════════════════════════════════════════════════
+   ADD USER MODAL
+══════════════════════════════════════════════════════════ */
+.au-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+  animation: auFadeIn 0.2s ease;
+}
+
+@keyframes auFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.au-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  animation: auSlideIn 0.25s ease;
+  overflow: hidden;
+}
+
+@keyframes auSlideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.au-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.au-title {
+  font-family: var(--font-head);
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.au-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.au-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+  padding: 0;
+  transition: color 0.2s;
+}
+.au-close:hover { color: var(--text); }
+
+.au-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.au-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Name row — three columns */
+.au-name-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 1fr;
+  gap: 10px;
+}
+
+/* Password row — side by side */
+.au-pw-row {
+  display: flex;
+  gap: 14px;
+}
+
+@media (max-width: 480px) {
+  .au-name-row { grid-template-columns: 1fr; }
+  .au-pw-row   { flex-direction: column; }
+}
+</style>
+
+<script>
+function openAddUserModal() {
+  document.getElementById('addUserModal').style.display = 'flex';
+}
+
+function closeAddUserModal(e) {
+  if (e && e.target !== document.getElementById('addUserModal')) return;
+  document.getElementById('addUserModal').style.display = 'none';
+}
+
+// Re-open modal automatically if there were server-side validation errors
+{% if show_add_modal %}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('addUserModal').style.display = 'flex';
+});
+{% endif %}
+
+// Client-side password match check before submit
+document.getElementById('add-user-form').addEventListener('submit', function(e) {
+  const pw  = this.querySelector('[name="password"]').value;
+  const cpw = this.querySelector('[name="confirm_password"]').value;
+  if (pw !== cpw) {
+    e.preventDefault();
+    // Show inline error
+    let err = this.querySelector('.pw-match-error');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'form-error pw-match-error';
+      err.style.marginTop = '6px';
+      this.querySelector('[name="confirm_password"]').after(err);
+    }
+    err.textContent = 'Passwords do not match.';
+    this.querySelector('[name="confirm_password"]').focus();
+  }
+});
+</script>
 {% endblock %}

@@ -25,15 +25,26 @@
     <div class="form-group">
       <label class="form-label">Username</label>
       <input type="text" name="username" class="form-control"
-        value="{{ form.username.value|default:target.username }}"/>
-      {% if form.username.errors %}<span class="form-error">{{ form.username.errors.0 }}</span>{% endif %}
+        value="{{ target.username }}"/>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Full Name</label>
+      <div style="display:grid;grid-template-columns:1fr 90px 1fr;gap:10px">
+        <input type="text" name="first_name" class="form-control"
+               placeholder="First Name" value="{{ target.first_name }}"/>
+        <input type="text" name="middle_initial" class="form-control"
+               placeholder="M.I." value="{{ target.middle_initial }}" maxlength="5"/>
+        <input type="text" name="last_name" class="form-control"
+               placeholder="Last Name" value="{{ target.last_name }}"/>
+      </div>
+      <span class="form-hint">Displays as: First MI. Last</span>
     </div>
 
     <div class="form-group">
       <label class="form-label">Email</label>
       <input type="email" name="email" class="form-control"
-        value="{{ form.email.value|default:target.email }}"/>
-      {% if form.email.errors %}<span class="form-error">{{ form.email.errors.0 }}</span>{% endif %}
+        value="{{ target.email }}"/>
     </div>
 
     <div class="form-group">
