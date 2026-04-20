@@ -16,7 +16,7 @@
     <select id="dm-filter-college" class="filter-select" style="max-width:170px">
       <option value="">All Colleges/Offices</option>
       {% for row in rows %}
-        {% if row.office_college and row.office_college not in seen_colleges %}
+        {% if row.office_college %}
           <option value="{{ row.office_college }}">{{ row.office_college }}</option>
         {% endif %}
       {% endfor %}
@@ -24,7 +24,7 @@
     <select id="dm-filter-person" class="filter-select" style="max-width:180px">
       <option value="">All Accountable Persons</option>
       {% for row in rows %}
-        {% if row.accountable_person and row.accountable_person not in seen_persons %}
+        {% if row.accountable_person %}
           <option value="{{ row.accountable_person }}">{{ row.accountable_person }}</option>
         {% endif %}
       {% endfor %}
@@ -37,13 +37,18 @@
     <select id="dm-filter-officer" class="filter-select" style="max-width:180px">
       <option value="">All Accountable Officers</option>
       {% for row in rows %}
-        {% if row.accountable_officer and row.accountable_officer not in seen_officers %}
+        {% if row.accountable_officer %}
           <option value="{{ row.accountable_officer }}">{{ row.accountable_officer }}</option>
         {% endif %}
       {% endfor %}
     </select>
+    <select id="dm-filter-release" class="filter-select" style="max-width:160px">
+      <option value="">All Release Statuses</option>
+      <option value="Released">Released</option>
+      <option value="Returned">Returned</option>
+    </select>
     <select id="dm-filter-status" class="filter-select" style="max-width:170px">
-      <option value="">All Statuses</option>
+      <option value="">All Device Statuses</option>
       <option value="serviceable">Serviceable</option>
       <option value="non_serviceable">Non-Serviceable</option>
       <option value="sealed">Sealed</option>
@@ -77,26 +82,32 @@
     </div>
 
     <div style="overflow-x:auto">
-      <table id="dm-table" style="width:100%;margin:0 auto;min-width:1500px">
+      <table id="dm-table" style="width:100%;margin:0 auto;min-width:2200px">
         <thead>
           <tr>
-            <th style="text-align:center;width:7%">Box Number</th>
-            <th style="text-align:center;width:9%">College / Office</th>
-            <th style="text-align:center;width:10%">Borrower</th>
-            <th style="text-align:center;width:8%">Borrower Type</th>
-            <th style="text-align:center;width:11%">Accountable Officer</th>
-            <th style="text-align:center;width:9%">Device</th>
-            <th style="text-align:center;width:11%">Serial Number</th>
-            <th style="text-align:center;width:7%">Serviceable</th>
-            <th style="text-align:center;width:7%">Non-Serviceable</th>
-            <th style="text-align:center;width:5%">Sealed</th>
-            <th style="text-align:center;width:5%">Missing</th>
-            <th style="text-align:center;width:5%">Incomplete</th>
-            <th style="text-align:center;width:10%">Actions</th>
+            <th style="text-align:center;width:80px">Box #</th>
+            <th style="text-align:center;width:110px">College / Office</th>
+            <th style="text-align:center;width:130px">Borrower</th>
+            <th style="text-align:center;width:90px">Borrower Type</th>
+            <th style="text-align:center;width:130px">Accountable Officer</th>
+            <th style="text-align:center;width:90px">Device</th>
+            <th style="text-align:center;width:110px">Serial Number</th>
+            <th style="text-align:center;width:80px">Serviceable</th>
+            <th style="text-align:center;width:80px">Non-Svc</th>
+            <th style="text-align:center;width:60px">Sealed</th>
+            <th style="text-align:center;width:60px">Missing</th>
+            <th style="text-align:center;width:70px">Incomplete</th>
+            <!-- New columns -->
+            <th style="text-align:center;width:100px">Release / Return</th>
+            <th style="text-align:center;width:130px">Date Returned</th>
+            <th style="text-align:center;width:160px">Remarks</th>
+            <th style="text-align:center;width:160px">Issue</th>
+            <th style="text-align:center;width:110px">Actions</th>
           </tr>
         </thead>
         <tbody id="dm-tbody">
           {% for row in rows %}
+          {% with release_status=row.release_status|default:"—" date_ret=row.date_returned_display|default:"—" %}
           <tr data-row-id="{{ row.id }}"
               data-box="{{ row.box_number|lower|default:'' }}"
               data-college="{{ row.office_college|lower|default:'' }}"
@@ -105,30 +116,49 @@
               data-officer="{{ row.accountable_officer|lower|default:'' }}"
               data-device="{{ row.device|lower|default:'' }}"
               data-serial="{{ row.serial_number|lower|default:'' }}"
+              data-release="{{ release_status }}"
               data-serviceable="{{ row.serviceable|yesno:'1,0' }}"
               data-non-serviceable="{{ row.non_serviceable|yesno:'1,0' }}"
               data-sealed="{{ row.sealed|yesno:'1,0' }}"
               data-missing="{{ row.missing|yesno:'1,0' }}"
               data-incomplete="{{ row.incomplete|yesno:'1,0' }}">
             <input type="hidden" name="row_id" value="{{ row.id }}"/>
-            <td style="text-align:center"><input type="text" name="box_number" value="{{ row.box_number|default:'' }}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="office_college" value="{{ row.office_college|default:'' }}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
+            <!-- Existing editable fields -->
+            <td style="text-align:center"><input type="text" name="box_number" value="{{ row.box_number|default:'' }}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="office_college" value="{{ row.office_college|default:'' }}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>
             <td style="text-align:center">
-              <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+              <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
                 <option value="">— Select —</option>
                 <option value="student" {% if row.borrower_type == 'student' %}selected{% endif %}>Student</option>
                 <option value="employee" {% if row.borrower_type == 'employee' %}selected{% endif %}>Employee</option>
               </select>
             </td>
-            <td style="text-align:center"><input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="device" value="{{ row.device|default:'Tablet' }}" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="device" value="{{ row.device|default:'Tablet' }}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
+            <td style="text-align:center"><input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
+            <!-- Checkboxes -->
             <td style="text-align:center"><input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
             <td style="text-align:center"><input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.non_serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
             <td style="text-align:center"><input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/><input type="checkbox" {% if row.sealed %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
             <td style="text-align:center"><input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/><input type="checkbox" {% if row.missing %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
             <td style="text-align:center"><input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/><input type="checkbox" {% if row.incomplete %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+            <!-- New read-only computed columns -->
+            <td style="text-align:center">
+              <span class="release-status-badge {% if release_status == 'Released' %}badge-released{% elif release_status == 'Returned' %}badge-returned-dm{% else %}badge-none{% endif %}">
+                {{ release_status }}
+              </span>
+            </td>
+            <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">
+              {{ row.date_returned_display|default:"—" }}
+            </td>
+            <!-- New editable columns -->
+            <td style="text-align:center">
+              <textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">{{ row.remarks|default:'' }}</textarea>
+            </td>
+            <td style="text-align:center">
+              <textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">{{ row.issue|default:'' }}</textarea>
+            </td>
             <td style="text-align:center;white-space:nowrap">
               <button type="submit" name="save_row_id" value="{{ row.id }}" class="btn btn-primary btn-sm">✓ Save</button>
               <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
@@ -137,6 +167,7 @@
               </form>
             </td>
           </tr>
+          {% endwith %}
           {% endfor %}
         </tbody>
       </table>
@@ -172,15 +203,38 @@
 .filter-select:focus { border-color: var(--accent); }
 .filter-select option { background: var(--surface2); }
 
+/* Release / Return badges */
+.release-status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-released {
+  background: rgba(255, 179, 71, 0.15);
+  color: #ffb347;
+  border: 1px solid rgba(255, 179, 71, 0.3);
+}
+.badge-returned-dm {
+  background: rgba(0, 229, 160, 0.15);
+  color: #00e5a0;
+  border: 1px solid rgba(0, 229, 160, 0.3);
+}
+.badge-none {
+  background: var(--surface2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
 /* Highlight animation for new rows */
 @keyframes highlightNew {
-  0% { background: rgba(0, 229, 160, 0.4); }
-  50% { background: rgba(0, 229, 160, 0.2); }
+  0%   { background: rgba(0, 229, 160, 0.4); }
+  50%  { background: rgba(0, 229, 160, 0.2); }
   100% { background: transparent; }
 }
-tr.row-new {
-  animation: highlightNew 2s ease-out;
-}
+tr.row-new { animation: highlightNew 2s ease-out; }
 
 /* Toast notification */
 .dm-toast {
@@ -199,21 +253,15 @@ tr.row-new {
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.dm-toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
+.dm-toast.show { opacity: 1; transform: translateY(0); }
 
 #dm-table td, #dm-table th {
   vertical-align: middle;
-  padding: 10px 6px;
+  padding: 8px 6px;
 }
 
-.form-control {
-  text-align: center;
-}
+.form-control { text-align: center; }
 
-/* Checkbox styling */
 input[type="checkbox"] {
   width: 18px;
   height: 18px;
@@ -222,27 +270,11 @@ input[type="checkbox"] {
   display: block;
 }
 
-/* Badge styles for display */
-.badge-student {
-  background: rgba(0, 229, 160, 0.15);
-  color: #00e5a0;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  display: inline-block;
-  white-space: nowrap;
-}
-
-.badge-employee {
-  background: rgba(156, 39, 176, 0.15);
-  color: #ce93d8;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  display: inline-block;
-  white-space: nowrap;
+textarea.form-control {
+  text-align: left;
+  resize: vertical;
+  min-height: 48px;
+  line-height: 1.4;
 }
 </style>
 
@@ -308,149 +340,59 @@ function updateRowDataAttrs(cb) {
   applyDmFilters();
 }
 
+/* ── Filter dropdown population ── */
 function populateFilterDropdowns() {
   const collegeSelect = document.getElementById('dm-filter-college');
-  const personSelect = document.getElementById('dm-filter-person');
+  const personSelect  = document.getElementById('dm-filter-person');
   const officerSelect = document.getElementById('dm-filter-officer');
-  
+
   while (collegeSelect.options.length > 1) collegeSelect.remove(1);
-  while (personSelect.options.length > 1) personSelect.remove(1);
+  while (personSelect.options.length  > 1) personSelect.remove(1);
   while (officerSelect.options.length > 1) officerSelect.remove(1);
-  
-  const colleges = new Set();
-  const persons = new Set();
-  const officers = new Set();
-  
+
+  const colleges = new Set(), persons = new Set(), officers = new Set();
+
   document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => {
     const college = row.querySelector('input[name="office_college"]')?.value;
-    const person = row.querySelector('input[name="accountable_person"]')?.value;
+    const person  = row.querySelector('input[name="accountable_person"]')?.value;
     const officer = row.querySelector('input[name="accountable_officer"]')?.value;
-    
     if (college && college.trim()) colleges.add(college);
-    if (person && person.trim()) persons.add(person);
+    if (person  && person.trim())  persons.add(person);
     if (officer && officer.trim()) officers.add(officer);
   });
-  
-  Array.from(colleges).sort().forEach(college => {
-    const option = document.createElement('option');
-    option.value = college;
-    option.textContent = college;
-    collegeSelect.appendChild(option);
-  });
-  
-  Array.from(persons).sort().forEach(person => {
-    const option = document.createElement('option');
-    option.value = person;
-    option.textContent = person;
-    personSelect.appendChild(option);
-  });
-  
-  Array.from(officers).sort().forEach(officer => {
-    const option = document.createElement('option');
-    option.value = officer;
-    option.textContent = officer;
-    officerSelect.appendChild(option);
-  });
+
+  [...colleges].sort().forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; collegeSelect.appendChild(o); });
+  [...persons].sort().forEach(p  => { const o = document.createElement('option'); o.value = o.textContent = p; personSelect.appendChild(o); });
+  [...officers].sort().forEach(of => { const o = document.createElement('option'); o.value = o.textContent = of; officerSelect.appendChild(o); });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
-  populateFilterDropdowns();
-  
-  document.addEventListener('input', e => {
-    if (e.target.matches('.dm-box-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) row.dataset.box = e.target.value.toLowerCase();
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-college-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) {
-        row.dataset.college = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-      }
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-person-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) {
-        row.dataset.person = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-      }
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-borrower-type-select')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) {
-        row.dataset.borrowerType = e.target.value.toLowerCase();
-      }
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-officer-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) {
-        row.dataset.officer = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-      }
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-device-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) row.dataset.device = e.target.value.toLowerCase();
-      applyDmFilters();
-    }
-    if (e.target.matches('.dm-serial-input')) {
-      const row = e.target.closest('tr[data-row-id]');
-      if (row) row.dataset.serial = e.target.value.toLowerCase();
-      applyDmFilters();
-    }
-  });
-
-  document.getElementById('dm-search').addEventListener('input', applyDmFilters);
-  document.getElementById('dm-filter-college').addEventListener('change', applyDmFilters);
-  document.getElementById('dm-filter-person').addEventListener('change', applyDmFilters);
-  document.getElementById('dm-filter-borrower-type').addEventListener('change', applyDmFilters);
-  document.getElementById('dm-filter-officer').addEventListener('change', applyDmFilters);
-  document.getElementById('dm-filter-status').addEventListener('change', applyDmFilters);
-});
-
+/* ── Filter application ── */
 function applyDmFilters() {
-  const search    = document.getElementById('dm-search').value.toLowerCase().trim();
-  const college   = document.getElementById('dm-filter-college').value;
-  const person    = document.getElementById('dm-filter-person').value;
+  const search      = document.getElementById('dm-search').value.toLowerCase().trim();
+  const college     = document.getElementById('dm-filter-college').value;
+  const person      = document.getElementById('dm-filter-person').value;
   const borrowerType = document.getElementById('dm-filter-borrower-type').value;
-  const officer   = document.getElementById('dm-filter-officer').value;
-  const status    = document.getElementById('dm-filter-status').value;
+  const officer     = document.getElementById('dm-filter-officer').value;
+  const releaseF    = document.getElementById('dm-filter-release').value;
+  const status      = document.getElementById('dm-filter-status').value;
 
-  const rows    = document.querySelectorAll('#dm-tbody tr[data-row-id]');
-  let   visible = 0;
+  const rows = document.querySelectorAll('#dm-tbody tr[data-row-id]');
+  let visible = 0;
 
   rows.forEach(row => {
-    const rowText = row.textContent.toLowerCase();
-    const boxNum = (row.dataset.box || '').toLowerCase();
-    const collegeName = (row.dataset.college || '').toLowerCase();
-    const personName = (row.dataset.person || '').toLowerCase();
-    const borrowerTypeValue = (row.dataset.borrowerType || '').toLowerCase();
-    const officerName = (row.dataset.officer || '').toLowerCase();
-    const deviceName = (row.dataset.device || '').toLowerCase();
-    const serialNum = (row.dataset.serial || '').toLowerCase();
-    
-    let matchSearch = true;
-    if (search) {
-      matchSearch = rowText.includes(search) || 
-                    boxNum.includes(search) ||
-                    collegeName.includes(search) ||
-                    personName.includes(search) ||
-                    borrowerTypeValue.includes(search) ||
-                    officerName.includes(search) ||
-                    deviceName.includes(search) ||
-                    serialNum.includes(search);
-    }
+    const rowText      = row.textContent.toLowerCase();
+    const collegeName  = (row.dataset.college || '').toLowerCase();
+    const personName   = (row.dataset.person  || '').toLowerCase();
+    const btVal        = (row.dataset.borrowerType || '').toLowerCase();
+    const officerName  = (row.dataset.officer || '').toLowerCase();
+    const releaseVal   = (row.dataset.release || '');
 
-    const matchCollege = !college || collegeName === college.toLowerCase();
-    const matchPerson  = !person  || personName === person.toLowerCase();
-    const matchBorrowerType = !borrowerType || borrowerTypeValue === borrowerType.toLowerCase();
-    const matchOfficer = !officer || officerName === officer.toLowerCase();
+    let matchSearch = !search || rowText.includes(search);
+    const matchCollege  = !college     || collegeName  === college.toLowerCase();
+    const matchPerson   = !person      || personName   === person.toLowerCase();
+    const matchBT       = !borrowerType|| btVal        === borrowerType.toLowerCase();
+    const matchOfficer  = !officer     || officerName  === officer.toLowerCase();
+    const matchRelease  = !releaseF    || releaseVal   === releaseF;
 
     let matchStatus = true;
     if (status) {
@@ -458,12 +400,12 @@ function applyDmFilters() {
       matchStatus = row.getAttribute(attrKey) === '1';
     }
 
-    const show = matchSearch && matchCollege && matchPerson && matchBorrowerType && matchOfficer && matchStatus;
+    const show = matchSearch && matchCollege && matchPerson && matchBT && matchOfficer && matchRelease && matchStatus;
     row.style.display = show ? '' : 'none';
     if (show) visible++;
   });
 
-  const hasFilter = search || college || person || borrowerType || officer || status;
+  const hasFilter = search || college || person || borrowerType || officer || releaseF || status;
   const statusLbl = document.getElementById('dm-filter-status-label');
   const clearBtn  = document.getElementById('dm-clear-filters');
   statusLbl.style.display = hasFilter ? 'inline-flex' : 'none';
@@ -473,62 +415,60 @@ function applyDmFilters() {
 }
 
 window.clearDmFilters = function () {
-  document.getElementById('dm-search').value = '';
-  
-  const collegeSelect = document.getElementById('dm-filter-college');
-  const personSelect = document.getElementById('dm-filter-person');
-  const borrowerTypeSelect = document.getElementById('dm-filter-borrower-type');
-  const officerSelect = document.getElementById('dm-filter-officer');
-  const statusSelect = document.getElementById('dm-filter-status');
-  
-  if (collegeSelect.options.length > 0) collegeSelect.selectedIndex = 0;
-  if (personSelect.options.length > 0) personSelect.selectedIndex = 0;
-  if (borrowerTypeSelect.options.length > 0) borrowerTypeSelect.selectedIndex = 0;
-  if (officerSelect.options.length > 0) officerSelect.selectedIndex = 0;
-  if (statusSelect.options.length > 0) statusSelect.selectedIndex = 0;
-  
+  ['dm-search'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['dm-filter-college','dm-filter-person','dm-filter-borrower-type',
+   'dm-filter-officer','dm-filter-release','dm-filter-status'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.selectedIndex = 0;
+  });
   populateFilterDropdowns();
   applyDmFilters();
 };
 
+/* ── Add new row ── */
 function addDmRow() {
   const tbody = document.getElementById('dm-tbody');
   const tr    = document.createElement('tr');
   const newId = 'new_' + Date.now();
-  tr.setAttribute('data-row-id', newId);
-  tr.setAttribute('data-box', '');
-  tr.setAttribute('data-college', '');
-  tr.setAttribute('data-person',  '');
-  tr.setAttribute('data-borrower-type', '');
-  tr.setAttribute('data-officer', '');
-  tr.setAttribute('data-device',  '');
-  tr.setAttribute('data-serial',  '');
+  tr.setAttribute('data-row-id',         newId);
+  tr.setAttribute('data-box',            '');
+  tr.setAttribute('data-college',        '');
+  tr.setAttribute('data-person',         '');
+  tr.setAttribute('data-borrower-type',  '');
+  tr.setAttribute('data-officer',        '');
+  tr.setAttribute('data-device',         '');
+  tr.setAttribute('data-serial',         '');
+  tr.setAttribute('data-release',        '—');
   tr.setAttribute('data-serviceable',    '0');
   tr.setAttribute('data-non-serviceable','0');
-  tr.setAttribute('data-sealed',   '0');
-  tr.setAttribute('data-missing',  '0');
-  tr.setAttribute('data-incomplete','0');
+  tr.setAttribute('data-sealed',         '0');
+  tr.setAttribute('data-missing',        '0');
+  tr.setAttribute('data-incomplete',     '0');
 
   tr.innerHTML = `
     <input type="hidden" name="row_id" value="new"/>
-    <td style="text-align:center"><input type="text" name="box_number" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
-    <td style="text-align:center"><input type="text" name="office_college" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
-    <td style="text-align:center"><input type="text" name="accountable_person" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="box_number" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="office_college" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="accountable_person" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>
     <td style="text-align:center">
-      <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+      <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
         <option value="">— Select —</option>
         <option value="student">Student</option>
         <option value="employee">Employee</option>
       </select>
     </td>
-    <td style="text-align:center"><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
-    <td style="text-align:center"><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
-    <td style="text-align:center"><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
+    <td style="text-align:center"><input type="text" name="serial_number" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
     <td style="text-align:center"><input type="hidden" name="serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
     <td style="text-align:center"><input type="hidden" name="non_serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
     <td style="text-align:center"><input type="hidden" name="sealed" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
     <td style="text-align:center"><input type="hidden" name="missing" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
     <td style="text-align:center"><input type="hidden" name="incomplete" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+    <!-- Release/Return & Date Returned are computed — show placeholder for new row -->
+    <td style="text-align:center"><span class="release-status-badge badge-none">—</span></td>
+    <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">—</td>
+    <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto"></textarea></td>
+    <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto"></textarea></td>
     <td style="text-align:center;white-space:nowrap">
       <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
       <button type="button" class="btn btn-danger btn-sm" style="margin-left:4px"
@@ -542,6 +482,33 @@ function addDmRow() {
   applyDmFilters();
 }
 
+/* ── DOMContentLoaded init ── */
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
+  populateFilterDropdowns();
+
+  document.addEventListener('input', e => {
+    const row = e.target.closest('tr[data-row-id]');
+    if (!row) return;
+    if (e.target.matches('.dm-box-input'))     { row.dataset.box    = e.target.value.toLowerCase(); applyDmFilters(); }
+    if (e.target.matches('.dm-college-input')) { row.dataset.college = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+    if (e.target.matches('.dm-person-input'))  { row.dataset.person  = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+    if (e.target.matches('.dm-borrower-type-select')) { row.dataset.borrowerType = e.target.value.toLowerCase(); applyDmFilters(); }
+    if (e.target.matches('.dm-officer-input')) { row.dataset.officer = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+    if (e.target.matches('.dm-device-input'))  { row.dataset.device  = e.target.value.toLowerCase(); applyDmFilters(); }
+    if (e.target.matches('.dm-serial-input'))  { row.dataset.serial  = e.target.value.toLowerCase(); applyDmFilters(); }
+  });
+
+  document.getElementById('dm-search').addEventListener('input', applyDmFilters);
+  document.getElementById('dm-filter-college').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-person').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-borrower-type').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-officer').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-release').addEventListener('change', applyDmFilters);
+  document.getElementById('dm-filter-status').addEventListener('change', applyDmFilters);
+});
+
+/* ── WebSocket real-time updates ── */
 (function () {
   const dirtyRows = new Set();
   const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
@@ -553,20 +520,19 @@ function addDmRow() {
     }
   });
 
+  function releaseBadgeHtml(status) {
+    if (status === 'Released') return '<span class="release-status-badge badge-released">Released</span>';
+    if (status === 'Returned') return '<span class="release-status-badge badge-returned-dm">Returned</span>';
+    return '<span class="release-status-badge badge-none">—</span>';
+  }
+
   function handleMessage(data) {
     if (data.type !== 'device_monitoring.update') return;
 
     const tbody = document.getElementById('dm-tbody');
     const incomingIds = new Set(data.rows.map(r => String(r.id)));
 
-    const existingIds = new Set();
-    tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
-      const id = tr.dataset.rowId;
-      if (id && !id.startsWith('new_')) {
-        existingIds.add(id);
-      }
-    });
-
+    // Remove deleted rows
     tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
       const id = tr.dataset.rowId;
       if (id && !id.startsWith('new_') && !incomingIds.has(id) && !dirtyRows.has(id)) {
@@ -574,10 +540,16 @@ function addDmRow() {
       }
     });
 
+    const existingIds = new Set(
+      [...tbody.querySelectorAll('tr[data-row-id]')]
+        .map(tr => tr.dataset.rowId)
+        .filter(id => id && !id.startsWith('new_'))
+    );
+
     data.rows.forEach(row => {
-      const strId = String(row.id);
+      const strId   = String(row.id);
       const existing = tbody.querySelector(`tr[data-row-id="${strId}"]`);
-      const isNew = !existingIds.has(strId);
+      const isNew    = !existingIds.has(strId);
 
       if (existing) {
         if (dirtyRows.has(strId)) return;
@@ -593,19 +565,30 @@ function addDmRow() {
         setValue('accountable_officer', row.accountable_officer);
         setValue('device',              row.device);
         setValue('serial_number',       row.serial_number);
+        setValue('remarks',             row.remarks);
+        setValue('issue',               row.issue);
 
-        existing.dataset.box            = (row.box_number || '').toLowerCase();
-        existing.dataset.college        = (row.office_college || '').toLowerCase();
-        existing.dataset.person         = (row.accountable_person || '').toLowerCase();
-        existing.dataset.borrowerType   = (row.borrower_type || '').toLowerCase();
-        existing.dataset.officer        = (row.accountable_officer || '').toLowerCase();
-        existing.dataset.device         = (row.device || '').toLowerCase();
-        existing.dataset.serial         = (row.serial_number || '').toLowerCase();
+        existing.dataset.box          = (row.box_number || '').toLowerCase();
+        existing.dataset.college      = (row.office_college || '').toLowerCase();
+        existing.dataset.person       = (row.accountable_person || '').toLowerCase();
+        existing.dataset.borrowerType = (row.borrower_type || '').toLowerCase();
+        existing.dataset.officer      = (row.accountable_officer || '').toLowerCase();
+        existing.dataset.device       = (row.device || '').toLowerCase();
+        existing.dataset.serial       = (row.serial_number || '').toLowerCase();
+        existing.dataset.release      = row.release_status || '—';
         existing.dataset.serviceable    = row.serviceable ? '1' : '0';
         existing.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
         existing.dataset.sealed         = row.sealed ? '1' : '0';
         existing.dataset.missing        = row.missing ? '1' : '0';
         existing.dataset.incomplete     = row.incomplete ? '1' : '0';
+
+        // Update release badge
+        const releaseTd = existing.querySelector('.release-status-badge');
+        if (releaseTd) releaseTd.outerHTML = releaseBadgeHtml(row.release_status);
+
+        // Update date returned cell
+        const dateTd = existing.querySelector('.dm-date-returned');
+        if (dateTd) dateTd.textContent = row.date_returned || '—';
 
         const updateCb = (name, val) => {
           const hidden = existing.querySelector(`input[type=hidden][name="${name}"]`);
@@ -614,48 +597,54 @@ function addDmRow() {
             if (cb.checked !== val) { cb.checked = val; hidden.value = val ? 'on' : 'off'; }
           }
         };
-        updateCb('serviceable', row.serviceable);
+        updateCb('serviceable',    row.serviceable);
         updateCb('non_serviceable', row.non_serviceable);
-        updateCb('sealed', row.sealed);
-        updateCb('missing', row.missing);
-        updateCb('incomplete', row.incomplete);
+        updateCb('sealed',         row.sealed);
+        updateCb('missing',        row.missing);
+        updateCb('incomplete',     row.incomplete);
         applyLockState(existing);
+
       } else {
         const tr = document.createElement('tr');
-        tr.setAttribute('data-row-id', strId);
-        tr.setAttribute('data-box', (row.box_number || '').toLowerCase());
-        tr.setAttribute('data-college', (row.office_college || '').toLowerCase());
-        tr.setAttribute('data-person', (row.accountable_person || '').toLowerCase());
-        tr.setAttribute('data-borrower-type', (row.borrower_type || '').toLowerCase());
-        tr.setAttribute('data-officer', (row.accountable_officer || '').toLowerCase());
-        tr.setAttribute('data-device', (row.device || '').toLowerCase());
-        tr.setAttribute('data-serial', (row.serial_number || '').toLowerCase());
-        tr.setAttribute('data-serviceable', row.serviceable ? '1' : '0');
+        tr.setAttribute('data-row-id',          strId);
+        tr.setAttribute('data-box',             (row.box_number || '').toLowerCase());
+        tr.setAttribute('data-college',         (row.office_college || '').toLowerCase());
+        tr.setAttribute('data-person',          (row.accountable_person || '').toLowerCase());
+        tr.setAttribute('data-borrower-type',   (row.borrower_type || '').toLowerCase());
+        tr.setAttribute('data-officer',         (row.accountable_officer || '').toLowerCase());
+        tr.setAttribute('data-device',          (row.device || '').toLowerCase());
+        tr.setAttribute('data-serial',          (row.serial_number || '').toLowerCase());
+        tr.setAttribute('data-release',         row.release_status || '—');
+        tr.setAttribute('data-serviceable',     row.serviceable ? '1' : '0');
         tr.setAttribute('data-non-serviceable', row.non_serviceable ? '1' : '0');
-        tr.setAttribute('data-sealed', row.sealed ? '1' : '0');
-        tr.setAttribute('data-missing', row.missing ? '1' : '0');
-        tr.setAttribute('data-incomplete', row.incomplete ? '1' : '0');
+        tr.setAttribute('data-sealed',          row.sealed ? '1' : '0');
+        tr.setAttribute('data-missing',         row.missing ? '1' : '0');
+        tr.setAttribute('data-incomplete',      row.incomplete ? '1' : '0');
 
         tr.innerHTML = `
           <input type="hidden" name="row_id" value="${strId}"/>
-          <td style="text-align:center"><input type="text" name="box_number" value="${row.box_number || ''}" class="form-control dm-box-input" placeholder="Box #" style="width:100px;text-align:center;margin:0 auto"/></td>
-          <td style="text-align:center"><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:120px;text-align:center;margin:0 auto"/></td>
-          <td style="text-align:center"><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name" style="width:160px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="box_number" value="${row.box_number || ''}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="office_college" value="${row.office_college || ''}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="accountable_person" value="${row.accountable_person || ''}" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>
           <td style="text-align:center">
-            <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:100px;text-align:center;margin:0 auto">
+            <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
               <option value="">— Select —</option>
               <option value="student" ${row.borrower_type === 'student' ? 'selected' : ''}>Student</option>
               <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
             </select>
           </td>
-          <td style="text-align:center"><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name" style="width:160px;text-align:center;margin:0 auto"/></td>
-          <td style="text-align:center"><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:100px;text-align:center;margin:0 auto"/></td>
-          <td style="text-align:center"><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:130px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="accountable_officer" value="${row.accountable_officer || ''}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="device" value="${row.device || 'Tablet'}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
+          <td style="text-align:center"><input type="text" name="serial_number" value="${row.serial_number || ''}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
           <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" ${row.serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
           <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" ${row.non_serviceable ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
           <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" ${row.sealed ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
           <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" ${row.missing ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
           <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" ${row.incomplete ? 'checked' : ''} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+          <td style="text-align:center">${releaseBadgeHtml(row.release_status)}</td>
+          <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${row.date_returned || '—'}</td>
+          <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.remarks || ''}</textarea></td>
+          <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.issue || ''}</textarea></td>
           <td style="text-align:center;white-space:nowrap">
             <button type="submit" name="save_row_id" value="${strId}" class="btn btn-primary btn-sm">✓ Save</button>
             <form method="post" action="/device-monitoring/${strId}/delete/" style="display:inline;margin-left:4px">
@@ -665,16 +654,13 @@ function addDmRow() {
           </td>
         `;
 
-        const emptyRow = document.getElementById('tx-empty-row');
-        if (emptyRow) emptyRow.remove();
         tbody.prepend(tr);
 
         if (isNew) {
           tr.classList.add('row-new');
           setTimeout(() => tr.classList.remove('row-new'), 2000);
-          showToast(`New device added: ${row.device || 'Device'} (Box: ${row.box_number || 'No Box'})`);
+          showDmToast(`New device added: ${row.device || 'Device'} (Box: ${row.box_number || 'No Box'})`);
         }
-
         applyLockState(tr);
       }
     });
@@ -683,7 +669,7 @@ function addDmRow() {
     applyDmFilters();
   }
 
-  function showToast(message) {
+  function showDmToast(message) {
     let toast = document.querySelector('.dm-toast');
     if (!toast) {
       toast = document.createElement('div');

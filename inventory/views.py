@@ -1,7 +1,3 @@
-"""
-Patch notes — only the borrow_management view changes meaningfully.
-The full views.py is reproduced here so it can be dropped in as a replacement.
-"""
 import io
 import json
 import random
@@ -15,7 +11,7 @@ from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-
+from .models import Item, Transaction, BorrowRequest, DeviceMonitor, TransactionDevice
 from .models import Item, Transaction, BorrowRequest, DeviceMonitor
 from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRequestForm
 from .decorators import no_cache
@@ -105,6 +101,49 @@ def index(request):
         'dm_missing':     json.dumps([monitors.filter(office_college=o, missing=True).count()         for o in offices]),
         'dm_incomplete':  json.dumps([monitors.filter(office_college=o, incomplete=True).count()      for o in offices]),
     })
+
+@login_required
+def transaction_devices_json(request, transaction_id):
+    """
+    Returns JSON list of all TransactionDevice rows for a transaction.
+    Falls back to parsing Transaction.serial_number if no TransactionDevice rows
+    exist yet (for transactions created before this feature was added).
+    """
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+ 
+    tx = get_object_or_404(Transaction, id=transaction_id)
+    devices = list(tx.devices.all())
+ 
+    # ── Fallback: build virtual device list from comma-separated serial_number ──
+    if not devices and tx.serial_number:
+        serials = [s.strip() for s in tx.serial_number.split(',') if s.strip()]
+        # Try to find matching DeviceMonitor rows to get box numbers
+        dm_map = {}
+        for dm in DeviceMonitor.objects.filter(serial_number__in=serials):
+            dm_map[dm.serial_number] = dm.box_number
+ 
+        data = []
+        for sn in serials:
+            data.append({
+                'id':            None,   # no real TransactionDevice row yet
+                'serial_number': sn,
+                'box_number':    dm_map.get(sn, '—'),
+                'returned':      False,
+                'returned_at':   None,
+            })
+        return JsonResponse({'devices': data})
+ 
+    data = []
+    for d in devices:
+        data.append({
+            'id':            d.id,
+            'serial_number': d.serial_number,
+            'box_number':    d.box_number or '—',
+            'returned':      d.returned,
+            'returned_at':   d.returned_at.strftime('%b %d, %Y %H:%M') if d.returned_at else None,
+        })
+    return JsonResponse({'devices': data})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -234,10 +273,53 @@ def borrow_management(request):
 def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    rows          = DeviceMonitor.objects.all()
+ 
+    rows = list(DeviceMonitor.objects.all())
+    
+    # Build a lookup dictionary for quick access to transaction devices
+    # Key: (serial_number, accountable_person, office_college) -> most recent transaction
+    from collections import defaultdict
+    device_tx_lookup = {}
+    
+    # Get all active transactions that have devices
+    for tx in Transaction.objects.filter(status='borrowed').select_related('borrow_request'):
+        # Get all TransactionDevice records for this transaction that are NOT returned
+        active_devices = tx.devices.filter(returned=False)
+        
+        for device in active_devices:
+            # Create a unique key combining serial number, borrower, and office
+            borrower_name = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
+            key = (device.serial_number, borrower_name, tx.office_college)
+            device_tx_lookup[key] = {
+                'transaction': tx,
+                'borrowed_at': tx.borrowed_at,
+                'borrower_name': borrower_name,
+                'office_college': tx.office_college
+            }
+    
+    # Annotate each DeviceMonitor row
+    for row in rows:
+        # Use the device's own date_returned field first
+        if row.date_returned:
+            row.release_status = 'Returned'
+            row.date_returned_display = row.date_returned.strftime('%b %d, %Y %H:%M')
+        else:
+            # Check if this device is currently in an active transaction (not returned)
+            # Create the lookup key using the device's current data
+            lookup_key = (row.serial_number, row.accountable_person, row.office_college)
+            
+            if lookup_key in device_tx_lookup:
+                row.release_status = 'Released'
+                row.date_returned_display = '—'
+            else:
+                # Device is not in any active transaction and not returned
+                row.release_status = '—'
+                row.date_returned_display = '—'
+    
     pending_count = BorrowRequest.objects.filter(status='pending').count()
+ 
     return render(request, 'inventory/device_monitoring.html', {
-        'rows':          rows,
+        'rows': rows,
         'pending_count': pending_count,
     })
 
@@ -247,30 +329,32 @@ def device_monitoring(request):
 def device_monitoring_save(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-
-    ids              = request.POST.getlist('row_id')
-    box_numbers      = request.POST.getlist('box_number')
-    offices          = request.POST.getlist('office_college')
-    accountables     = request.POST.getlist('accountable_person')
-    borrower_types   = request.POST.getlist('borrower_type')  # ← ADD THIS LINE
+ 
+    ids                  = request.POST.getlist('row_id')
+    box_numbers          = request.POST.getlist('box_number')
+    offices              = request.POST.getlist('office_college')
+    accountables         = request.POST.getlist('accountable_person')
+    borrower_types       = request.POST.getlist('borrower_type')
     accountable_officers = request.POST.getlist('accountable_officer')
-    devices          = request.POST.getlist('device')
-    serials          = request.POST.getlist('serial_number')
-    serviceables     = request.POST.getlist('serviceable')
-    non_serviceables = request.POST.getlist('non_serviceable')
-    sealeds          = request.POST.getlist('sealed')
-    missings         = request.POST.getlist('missing')
-    incompletes      = request.POST.getlist('incomplete')
-
+    devices              = request.POST.getlist('device')
+    serials              = request.POST.getlist('serial_number')
+    serviceables         = request.POST.getlist('serviceable')
+    non_serviceables     = request.POST.getlist('non_serviceable')
+    sealeds              = request.POST.getlist('sealed')
+    missings             = request.POST.getlist('missing')
+    incompletes          = request.POST.getlist('incomplete')
+    remarks_list         = request.POST.getlist('remarks')
+    issue_list           = request.POST.getlist('issue')
+ 
     for i, row_id in enumerate(ids):
         def get(lst, idx=i):
             return lst[idx] if idx < len(lst) else ''
-
+ 
         fields = dict(
             box_number          = get(box_numbers),
             office_college      = get(offices),
             accountable_person  = get(accountables),
-            borrower_type       = get(borrower_types),  # ← ADD THIS LINE
+            borrower_type       = get(borrower_types),
             accountable_officer = get(accountable_officers),
             device              = get(devices) or 'Tablet',
             serial_number       = get(serials),
@@ -279,19 +363,28 @@ def device_monitoring_save(request):
             sealed              = get(sealeds)          == 'on',
             missing             = get(missings)         == 'on',
             incomplete          = get(incompletes)      == 'on',
+            remarks             = get(remarks_list),
+            issue               = get(issue_list),
+            # IMPORTANT: Don't overwrite date_returned when saving manually
+            # Only update it through the return process
         )
-
+ 
         if row_id == 'new':
             DeviceMonitor.objects.create(**fields)
         else:
             try:
                 obj = DeviceMonitor.objects.get(pk=int(row_id))
+                # Don't update date_returned if it's already set and we're not returning
+                # Keep existing date_returned value
+                existing_date_returned = obj.date_returned
                 for attr, val in fields.items():
                     setattr(obj, attr, val)
+                # Restore date_returned if it was set
+                obj.date_returned = existing_date_returned
                 obj.save()
             except DeviceMonitor.DoesNotExist:
                 pass
-
+ 
     b = _broadcasts()
     b.broadcast_device_monitoring()
     b.broadcast_dashboard()
@@ -321,42 +414,50 @@ def staff_confirm_borrow(request, request_id):
     if request.user.role != 'staff':
         raise PermissionDenied
     borrow_req = get_object_or_404(BorrowRequest, id=request_id, status='pending')
-
+ 
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
-            serial_numbers = form.cleaned_data['serial_numbers']  # List of serial numbers
-            box_numbers = form.cleaned_data['box_numbers']  # List of box numbers
-            quantity = form.cleaned_data['quantity_borrowed']
-            
-            # Create ONE Transaction record (for borrow management)
+            serial_numbers = form.cleaned_data['serial_numbers']   # list
+            box_numbers    = form.cleaned_data['box_numbers']       # list
+            quantity       = form.cleaned_data['quantity_borrowed']
+ 
+            # Create the Transaction record
             transaction = form.save(commit=False)
-            transaction.borrower = request.user
+            transaction.borrower       = request.user
             transaction.borrow_request = borrow_req
             transaction.office_college = borrow_req.office_college
-            transaction.status = 'borrowed'
-            transaction.serial_number = ', '.join(serial_numbers)  # Store all serials as comma-separated
+            transaction.status         = 'borrowed'
+            transaction.serial_number  = ', '.join(serial_numbers)
             transaction.item.available_quantity -= quantity
             transaction.item.save()
             transaction.save()
-            
-            # Update borrow request status
+ 
+            # Mark borrow request accepted
             borrow_req.status = 'accepted'
             borrow_req.save()
-            
-            # ── Create MULTIPLE Device Monitor records (one per serial/box pair) ──
+ 
             accountable_officer = request.user.get_full_name() or request.user.username
-            
+ 
+            # Create one TransactionDevice + one DeviceMonitor per serial/box pair
             device_monitors = []
             for i, serial in enumerate(serial_numbers):
-                # Get the corresponding box number for this serial number
-                box_number = box_numbers[i] if i < len(box_numbers) else ''
-                
-                device_monitor = DeviceMonitor(
-                    box_number=box_number,
+                box = box_numbers[i] if i < len(box_numbers) else ''
+ 
+                # Per-device return tracker
+                TransactionDevice.objects.create(
+                    transaction=transaction,
+                    serial_number=serial,
+                    box_number=box,
+                    returned=False,
+                    returned_at=None,
+                )
+ 
+                device_monitors.append(DeviceMonitor(
+                    box_number=box,
                     office_college=borrow_req.office_college,
                     accountable_person=borrow_req.borrower_name,
-                    borrower_type=borrow_req.borrower_type,  # ← ADD THIS LINE
+                    borrower_type=borrow_req.borrower_type,
                     accountable_officer=accountable_officer,
                     device=transaction.item.name,
                     serial_number=serial,
@@ -365,24 +466,21 @@ def staff_confirm_borrow(request, request_id):
                     sealed=False,
                     missing=False,
                     incomplete=False,
-                )
-                device_monitors.append(device_monitor)
-            
-            # Bulk create all device monitor records
+                ))
+ 
             DeviceMonitor.objects.bulk_create(device_monitors)
-            # ─────────────────────────────────────────────────────────────
-
+ 
             b = _broadcasts()
             b.broadcast_all()
             return redirect('index')
     else:
         form = StaffBorrowForm(initial={
             'quantity_borrowed': borrow_req.quantity,
-            'office_college': borrow_req.office_college,
+            'office_college':    borrow_req.office_college,
         })
-
+ 
     return render(request, 'inventory/staff_confirm_borrow.html', {
-        'form': form,
+        'form':       form,
         'borrow_req': borrow_req,
     })
 
@@ -485,6 +583,125 @@ def update_returned_qty(request, transaction_id):
         'pie': {'available': available_qty, 'borrowed': borrowed_qty},
     })
 
+@login_required
+@require_POST
+def return_devices(request, transaction_id):
+    """
+    Receives a JSON body:  { "device_ids": [1, 3, 5], "serials": ["SN-001", "SN-003"] }
+ 
+    device_ids  — TransactionDevice PKs to mark returned (preferred path)
+    serials     — fallback when device_ids are null (legacy transactions)
+ 
+    For each returned device:
+      • Sets TransactionDevice.returned = True, returned_at = now
+      • Finds the matching DeviceMonitor by serial_number AND borrower/office and stamps date_returned
+ 
+    Then recalculates Transaction.returned_qty and status.
+    """
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+ 
+    tx = get_object_or_404(Transaction, id=transaction_id)
+ 
+    try:
+        body        = json.loads(request.body)
+        device_ids  = body.get('device_ids', [])
+        serials     = body.get('serials', [])
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+ 
+    now = timezone.now()
+    returned_serials = []
+ 
+    # ── Path A: real TransactionDevice rows exist ─────────────────────────────
+    if device_ids:
+        real_ids = [d for d in device_ids if d is not None]
+        if real_ids:
+            updated_devices = TransactionDevice.objects.filter(
+                id__in=real_ids,
+                transaction=tx,
+                returned=False,
+            )
+            returned_serials = list(updated_devices.values_list('serial_number', flat=True))
+            updated_devices.update(returned=True, returned_at=now)
+ 
+    # ── Path B: fallback — legacy transaction, match by serial string ─────────
+    elif serials:
+        for sn in serials:
+            td = tx.devices.filter(serial_number=sn, returned=False).first()
+            if td:
+                td.returned    = True
+                td.returned_at = now
+                td.save()
+                returned_serials.append(sn)
+ 
+    # ── CRITICAL FIX: Update ONLY the specific DeviceMonitor records ──
+    if returned_serials:
+        # Get the borrower info from the transaction
+        if tx.borrow_request:
+            borrower_name = tx.borrow_request.borrower_name
+            office_college = tx.borrow_request.office_college
+        else:
+            borrower_name = tx.borrower.get_full_name() or tx.borrower.username
+            office_college = tx.office_college
+        
+        # Update ONLY DeviceMonitor records that match ALL criteria:
+        # 1. Serial number is in the returned list
+        # 2. Accountable person matches the borrower
+        # 3. Office/college matches the transaction
+        # 4. date_returned is NULL (not already returned)
+        updated_count = DeviceMonitor.objects.filter(
+            serial_number__in=returned_serials,
+            accountable_person=borrower_name,
+            office_college=office_college,
+            date_returned__isnull=True
+        ).update(date_returned=now)
+        
+        print(f"[DEBUG] Returned {updated_count} DeviceMonitor records for serials: {returned_serials}")
+        print(f"[DEBUG] Borrower: {borrower_name}, Office: {office_college}")
+        
+        # If no matches found, try a more lenient match for legacy data
+        if updated_count == 0:
+            updated_count = DeviceMonitor.objects.filter(
+                serial_number__in=returned_serials,
+                accountable_person=borrower_name,
+                date_returned__isnull=True
+            ).update(date_returned=now)
+            print(f"[DEBUG] Lenient match updated {updated_count} DeviceMonitor records")
+ 
+    # ── Recalculate returned_qty on the Transaction ───────────────────────────
+    returned_count = tx.devices.filter(returned=True).count()
+ 
+    # Fallback: if no TransactionDevice rows, use the serials list length
+    if not tx.devices.exists():
+        returned_count = tx.returned_qty + len(serials)
+ 
+    # Don't exceed quantity_borrowed
+    returned_count = min(returned_count, tx.quantity_borrowed)
+ 
+    delta = returned_count - tx.returned_qty
+    if delta > 0:
+        tx.item.available_quantity = tx.item.available_quantity + delta
+        tx.item.save()
+ 
+    tx.returned_qty = returned_count
+    tx.returned_at  = now if returned_count > 0 else tx.returned_at
+    tx.status       = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
+    tx.save()
+ 
+    b = _broadcasts()
+    b.broadcast_borrow_management()
+    b.broadcast_dashboard()
+    b.broadcast_device_monitoring()
+ 
+    return JsonResponse({
+        'ok':             True,
+        'returned_qty':   tx.returned_qty,
+        'status':         tx.status,
+        'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
+        'returned_at':    tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
+    })
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Excel exports
@@ -585,22 +802,54 @@ def export_borrow_management(request):
 def export_device_monitoring(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
-
-    rows       = DeviceMonitor.objects.all().order_by('id')
-    headers    = ['Box Number', 'College / Office', 'Accountable Person', 'Borrower Type', 'Accountable Officer', 'Device', 'Serial Number',
-                  'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete']
-    col_widths = [15, 20, 24, 12, 24, 14, 20, 14, 16, 10, 10, 12]
-
-    wb = Workbook(); ws = wb.active; ws.title = 'Device Monitoring'
+ 
+    from inventory.models import Transaction
+ 
+    # Build serial → transaction lookup (same logic as consumers.py)
+    serial_to_tx = {}
+    for tx in Transaction.objects.order_by('-borrowed_at'):
+        if not tx.serial_number:
+            continue
+        for sn in [s.strip() for s in tx.serial_number.split(',') if s.strip()]:
+            if sn not in serial_to_tx:
+                serial_to_tx[sn] = tx
+ 
+    rows = DeviceMonitor.objects.all().order_by('id')
+ 
+    headers = [
+        'Box Number', 'College / Office', 'Accountable Person', 'Borrower Type',
+        'Accountable Officer', 'Device', 'Serial Number',
+        'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete',
+        'Release / Return', 'Date Returned', 'Remarks', 'Issue',
+    ]
+    col_widths = [15, 20, 24, 12, 24, 14, 20, 14, 16, 10, 10, 12, 16, 22, 28, 28]
+ 
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Device Monitoring'
     ws.sheet_properties.tabColor = '00E5A0'
     _xl_title(ws, 'Device Monitoring Report', len(headers))
     _xl_header(ws, 3, headers)
+ 
     font_yes = Font(bold=True, color='00E5A0', size=10)
     font_no  = Font(color='6B7080', size=10)
-
+ 
     for i, row in enumerate(rows, start=1):
+        tx = serial_to_tx.get(row.serial_number.strip()) if row.serial_number else None
+ 
+        if tx:
+            release_status = 'Returned' if tx.returned_qty >= tx.quantity_borrowed else 'Released'
+            date_ret = tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—'
+        else:
+            release_status = '—'
+            date_ret = row.date_returned.strftime('%b %d, %Y %H:%M') if row.date_returned else '—'
+ 
+        borrower_type_display = (
+            'Student'  if row.borrower_type == 'student'  else
+            'Employee' if row.borrower_type == 'employee' else '—'
+        )
+ 
         bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
-        borrower_type_display = 'Student' if row.borrower_type == 'student' else 'Employee' if row.borrower_type == 'employee' else '—'
         _xl_row(ws, i + 3, [
             row.box_number or '—',
             row.office_college or '—',
@@ -614,10 +863,15 @@ def export_device_monitoring(request):
             '✓' if row.sealed          else '—',
             '✓' if row.missing         else '—',
             '✓' if row.incomplete      else '—',
+            release_status,
+            date_ret,
+            row.remarks or '—',
+            row.issue or '—',
         ], even=(i % 2 == 0))
+ 
         for col_offset, val in enumerate(bool_vals):
             ws.cell(row=i + 3, column=8 + col_offset).font = font_yes if val else font_no
-
+ 
     for col, width in enumerate(col_widths, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.freeze_panes = 'A4'
