@@ -3,69 +3,264 @@
 {% block page_title %}My Profile{% endblock %}
 
 {% block content %}
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:800px">
+<div style="display:grid;grid-template-columns:340px 1fr;gap:24px;max-width:1100px;align-items:start">
 
+  <!-- ── Account Info Card ── -->
   <div class="form-card" style="max-width:100%">
     <h2 class="form-title">Account Info</h2>
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
-      <div class="user-avatar" style="width:56px;height:56px;font-size:22px">
-        {{ user.username|first|upper }}
+
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:28px">
+      <div class="user-avatar" style="width:56px;height:56px;font-size:22px;flex-shrink:0">
+        {% if user.first_name %}{{ user.first_name|first|upper }}{% else %}{{ user.username|first|upper }}{% endif %}
       </div>
-      <div>
-        <div style="font-family:var(--font-head);font-size:18px;font-weight:800">{{ user.username }}</div>
-        <div style="color:var(--muted);font-size:12px">{{ user.email|default:"No email set" }}</div>
+      <div style="overflow:hidden">
+        <div style="font-family:var(--font-head);font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          {{ user.get_full_name }}
+        </div>
+        <div style="color:var(--muted);font-size:12px;font-family:var(--font-mono)">@{{ user.username }}</div>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
-        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Role</span>
+
+    <div style="display:flex;flex-direction:column;gap:0">
+
+      <div class="profile-row">
+        <span class="profile-label">Role</span>
         <span class="badge {% if user.role == 'admin' %}badge-blue{% elif user.role == 'staff' %}badge-yellow{% else %}badge-green{% endif %}">
           {{ user.role|title }}
         </span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
-        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Joined</span>
+
+      {% if user.first_name or user.last_name %}
+      <div class="profile-row">
+        <span class="profile-label">Full Name</span>
+        <span>{{ user.get_full_name }}</span>
+      </div>
+      {% endif %}
+
+      {% if user.email %}
+      <div class="profile-row">
+        <span class="profile-label">Email</span>
+        <span style="font-size:12px;color:var(--muted)">{{ user.email }}</span>
+      </div>
+      {% endif %}
+
+      <div class="profile-row">
+        <span class="profile-label">Joined</span>
         <span>{{ user.date_joined|date:"M d, Y" }}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:12px 0">
-        <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px">Status</span>
+
+      <div class="profile-row" style="border-bottom:none">
+        <span class="profile-label">Status</span>
         {% if user.is_active %}
           <span class="badge badge-green">Active</span>
         {% else %}
           <span class="badge badge-red">Inactive</span>
         {% endif %}
       </div>
+
     </div>
   </div>
 
-  <div class="form-card" style="max-width:100%">
-    <h2 class="form-title">My Activity</h2>
-    {% if user.transactions.all %}
-      <div style="display:flex;flex-direction:column;gap:10px">
-        {% for tx in user.transactions.all|slice:":6" %}
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-            <div>
-              <div style="font-weight:600;font-size:13px">{{ tx.item.name }}</div>
-              <div style="color:var(--muted);font-size:11px">{{ tx.borrowed_at|date:"M d, Y" }} · {{ tx.quantity_borrowed }} unit(s)</div>
+  <!-- ── Activity Card ── -->
+  <div class="form-card" style="max-width:100%;padding:0;overflow:hidden">
+
+    <!-- Header -->
+    <div style="padding:24px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h2 class="form-title" style="margin-bottom:4px">Activity Log</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0">
+          All transactions handled by this account
+        </p>
+      </div>
+      {% with total=user.transactions.count %}
+      {% if total > 0 %}
+      <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;background:rgba(0,229,160,0.1);color:var(--accent);padding:4px 12px;border-radius:20px;border:1px solid rgba(0,229,160,0.2)">
+        {{ total }} record{% if total != 1 %}s{% endif %}
+      </span>
+      {% endif %}
+      {% endwith %}
+    </div>
+
+    <!-- Scrollable activity list -->
+    <div class="activity-scroll">
+      {% if user.transactions.all %}
+
+        <!-- Column headers -->
+        <div class="activity-header-row">
+          <span style="flex:1.4">Item</span>
+          <span style="flex:1">Borrower</span>
+          <span style="flex:0.7;text-align:center">Qty</span>
+          <span style="flex:1.1;text-align:center">Borrowed On</span>
+          <span style="flex:1.1;text-align:center">Returned On</span>
+          <span style="flex:0.7;text-align:center">Status</span>
+        </div>
+
+        <!-- Rows -->
+        {% for tx in user.transactions.all|dictsortreversed:"borrowed_at" %}
+        <div class="activity-row {% if forloop.last %}activity-row-last{% endif %}">
+
+          <!-- Item -->
+          <div style="flex:1.4;min-width:0">
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {{ tx.item.name }}
             </div>
-            {% if tx.status == 'borrowed' %}
-              <span class="badge badge-yellow">Borrowed</span>
-            {% else %}
-              <span class="badge badge-green">Returned</span>
+            {% if tx.borrow_request %}
+            <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">
+              #{{ tx.borrow_request.transaction_id }}
+            </div>
             {% endif %}
           </div>
+
+          <!-- Borrower name -->
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              {% if tx.borrow_request %}
+                {{ tx.borrow_request.borrower_name }}
+              {% else %}
+                <span style="color:var(--muted)">—</span>
+              {% endif %}
+            </div>
+            {% if tx.borrow_request.borrower_type %}
+            <div style="font-size:11px;color:var(--muted)">
+              {{ tx.borrow_request.get_borrower_type_display }}
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Qty -->
+          <div style="flex:0.7;text-align:center;font-family:var(--font-mono);font-size:13px">
+            <span style="color:var(--accent);font-weight:700">{{ tx.returned_qty }}</span>
+            <span style="color:var(--muted)">/{{ tx.quantity_borrowed }}</span>
+          </div>
+
+          <!-- Borrowed On (PH time, 12h) -->
+          <div style="flex:1.1;text-align:center">
+            <div style="font-size:12px">{{ tx.borrowed_at|date:"M d, Y" }}</div>
+            <div style="font-size:11px;color:var(--muted)">{{ tx.borrowed_at|date:"g:i A" }}</div>
+          </div>
+
+          <!-- Returned On (PH time, 12h) -->
+          <div style="flex:1.1;text-align:center">
+            {% if tx.returned_at %}
+              <div style="font-size:12px">{{ tx.returned_at|date:"M d, Y" }}</div>
+              <div style="font-size:11px;color:var(--muted)">{{ tx.returned_at|date:"g:i A" }}</div>
+            {% else %}
+              <span style="color:var(--muted);font-size:13px">—</span>
+            {% endif %}
+          </div>
+
+          <!-- Status -->
+          <div style="flex:0.7;text-align:center">
+            {% if tx.returned_qty >= tx.quantity_borrowed %}
+              <span class="act-badge act-returned">✓ Returned</span>
+            {% else %}
+              <span class="act-badge act-borrowed">Released</span>
+            {% endif %}
+          </div>
+
+        </div>
         {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-state" style="padding:30px 0">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        <p>No transactions yet.</p>
-      </div>
-    {% endif %}
-  </div>
+
+      {% else %}
+        <div class="empty-state" style="padding:60px 20px">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <p>No transactions yet.</p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div><!-- /activity card -->
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ── Profile info rows ── */
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.profile-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ── Activity scroll container ── */
+.activity-scroll {
+  max-height: 560px;
+  overflow-y: auto;
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.activity-scroll::-webkit-scrollbar { width: 6px; }
+.activity-scroll::-webkit-scrollbar-track { background: transparent; }
+.activity-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.activity-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Column header row ── */
+.activity-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* ── Activity data row ── */
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.activity-row:hover { background: var(--surface2); }
+.activity-row-last  { border-bottom: none; }
+
+/* ── Status badges ── */
+.act-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+.act-returned {
+  background: rgba(0,229,160,0.12);
+  color: #00e5a0;
+  border: 1px solid rgba(0,229,160,0.25);
+}
+.act-borrowed {
+  background: rgba(255,179,71,0.12);
+  color: #ffb347;
+  border: 1px solid rgba(255,179,71,0.25);
+}
+</style>
 {% endblock %}
