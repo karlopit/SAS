@@ -276,45 +276,44 @@ def device_monitoring(request):
  
     rows = list(DeviceMonitor.objects.all())
     
-    # Build a lookup dictionary for quick access to transaction devices
-    # Key: (serial_number, accountable_person, office_college) -> most recent transaction
-    from collections import defaultdict
-    device_tx_lookup = {}
-    
-    # Get all active transactions that have devices
-    for tx in Transaction.objects.filter(status='borrowed').select_related('borrow_request'):
-        # Get all TransactionDevice records for this transaction that are NOT returned
-        active_devices = tx.devices.filter(returned=False)
-        
-        for device in active_devices:
-            # Create a unique key combining serial number, borrower, and office
-            borrower_name = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
-            key = (device.serial_number, borrower_name, tx.office_college)
-            device_tx_lookup[key] = {
-                'transaction': tx,
-                'borrowed_at': tx.borrowed_at,
-                'borrower_name': borrower_name,
-                'office_college': tx.office_college
-            }
+    print(f"\n=== DEVICE MONITORING DEBUG ===")
+    print(f"Total DeviceMonitor rows: {len(rows)}")
     
     # Annotate each DeviceMonitor row
     for row in rows:
-        # Use the device's own date_returned field first
+        # Use the device's own date_returned field
         if row.date_returned:
             row.release_status = 'Returned'
             row.date_returned_display = row.date_returned.strftime('%b %d, %Y %H:%M')
+            print(f"Row {row.id}: Serial={row.serial_number}, Status=Returned, Date={row.date_returned_display}")
         else:
-            # Check if this device is currently in an active transaction (not returned)
-            # Create the lookup key using the device's current data
-            lookup_key = (row.serial_number, row.accountable_person, row.office_college)
+            # Check if there's an active transaction for this device
+            # Look for any TransactionDevice with this serial that is not returned
+            # AND matches the borrower/office
+            active_td = TransactionDevice.objects.filter(
+                serial_number=row.serial_number,
+                returned=False
+            ).select_related('transaction').first()
             
-            if lookup_key in device_tx_lookup:
-                row.release_status = 'Released'
-                row.date_returned_display = '—'
+            if active_td and active_td.transaction:
+                # Check if this transaction matches the device's borrower
+                tx = active_td.transaction
+                tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
+                
+                if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
+                    row.release_status = 'Released'
+                    row.date_returned_display = '—'
+                    print(f"Row {row.id}: Serial={row.serial_number}, Status=Released (active transaction {tx.id})")
+                else:
+                    row.release_status = '—'
+                    row.date_returned_display = '—'
+                    print(f"Row {row.id}: Serial={row.serial_number}, Status=— (no matching transaction)")
             else:
-                # Device is not in any active transaction and not returned
                 row.release_status = '—'
                 row.date_returned_display = '—'
+                print(f"Row {row.id}: Serial={row.serial_number}, Status=— (no active transaction)")
+    
+    print("=== END DEBUG ===\n")
     
     pending_count = BorrowRequest.objects.filter(status='pending').count()
  
@@ -586,108 +585,118 @@ def update_returned_qty(request, transaction_id):
 @login_required
 @require_POST
 def return_devices(request, transaction_id):
-    """
-    Receives a JSON body:  { "device_ids": [1, 3, 5], "serials": ["SN-001", "SN-003"] }
- 
-    device_ids  — TransactionDevice PKs to mark returned (preferred path)
-    serials     — fallback when device_ids are null (legacy transactions)
- 
-    For each returned device:
-      • Sets TransactionDevice.returned = True, returned_at = now
-      • Finds the matching DeviceMonitor by serial_number AND borrower/office and stamps date_returned
- 
-    Then recalculates Transaction.returned_qty and status.
-    """
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
  
     tx = get_object_or_404(Transaction, id=transaction_id)
- 
+    
+    print(f"\n=== RETURN DEVICES DEBUG ===")
+    print(f"Transaction ID: {tx.id}")
+    print(f"Transaction serial_number field: {tx.serial_number}")
+    print(f"Quantity borrowed: {tx.quantity_borrowed}")
+    print(f"Current returned_qty: {tx.returned_qty}")
+    
+    # Check existing TransactionDevice records
+    existing_devices = tx.devices.all()
+    print(f"TransactionDevice records: {existing_devices.count()}")
+    for td in existing_devices:
+        print(f"  - Serial: {td.serial_number}, Box: {td.box_number}, Returned: {td.returned}")
+    
+    # Check DeviceMonitor records for this borrower
+    if tx.borrow_request:
+        borrower_name = tx.borrow_request.borrower_name
+        office = tx.borrow_request.office_college
+    else:
+        borrower_name = tx.borrower.get_full_name() or tx.borrower.username
+        office = tx.office_college
+    
+    print(f"\nBorrower: {borrower_name}, Office: {office}")
+    
+    dm_records = DeviceMonitor.objects.filter(
+        accountable_person=borrower_name,
+        office_college=office
+    )
+    print(f"DeviceMonitor records for this borrower/office: {dm_records.count()}")
+    for dm in dm_records:
+        print(f"  - ID: {dm.id}, Serial: {dm.serial_number}, Date Returned: {dm.date_returned}")
+    
     try:
-        body        = json.loads(request.body)
-        device_ids  = body.get('device_ids', [])
-        serials     = body.get('serials', [])
-    except (json.JSONDecodeError, AttributeError):
+        body = json.loads(request.body)
+        device_ids = body.get('device_ids', [])
+        serials = body.get('serials', [])
+        print(f"\nRequest body - device_ids: {device_ids}, serials: {serials}")
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"JSON decode error: {e}")
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
  
     now = timezone.now()
     returned_serials = []
  
-    # ── Path A: real TransactionDevice rows exist ─────────────────────────────
+    # Update TransactionDevice records
     if device_ids:
         real_ids = [d for d in device_ids if d is not None]
         if real_ids:
+            print(f"\nUpdating TransactionDevice with IDs: {real_ids}")
             updated_devices = TransactionDevice.objects.filter(
                 id__in=real_ids,
                 transaction=tx,
                 returned=False,
             )
             returned_serials = list(updated_devices.values_list('serial_number', flat=True))
+            print(f"Found TransactionDevice records to update: {returned_serials}")
             updated_devices.update(returned=True, returned_at=now)
- 
-    # ── Path B: fallback — legacy transaction, match by serial string ─────────
     elif serials:
+        print(f"\nProcessing serials: {serials}")
         for sn in serials:
             td = tx.devices.filter(serial_number=sn, returned=False).first()
             if td:
-                td.returned    = True
+                td.returned = True
                 td.returned_at = now
                 td.save()
                 returned_serials.append(sn)
+                print(f"  Updated TransactionDevice for serial: {sn}")
+    
+    print(f"\nFinal returned_serials list: {returned_serials}")
  
-    # ── CRITICAL FIX: Update ONLY the specific DeviceMonitor records ──
+    # Update DeviceMonitor records
     if returned_serials:
-        # Get the borrower info from the transaction
-        if tx.borrow_request:
-            borrower_name = tx.borrow_request.borrower_name
-            office_college = tx.borrow_request.office_college
-        else:
-            borrower_name = tx.borrower.get_full_name() or tx.borrower.username
-            office_college = tx.office_college
+        # Update ONLY DeviceMonitor records that belong to this transaction
+        # We need to match by serial_number AND accountable_person AND office_college
+        print(f"\nUpdating DeviceMonitor records for serials: {returned_serials}")
         
-        # Update ONLY DeviceMonitor records that match ALL criteria:
-        # 1. Serial number is in the returned list
-        # 2. Accountable person matches the borrower
-        # 3. Office/college matches the transaction
-        # 4. date_returned is NULL (not already returned)
-        updated_count = DeviceMonitor.objects.filter(
-            serial_number__in=returned_serials,
-            accountable_person=borrower_name,
-            office_college=office_college,
-            date_returned__isnull=True
-        ).update(date_returned=now)
-        
-        print(f"[DEBUG] Returned {updated_count} DeviceMonitor records for serials: {returned_serials}")
-        print(f"[DEBUG] Borrower: {borrower_name}, Office: {office_college}")
-        
-        # If no matches found, try a more lenient match for legacy data
-        if updated_count == 0:
+        for serial in returned_serials:
+            # Update each serial individually for better debugging
             updated_count = DeviceMonitor.objects.filter(
-                serial_number__in=returned_serials,
+                serial_number=serial,
                 accountable_person=borrower_name,
+                office_college=office,
                 date_returned__isnull=True
             ).update(date_returned=now)
-            print(f"[DEBUG] Lenient match updated {updated_count} DeviceMonitor records")
- 
-    # ── Recalculate returned_qty on the Transaction ───────────────────────────
+            print(f"  Serial {serial}: Updated {updated_count} DeviceMonitor record(s)")
+    
+    # Recalculate returned_qty
     returned_count = tx.devices.filter(returned=True).count()
+    print(f"\nNew returned_count from TransactionDevice: {returned_count}")
  
-    # Fallback: if no TransactionDevice rows, use the serials list length
     if not tx.devices.exists():
         returned_count = tx.returned_qty + len(serials)
+        print(f"Using fallback returned_count: {returned_count}")
  
-    # Don't exceed quantity_borrowed
     returned_count = min(returned_count, tx.quantity_borrowed)
  
     delta = returned_count - tx.returned_qty
+    print(f"Delta: {delta}")
     if delta > 0:
         tx.item.available_quantity = tx.item.available_quantity + delta
         tx.item.save()
  
     tx.returned_qty = returned_count
-    tx.returned_at  = now if returned_count > 0 else tx.returned_at
-    tx.status       = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
+    tx.returned_at = now if returned_count > 0 else tx.returned_at
+    tx.status = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
     tx.save()
+    
+    print(f"Final transaction status: {tx.status}, returned_qty: {tx.returned_qty}")
+    print("=== END DEBUG ===\n")
  
     b = _broadcasts()
     b.broadcast_borrow_management()
@@ -695,11 +704,11 @@ def return_devices(request, transaction_id):
     b.broadcast_device_monitoring()
  
     return JsonResponse({
-        'ok':             True,
-        'returned_qty':   tx.returned_qty,
-        'status':         tx.status,
+        'ok': True,
+        'returned_qty': tx.returned_qty,
+        'status': tx.status,
         'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
-        'returned_at':    tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
+        'returned_at': tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
     })
 
 
