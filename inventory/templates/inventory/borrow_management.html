@@ -125,7 +125,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No items found.</td></tr>
+        <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No items found.职务</tr>
         {% endfor %}
       </tbody>
     </table>
@@ -215,7 +215,8 @@
             data-officer="{{ tx.borrower.get_full_name|default:tx.borrower.username }}"
             data-borrower-name="{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}"
             data-borrower-type="{{ tx.borrow_request.borrower_type|default:'' }}"
-            data-status="{{ tx.status }}">
+            data-status="{{ tx.status }}"
+            data-returned-at="{{ tx.returned_at_display }}">
           <td style="text-align:center"><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
           <td style="text-align:center;font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
           <td style="text-align:center">
@@ -235,10 +236,8 @@
             <span class="returned-qty-display">{{ tx.returned_qty }}</span>
             <span style="color:var(--muted);font-size:11px"> / {{ tx.quantity_borrowed }}</span>
           </td>
-          <td style="text-align:center;color:var(--muted)">{{ tx.borrowed_at|date:"M d, Y" }}</td>
-          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">
-            {% if tx.returned_at %}{{ tx.returned_at|date:"M d, Y H:i" }}{% else %}—{% endif %}
-          </td>
+          <td style="text-align:center;color:var(--muted)">{{ tx.borrowed_at_display }}</td>
+          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">{{ tx.returned_at_display }}</td>
           <td class="status-cell" style="text-align:center">
             {% if tx.returned_qty >= tx.quantity_borrowed %}
               <span class="badge badge-returned-full">✓ Returned</span>
@@ -254,7 +253,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
+        <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.职务</tr>
         {% endfor %}
       </tbody>
     </table>

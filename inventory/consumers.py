@@ -48,43 +48,62 @@ def _build_dashboard_payload():
     }
 
 
+# In consumers.py, update the _build_borrow_management_payload function:
+
 def _build_borrow_management_payload():
-    from inventory.models import Item, Transaction, BorrowRequest
-
-    items = list(Item.objects.values(
-        'id', 'name', 'serial', 'description', 'available_quantity', 'quantity'
-    ))
-    pending_count = BorrowRequest.objects.filter(status='pending').count()
-
-    txs_qs = Transaction.objects.select_related(
+    from .models import Transaction, BorrowRequest, Item
+    from .views import format_ph_time  # Import the formatting function
+    
+    transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
     ).order_by('-borrowed_at')[:50]
-
-    transactions = []
-    for tx in txs_qs:
-        transactions.append({
-            'id':                  tx.id,
-            'tx_id':               f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
-            'borrower_name':       tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username,
-            'borrower_type':       tx.borrow_request.borrower_type if tx.borrow_request else None,
-            'accountable_officer': tx.borrower.get_full_name() or tx.borrower.username,
-            'office_college':      tx.office_college or '—',
-            'item_name':           tx.item.name,
-            'item_serial':         tx.item.serial or '—',
-            'serial_number':       tx.serial_number or '—',
-            'qty_borrowed':        tx.quantity_borrowed,
-            'returned_qty':        tx.returned_qty,
-            'borrowed_at':         tx.borrowed_at.strftime('%b %d, %Y'),
-            'returned_at':         tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—',
-            'fully_returned':      tx.returned_qty >= tx.quantity_borrowed,
-            'status':              tx.status,
+    
+    transactions_data = []
+    for tx in transactions:
+        # Get borrower name
+        if tx.borrow_request:
+            borrower_name = tx.borrow_request.borrower_name
+            borrower_type = tx.borrow_request.borrower_type
+            tx_id = tx.borrow_request.transaction_id
+        else:
+            borrower_name = tx.borrower.username
+            borrower_type = ''
+            tx_id = ''
+        
+        # Get accountable officer
+        accountable_officer = tx.borrower.get_full_name() or tx.borrower.username
+        
+        transactions_data.append({
+            'id': tx.id,
+            'tx_id': tx_id,
+            'borrower_name': borrower_name,
+            'borrower_type': borrower_type,
+            'accountable_officer': accountable_officer,
+            'office_college': tx.office_college or '',
+            'item_name': tx.item.name,
+            'qty_borrowed': tx.quantity_borrowed,
+            'returned_qty': tx.returned_qty,
+            'borrowed_at': format_ph_time(tx.borrowed_at),  # ← Use formatted time
+            'returned_at': format_ph_time(tx.returned_at) if tx.returned_at else '—',  # ← Use formatted time
+            'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
         })
-
+    
+    items_data = []
+    for item in Item.objects.all():
+        items_data.append({
+            'id': item.id,
+            'name': item.name,
+            'serial': item.serial,
+            'description': item.description,
+            'quantity': item.quantity,
+            'available_quantity': item.available_quantity,
+        })
+    
     return {
-        'type':          'borrow_management.update',
-        'items':         items,
-        'transactions':  transactions,
-        'pending_count': pending_count,
+        'type': 'borrow_management.update',
+        'transactions': transactions_data,
+        'items': items_data,
+        'pending_count': BorrowRequest.objects.filter(status='pending').count(),
     }
 
 

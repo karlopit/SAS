@@ -1,8 +1,22 @@
 {% extends 'inventory/base.html' %}
+{% load tz %}
 {% block title %}Borrow Requests — InvSys{% endblock %}
 {% block page_title %}Borrow Requests{% endblock %}
 
 {% block content %}
+
+<!-- ── Search Bar ── -->
+<div class="table-card" style="padding:16px 20px;margin-bottom:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+    <div class="table-search" style="flex:1;min-width:250px;max-width:400px">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="request-search" placeholder="Search by transaction ID, borrower, office, or item..." style="width:100%"/>
+    </div>
+  </div>
+</div>
+
 <div class="table-card">
   <div class="table-header">
     <span class="table-title">
@@ -16,52 +30,214 @@
     </span>
   </div>
 
-  <table id="items-table">
-    <thead>
-      <tr>
-        <th>Transaction ID</th><th>Borrower Name</th><th>College / Office</th>
-        <th>Item Requested</th><th>Quantity</th><th>Requested On</th><th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="requests-tbody">
-      {% for req in pending %}
-      <tr id="req-row-{{ req.id }}">
-        <td><span class="badge badge-blue">#{{ req.transaction_id }}</span></td>
-        <td style="font-weight:600">{{ req.borrower_name }}</td>
-        <td>{{ req.office_college }}</td>
-        <td>{{ req.item.name|default:"—" }}</td>
-        <td>{{ req.quantity }}</td>
-        <td style="color:var(--muted)">{{ req.created_at|date:"M d, Y — H:i" }}</td>
-        <td>
-          <div style="display:flex;gap:6px">
-            <a href="{% url 'staff_confirm_borrow' req.id %}" class="btn btn-primary btn-sm">Accept</a>
-            <form method="post" action="{% url 'decline_request' req.id %}" style="display:inline">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-danger btn-sm">Decline</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% empty %}
-      <tr id="req-empty-row">
-        <td colspan="7">
-          <div class="empty-state" style="padding:40px">
-            <p>No pending borrow requests.</p>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div style="overflow-x:auto">
+    <table id="requests-table" style="width:100%;margin:0 auto;min-width:800px">
+      <thead>
+        <tr>
+          <th style="text-align:center;width:15%">Transaction ID</th>
+          <th style="text-align:center;width:20%">Borrower Name</th>
+          <th style="text-align:center;width:20%">College / Office</th>
+          <th style="text-align:center;width:20%">Item Requested</th>
+          <th style="text-align:center;width:10%">Quantity</th>
+          <th style="text-align:center;width:15%">Requested On</th>
+          <th style="text-align:center;width:10%">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="requests-tbody">
+        {% for req in pending %}
+        <tr id="req-row-{{ req.id }}"
+            data-tx-id="{{ req.transaction_id|lower }}"
+            data-borrower="{{ req.borrower_name|lower }}"
+            data-office="{{ req.office_college|lower }}"
+            data-item="{{ req.item.name|default:''|lower }}">
+          <td style="text-align:center"><span class="badge badge-blue">#{{ req.transaction_id }}</span></td>
+          <td style="text-align:center;font-weight:600">{{ req.borrower_name }}</td>
+          <td style="text-align:center">{{ req.office_college }}</td>
+          <td style="text-align:center">{{ req.item.name|default:"—" }}</td>
+          <td style="text-align:center">{{ req.quantity }}</td>
+          <td style="text-align:center;color:var(--muted)">
+            {% timezone "Asia/Manila" %}
+              {{ req.created_at|date:"M d, Y h:i A" }}
+            {% endtimezone %}
+          </td>
+          <td style="text-align:center">
+            <div style="display:flex;gap:6px;justify-content:center">
+              <a href="{% url 'staff_confirm_borrow' req.id %}" class="btn btn-primary btn-sm">Accept</a>
+              <form method="post" action="{% url 'decline_request' req.id %}" style="display:inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr id="req-empty-row">
+          <td colspan="7">
+            <div class="empty-state" style="padding:40px;text-align:center">
+              <p>No pending borrow requests.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
+<style>
+  #requests-table td, #requests-table th {
+    vertical-align: middle;
+    padding: 12px 8px;
+  }
+  
+  .row-new {
+    animation: highlightNew 2s ease-out;
+  }
+  
+  @keyframes highlightNew {
+    0%   { background: rgba(0, 229, 160, 0.4); }
+    50%  { background: rgba(0, 229, 160, 0.2); }
+    100% { background: transparent; }
+  }
+  
+  .table-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    transition: border-color 0.2s ease;
+  }
+  
+  .table-search:focus-within {
+    border-color: var(--accent);
+  }
+  
+  .table-search svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--muted);
+    flex-shrink: 0;
+  }
+  
+  .table-search input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    width: 100%;
+  }
+  
+  .table-search input::placeholder {
+    color: var(--muted);
+  }
+</style>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>]/g, function(m) {
+    if (m === '&') return '&amp;';
+    if (m === '<') return '&lt;';
+    if (m === '>') return '&gt;';
+    return m;
+  });
+}
+
+function showToast(message, type = 'success') {
+  let toast = document.querySelector('.custom-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'custom-toast';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: ${type === 'success' ? '#00e5a0' : '#ff4444'};
+      color: ${type === 'success' ? '#000' : '#fff'};
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: 500;
+      z-index: 2000;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s ease;
+      font-family: monospace;
+      font-size: 13px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateY(0)';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(20px)';
+  }, 3000);
+}
+
+function formatPhilippineTime(dateString) {
+  if (!dateString || dateString === '—') return '—';
+  try {
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      const options = {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila'
+      };
+      return date.toLocaleString('en-US', options);
+    }
+  } catch(e) {}
+  return dateString;
+}
+
+/* ── Search Filter ── */
+(function() {
+  let searchQuery = '';
+
+  function applySearchFilter() {
+    const rows = document.querySelectorAll('#requests-tbody tr[id^="req-row-"]');
+    let visible = 0;
+    
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const show = !searchQuery || text.includes(searchQuery);
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    
+    const totalSpan = document.getElementById('pending-count-total');
+    if (totalSpan) totalSpan.textContent = visible;
+  }
+  
+  const searchInput = document.getElementById('request-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', e => {
+      searchQuery = e.target.value.toLowerCase().trim();
+      applySearchFilter();
+    });
+  }
+  
+  window.applySearchFilter = applySearchFilter;
+})();
+
+/* ── WebSocket Real-time Updates ── */
 (function () {
   const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
 
-  // Track known request IDs
   const knownIds = new Set(
     [...document.querySelectorAll('#requests-tbody tr[id^="req-row-"]')]
       .map(r => r.id.replace('req-row-', ''))
@@ -72,6 +248,7 @@
     if (!tbody) return;
 
     const badge = document.getElementById('pending-count-badge');
+    const totalSpan = document.getElementById('pending-count-total');
 
     // Remove rows that are no longer pending
     const incomingIds = new Set(requests.map(r => String(r.id)));
@@ -82,21 +259,28 @@
 
     requests.forEach(req => {
       const existing = document.getElementById('req-row-' + req.id);
-      const isNew    = !knownIds.has(String(req.id));
+      const isNew = !knownIds.has(String(req.id));
       knownIds.add(String(req.id));
 
       if (!existing) {
         const tr = document.createElement('tr');
         tr.id = 'req-row-' + req.id;
+        tr.setAttribute('data-tx-id', (req.transaction_id || '').toLowerCase());
+        tr.setAttribute('data-borrower', (req.borrower_name || '').toLowerCase());
+        tr.setAttribute('data-office', (req.office_college || '').toLowerCase());
+        tr.setAttribute('data-item', (req.item_name || '').toLowerCase());
+        
+        const formattedDate = formatPhilippineTime(req.created_at);
+        
         tr.innerHTML = `
-          <td><span class="badge badge-blue">#${req.transaction_id}</span></td>
-          <td style="font-weight:600">${req.borrower_name}</td>
-          <td>${req.office_college}</td>
-          <td>${req.item_name}</td>
-          <td>${req.quantity}</td>
-          <td style="color:var(--muted)">${req.created_at}</td>
-          <td>
-            <div style="display:flex;gap:6px">
+          <td style="text-align:center"><span class="badge badge-blue">#${escapeHtml(req.transaction_id)}</span></td>
+          <td style="text-align:center;font-weight:600">${escapeHtml(req.borrower_name)}</td>
+          <td style="text-align:center">${escapeHtml(req.office_college)}</td>
+          <td style="text-align:center">${escapeHtml(req.item_name || '—')}</td>
+          <td style="text-align:center">${req.quantity}</td>
+          <td style="text-align:center;color:var(--muted)">${formattedDate}</td>
+          <td style="text-align:center">
+            <div style="display:flex;gap:6px;justify-content:center">
               <a href="/borrow/confirm/${req.id}/" class="btn btn-primary btn-sm">Accept</a>
               <form method="post" action="/requests/${req.id}/decline/" style="display:inline">
                 <input type="hidden" name="csrfmiddlewaretoken" value="${CSRF}"/>
@@ -105,7 +289,7 @@
             </div>
           </td>
         `;
-        // Remove empty state row
+        
         const emptyRow = document.getElementById('req-empty-row');
         if (emptyRow) emptyRow.remove();
 
@@ -123,15 +307,23 @@
     if (tbody.querySelectorAll('tr[id^="req-row-"]').length === 0 && !document.getElementById('req-empty-row')) {
       const tr = document.createElement('tr');
       tr.id = 'req-empty-row';
-      tr.innerHTML = '<td colspan="7"><div class="empty-state" style="padding:40px"><p>No pending borrow requests.</p></div></td>';
+      tr.innerHTML = '<td colspan="7"><div class="empty-state" style="padding:40px;text-align:center"><p>No pending borrow requests.</p></div></td>';
       tbody.appendChild(tr);
     }
 
-    // Update badge
+    // Update badges
+    const count = requests.length;
     if (badge) {
-      const count = requests.length;
       badge.textContent = count;
       badge.style.display = count > 0 ? '' : 'none';
+    }
+    if (totalSpan) {
+      totalSpan.textContent = count;
+    }
+    
+    // Re-apply search filter
+    if (typeof applySearchFilter === 'function') {
+      applySearchFilter();
     }
   }
 
@@ -142,7 +334,9 @@
   }
 
   const indicator = document.getElementById('rt-indicator');
-  InvSysRT.connect('/ws/borrow-requests/', handleMessage, indicator);
+  if (typeof InvSysRT !== 'undefined') {
+    InvSysRT.connect('/ws/borrow-requests/', handleMessage, indicator);
+  }
 })();
 </script>
 {% endblock %}

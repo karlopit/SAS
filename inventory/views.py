@@ -1,6 +1,7 @@
 import io
 import json
 import random
+import pytz
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -17,6 +18,23 @@ from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRe
 from .decorators import no_cache
 from django.contrib import messages
 
+# Get Philippine timezone
+PH_TZ = pytz.timezone('Asia/Manila')
+
+def get_ph_time(dt=None):
+    """Return current time or converted datetime in Philippine timezone"""
+    if dt is None:
+        dt = timezone.now()
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.utc)
+    return dt.astimezone(PH_TZ)
+
+def format_ph_time(dt):
+    """Format datetime to Philippine time 12-hour format"""
+    if not dt:
+        return None
+    ph_dt = get_ph_time(dt)
+    return ph_dt.strftime('%b %d, %Y %I:%M %p')
 
 def _broadcasts():
     from inventory import broadcasts as b
@@ -126,7 +144,7 @@ def transaction_devices_json(request, transaction_id):
         data = []
         for sn in serials:
             data.append({
-                'id':            None,   # no real TransactionDevice row yet
+                'id':            None,
                 'serial_number': sn,
                 'box_number':    dm_map.get(sn, '—'),
                 'returned':      False,
@@ -141,7 +159,7 @@ def transaction_devices_json(request, transaction_id):
             'serial_number': d.serial_number,
             'box_number':    d.box_number or '—',
             'returned':      d.returned,
-            'returned_at':   d.returned_at.strftime('%b %d, %Y %H:%M') if d.returned_at else None,
+            'returned_at':   format_ph_time(d.returned_at),
         })
     return JsonResponse({'devices': data})
 
@@ -255,15 +273,27 @@ def borrow_management(request):
     if request.user.role != 'staff':
         raise PermissionDenied
 
-    items        = Item.objects.all()
+    items = Item.objects.all()
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
     ).order_by('-borrowed_at')[:50]
+    
+    # Add formatted time display for each transaction
+    for tx in transactions:
+        if tx.returned_at:
+            tx.returned_at_display = format_ph_time(tx.returned_at)
+        else:
+            tx.returned_at_display = '—'
+        if tx.borrowed_at:
+            tx.borrowed_at_display = format_ph_time(tx.borrowed_at)
+        else:
+            tx.borrowed_at_display = '—'
+    
     pending_count = BorrowRequest.objects.filter(status='pending').count()
 
     return render(request, 'inventory/borrow_management.html', {
-        'items':         items,
-        'transactions':  transactions,
+        'items': items,
+        'transactions': transactions,
         'pending_count': pending_count,
     })
 
@@ -276,44 +306,32 @@ def device_monitoring(request):
  
     rows = list(DeviceMonitor.objects.all())
     
-    print(f"\n=== DEVICE MONITORING DEBUG ===")
-    print(f"Total DeviceMonitor rows: {len(rows)}")
-    
     # Annotate each DeviceMonitor row
     for row in rows:
         # Use the device's own date_returned field
         if row.date_returned:
             row.release_status = 'Returned'
-            row.date_returned_display = row.date_returned.strftime('%b %d, %Y %H:%M')
-            print(f"Row {row.id}: Serial={row.serial_number}, Status=Returned, Date={row.date_returned_display}")
+            row.date_returned_display = format_ph_time(row.date_returned)
         else:
             # Check if there's an active transaction for this device
-            # Look for any TransactionDevice with this serial that is not returned
-            # AND matches the borrower/office
             active_td = TransactionDevice.objects.filter(
                 serial_number=row.serial_number,
                 returned=False
             ).select_related('transaction').first()
             
             if active_td and active_td.transaction:
-                # Check if this transaction matches the device's borrower
                 tx = active_td.transaction
                 tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
                 
                 if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
                     row.release_status = 'Released'
                     row.date_returned_display = '—'
-                    print(f"Row {row.id}: Serial={row.serial_number}, Status=Released (active transaction {tx.id})")
                 else:
                     row.release_status = '—'
                     row.date_returned_display = '—'
-                    print(f"Row {row.id}: Serial={row.serial_number}, Status=— (no matching transaction)")
             else:
                 row.release_status = '—'
                 row.date_returned_display = '—'
-                print(f"Row {row.id}: Serial={row.serial_number}, Status=— (no active transaction)")
-    
-    print("=== END DEBUG ===\n")
     
     pending_count = BorrowRequest.objects.filter(status='pending').count()
  
@@ -364,8 +382,6 @@ def device_monitoring_save(request):
             incomplete          = get(incompletes)      == 'on',
             remarks             = get(remarks_list),
             issue               = get(issue_list),
-            # IMPORTANT: Don't overwrite date_returned when saving manually
-            # Only update it through the return process
         )
  
         if row_id == 'new':
@@ -373,12 +389,9 @@ def device_monitoring_save(request):
         else:
             try:
                 obj = DeviceMonitor.objects.get(pk=int(row_id))
-                # Don't update date_returned if it's already set and we're not returning
-                # Keep existing date_returned value
                 existing_date_returned = obj.date_returned
                 for attr, val in fields.items():
                     setattr(obj, attr, val)
-                # Restore date_returned if it was set
                 obj.date_returned = existing_date_returned
                 obj.save()
             except DeviceMonitor.DoesNotExist:
@@ -417,11 +430,10 @@ def staff_confirm_borrow(request, request_id):
     if request.method == 'POST':
         form = StaffBorrowForm(request.POST)
         if form.is_valid():
-            serial_numbers = form.cleaned_data['serial_numbers']   # list
-            box_numbers    = form.cleaned_data['box_numbers']       # list
+            serial_numbers = form.cleaned_data['serial_numbers']
+            box_numbers    = form.cleaned_data['box_numbers']
             quantity       = form.cleaned_data['quantity_borrowed']
  
-            # Create the Transaction record
             transaction = form.save(commit=False)
             transaction.borrower       = request.user
             transaction.borrow_request = borrow_req
@@ -432,18 +444,15 @@ def staff_confirm_borrow(request, request_id):
             transaction.item.save()
             transaction.save()
  
-            # Mark borrow request accepted
             borrow_req.status = 'accepted'
             borrow_req.save()
  
             accountable_officer = request.user.get_full_name() or request.user.username
  
-            # Create one TransactionDevice + one DeviceMonitor per serial/box pair
             device_monitors = []
             for i, serial in enumerate(serial_numbers):
                 box = box_numbers[i] if i < len(box_numbers) else ''
  
-                # Per-device return tracker
                 TransactionDevice.objects.create(
                     transaction=transaction,
                     serial_number=serial,
@@ -509,8 +518,8 @@ def return_item(request, transaction_id):
         raise PermissionDenied
     transaction = get_object_or_404(Transaction, id=transaction_id)
     if request.method == 'POST' and transaction.status != 'returned':
-        transaction.status      = 'returned'
-        transaction.returned_at = timezone.now()
+        transaction.status = 'returned'
+        transaction.returned_at = get_ph_time()
         transaction.save()
         b = _broadcasts()
         b.broadcast_borrow_management()
@@ -555,8 +564,8 @@ def update_returned_qty(request, transaction_id):
         tx.item.save()
 
     tx.returned_qty = new_returned
-    tx.returned_at  = timezone.now() if new_returned > 0 else None
-    tx.status       = 'returned' if new_returned >= tx.quantity_borrowed else 'borrowed'
+    tx.returned_at = get_ph_time() if new_returned > 0 else None
+    tx.status = 'returned' if new_returned >= tx.quantity_borrowed else 'borrowed'
     tx.save()
 
     b = _broadcasts()
@@ -577,7 +586,7 @@ def update_returned_qty(request, transaction_id):
         'ok':             True,
         'returned_qty':   tx.returned_qty,
         'status':         tx.status,
-        'returned_at':    tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
+        'returned_at':    format_ph_time(tx.returned_at),
         'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
         'pie': {'available': available_qty, 'borrowed': borrowed_qty},
     })
@@ -590,113 +599,71 @@ def return_devices(request, transaction_id):
  
     tx = get_object_or_404(Transaction, id=transaction_id)
     
-    print(f"\n=== RETURN DEVICES DEBUG ===")
-    print(f"Transaction ID: {tx.id}")
-    print(f"Transaction serial_number field: {tx.serial_number}")
-    print(f"Quantity borrowed: {tx.quantity_borrowed}")
-    print(f"Current returned_qty: {tx.returned_qty}")
-    
-    # Check existing TransactionDevice records
-    existing_devices = tx.devices.all()
-    print(f"TransactionDevice records: {existing_devices.count()}")
-    for td in existing_devices:
-        print(f"  - Serial: {td.serial_number}, Box: {td.box_number}, Returned: {td.returned}")
-    
-    # Check DeviceMonitor records for this borrower
-    if tx.borrow_request:
-        borrower_name = tx.borrow_request.borrower_name
-        office = tx.borrow_request.office_college
-    else:
-        borrower_name = tx.borrower.get_full_name() or tx.borrower.username
-        office = tx.office_college
-    
-    print(f"\nBorrower: {borrower_name}, Office: {office}")
-    
-    dm_records = DeviceMonitor.objects.filter(
-        accountable_person=borrower_name,
-        office_college=office
-    )
-    print(f"DeviceMonitor records for this borrower/office: {dm_records.count()}")
-    for dm in dm_records:
-        print(f"  - ID: {dm.id}, Serial: {dm.serial_number}, Date Returned: {dm.date_returned}")
-    
     try:
         body = json.loads(request.body)
         device_ids = body.get('device_ids', [])
         serials = body.get('serials', [])
-        print(f"\nRequest body - device_ids: {device_ids}, serials: {serials}")
     except (json.JSONDecodeError, AttributeError) as e:
-        print(f"JSON decode error: {e}")
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
  
-    now = timezone.now()
+    # Get current Philippine time
+    now_ph = get_ph_time()
     returned_serials = []
  
     # Update TransactionDevice records
     if device_ids:
         real_ids = [d for d in device_ids if d is not None]
         if real_ids:
-            print(f"\nUpdating TransactionDevice with IDs: {real_ids}")
             updated_devices = TransactionDevice.objects.filter(
                 id__in=real_ids,
                 transaction=tx,
                 returned=False,
             )
             returned_serials = list(updated_devices.values_list('serial_number', flat=True))
-            print(f"Found TransactionDevice records to update: {returned_serials}")
-            updated_devices.update(returned=True, returned_at=now)
+            updated_devices.update(returned=True, returned_at=now_ph)
     elif serials:
-        print(f"\nProcessing serials: {serials}")
         for sn in serials:
             td = tx.devices.filter(serial_number=sn, returned=False).first()
             if td:
                 td.returned = True
-                td.returned_at = now
+                td.returned_at = now_ph
                 td.save()
                 returned_serials.append(sn)
-                print(f"  Updated TransactionDevice for serial: {sn}")
-    
-    print(f"\nFinal returned_serials list: {returned_serials}")
  
     # Update DeviceMonitor records
     if returned_serials:
-        # Update ONLY DeviceMonitor records that belong to this transaction
-        # We need to match by serial_number AND accountable_person AND office_college
-        print(f"\nUpdating DeviceMonitor records for serials: {returned_serials}")
+        if tx.borrow_request:
+            borrower_name = tx.borrow_request.borrower_name
+            office = tx.borrow_request.office_college
+        else:
+            borrower_name = tx.borrower.get_full_name() or tx.borrower.username
+            office = tx.office_college
         
         for serial in returned_serials:
-            # Update each serial individually for better debugging
-            updated_count = DeviceMonitor.objects.filter(
+            DeviceMonitor.objects.filter(
                 serial_number=serial,
                 accountable_person=borrower_name,
                 office_college=office,
                 date_returned__isnull=True
-            ).update(date_returned=now)
-            print(f"  Serial {serial}: Updated {updated_count} DeviceMonitor record(s)")
+            ).update(date_returned=now_ph)
     
     # Recalculate returned_qty
     returned_count = tx.devices.filter(returned=True).count()
-    print(f"\nNew returned_count from TransactionDevice: {returned_count}")
  
     if not tx.devices.exists():
         returned_count = tx.returned_qty + len(serials)
-        print(f"Using fallback returned_count: {returned_count}")
  
     returned_count = min(returned_count, tx.quantity_borrowed)
  
     delta = returned_count - tx.returned_qty
-    print(f"Delta: {delta}")
     if delta > 0:
         tx.item.available_quantity = tx.item.available_quantity + delta
         tx.item.save()
  
     tx.returned_qty = returned_count
-    tx.returned_at = now if returned_count > 0 else tx.returned_at
+    tx.returned_at = now_ph if returned_count > 0 else tx.returned_at
     tx.status = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
     tx.save()
-    
-    print(f"Final transaction status: {tx.status}, returned_qty: {tx.returned_qty}")
-    print("=== END DEBUG ===\n")
  
     b = _broadcasts()
     b.broadcast_borrow_management()
@@ -708,7 +675,7 @@ def return_devices(request, transaction_id):
         'returned_qty': tx.returned_qty,
         'status': tx.status,
         'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
-        'returned_at': tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else None,
+        'returned_at': format_ph_time(tx.returned_at),
     })
 
 
@@ -725,7 +692,8 @@ def _xl_title(ws, text, col_count):
     ws.row_dimensions[1].height = 30
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=col_count)
     s = ws.cell(row=2, column=1)
-    s.value = f'Generated: {timezone.now().strftime("%B %d, %Y  %H:%M")}'
+    ph_now = get_ph_time()
+    s.value = f'Generated: {ph_now.strftime("%B %d, %Y %I:%M %p")}'
     s.font = Font(size=9, color='6B7080')
     s.fill = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
     s.alignment = Alignment(horizontal='center', vertical='center')
@@ -757,7 +725,8 @@ def _xl_row(ws, row_num, values, even=False):
 def _xl_response(wb, filename_prefix):
     buf = io.BytesIO()
     wb.save(buf); buf.seek(0)
-    filename = f'{filename_prefix}_{timezone.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    ph_now = get_ph_time()
+    filename = f'{filename_prefix}_{ph_now.strftime("%Y%m%d_%H%M")}.xlsx'
     resp = HttpResponse(buf.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -773,8 +742,7 @@ def export_borrow_management(request):
         'item', 'borrower', 'borrow_request'
     ).all().order_by('-borrowed_at')
 
-    # Updated headers to include Accountable Officer
-    headers    = [
+    headers = [
         'Tx ID', 'Borrower Name', 'Accountable Officer', 'College / Office',
         'Item', 'Device Serial #', 'Qty Borrowed', 'Returned Qty',
         'Borrowed On', 'Returned On',
@@ -797,8 +765,8 @@ def export_borrow_management(request):
             tx.serial_number or '—',
             tx.quantity_borrowed,
             tx.returned_qty,
-            tx.borrowed_at.strftime('%b %d, %Y'),
-            tx.returned_at.strftime('%b %d, %Y  %H:%M') if tx.returned_at else '—',
+            format_ph_time(tx.borrowed_at),
+            format_ph_time(tx.returned_at) if tx.returned_at else '—',
         ], even=(i % 2 == 0))
 
     for col, width in enumerate(col_widths, start=1):
@@ -814,7 +782,6 @@ def export_device_monitoring(request):
  
     from inventory.models import Transaction
  
-    # Build serial → transaction lookup (same logic as consumers.py)
     serial_to_tx = {}
     for tx in Transaction.objects.order_by('-borrowed_at'):
         if not tx.serial_number:
@@ -848,10 +815,10 @@ def export_device_monitoring(request):
  
         if tx:
             release_status = 'Returned' if tx.returned_qty >= tx.quantity_borrowed else 'Released'
-            date_ret = tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—'
+            date_ret = format_ph_time(tx.returned_at) if tx.returned_at else '—'
         else:
             release_status = '—'
-            date_ret = row.date_returned.strftime('%b %d, %Y %H:%M') if row.date_returned else '—'
+            date_ret = format_ph_time(row.date_returned) if row.date_returned else '—'
  
         borrower_type_display = (
             'Student'  if row.borrower_type == 'student'  else
