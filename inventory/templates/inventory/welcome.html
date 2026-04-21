@@ -173,10 +173,47 @@
       gap: 10px;
     }
     
+    /* Header with images */
+    .auth-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .auth-header-images {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .auth-header-image {
+      object-fit: contain;
+      background-color: transparent;
+    }
+    
+    .auth-image-1 {
+      width: 75px;
+      height: 75px;
+    }
+    
+    .auth-image-2 {
+      width: 85px;
+      height: 85px;
+    }
+    
     @media (max-width: 480px) {
       .name-row {
         grid-template-columns: 1fr;
         gap: 10px;
+      }
+      .auth-image-1 {
+        width: 35px;
+        height: 35px;
+      }
+      .auth-image-2 {
+        width: 45px;
+        height: 45px;
       }
     }
   </style>
@@ -184,7 +221,23 @@
 <body>
 <div class="auth-wrapper">
   <div class="auth-card" style="max-width:480px">
-    <div class="auth-logo">Inv<span>Sys</span></div>
+    <!-- Header with Logo and Images -->
+    <div class="auth-header">
+      <div class="auth-logo">Inv<span>Sys</span></div>
+      <div class="auth-header-images">
+        <!-- First Picture - EARIST Logo -->
+        <img src="{% static 'inventory/images/EARIST LOGO.png' %}" 
+             alt="EARIST Logo" 
+             class="auth-header-image auth-image-1"
+             onerror="this.style.display='none'">
+        
+        <!-- Second Picture - SAS Logo -->
+        <img src="{% static 'inventory/images/SAS LOGO.png' %}" 
+             alt="SAS Logo" 
+             class="auth-header-image auth-image-2"
+             onerror="this.style.display='none'">
+      </div>
+    </div>
     <p class="auth-sub">Inventory Management System</p>
 
     <!-- Role Selector -->

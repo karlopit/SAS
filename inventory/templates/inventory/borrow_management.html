@@ -1,4 +1,5 @@
 {% extends 'inventory/base.html' %}
+{% load tz %}
 {% block title %}Borrow Management — InvSys{% endblock %}
 {% block page_title %}Borrow Management{% endblock %}
 
@@ -191,21 +192,21 @@
     </div>
   </div>
 
-  <div style="overflow-x:auto">
-    <table id="transactions-table" style="width:100%;margin:0 auto;min-width:1300px">
+  <div class="transactions-table-container" style="overflow-x: auto; max-height: 70vh; position: relative;">
+    <table id="transactions-table" style="width:100%;min-width:1300px; border-collapse: collapse;">
       <thead>
         <tr>
-          <th style="text-align:center;width:7%">Tx ID</th>
-          <th style="text-align:center;width:11%">Borrower Name</th>
-          <th style="text-align:center;width:9%">Borrower Type</th>
-          <th style="text-align:center;width:11%">Accountable Officer</th>
-          <th style="text-align:center;width:10%">College/Office</th>
-          <th style="text-align:center;width:10%">Item</th>
-          <th style="text-align:center;width:6%">Qty Borrowed</th>
-          <th style="text-align:center;width:8%">Returned Qty</th>
-          <th style="text-align:center;width:9%">Borrowed On</th>
-          <th style="text-align:center;width:9%">Returned On</th>
-          <th style="text-align:center;width:10%">Status</th>
+          <th style="text-align:center;width:7%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Tx ID</th>
+          <th style="text-align:center;width:11%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrower Name</th>
+          <th style="text-align:center;width:9%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrower Type</th>
+          <th style="text-align:center;width:11%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Accountable Officer</th>
+          <th style="text-align:center;width:10%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">College/Office</th>
+          <th style="text-align:center;width:10%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Item</th>
+          <th style="text-align:center;width:6%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Qty Borrowed</th>
+          <th style="text-align:center;width:8%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Returned Qty</th>
+          <th style="text-align:center;width:9%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrowed On</th>
+          <th style="text-align:center;width:9%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Returned On</th>
+          <th style="text-align:center;width:10%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Status</th>
         </tr>
       </thead>
       <tbody id="transactions-tbody">
@@ -307,6 +308,27 @@
 .badge-red    { background: rgba(255,68,68,0.15);  color: #ff4444; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; display:inline-block; white-space:nowrap; }
 
 #transactions-table td, #transactions-table th { vertical-align: middle; padding: 12px 8px; }
+
+/* Table container for scrolling */
+.transactions-table-container {
+  overflow-x: auto;
+  max-height: 70vh;
+  position: relative;
+}
+
+/* Make table headers sticky */
+#transactions-table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--surface);
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Ensure thead has proper background */
+#transactions-table thead {
+  background-color: var(--surface);
+}
 
 /* ── Return button ── */
 .btn-return-action {

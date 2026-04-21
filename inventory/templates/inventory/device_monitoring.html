@@ -81,28 +81,27 @@
       </div>
     </div>
 
-    <div style="overflow-x:auto">
-      <table id="dm-table" style="width:100%;margin:0 auto;min-width:2200px">
+    <div class="table-container" style="overflow-x: auto; max-height: 70vh; position: relative;">
+      <table id="dm-table" style="width:100%;min-width:2200px; border-collapse: collapse;">
         <thead>
           <tr>
-            <th style="text-align:center;width:80px">Box #</th>
-            <th style="text-align:center;width:110px">Serial Number</th>
-            <th style="text-align:center;width:110px">College / Office</th>
-            <th style="text-align:center;width:130px">Borrower</th>
-            <th style="text-align:center;width:90px">Borrower Type</th>
-            <th style="text-align:center;width:130px">Accountable Officer</th>
-            <th style="text-align:center;width:90px">Device</th>
-            <th style="text-align:center;width:80px">Serviceable</th>
-            <th style="text-align:center;width:80px">Non-Svc</th>
-            <th style="text-align:center;width:60px">Sealed</th>
-            <th style="text-align:center;width:60px">Missing</th>
-            <th style="text-align:center;width:70px">Incomplete</th>
-            <!-- New columns -->
-            <th style="text-align:center;width:100px">Release / Return</th>
-            <th style="text-align:center;width:130px">Date Returned</th>
-            <th style="text-align:center;width:160px">Remarks</th>
-            <th style="text-align:center;width:160px">Issue</th>
-            <th style="text-align:center;width:110px">Actions</th>
+            <th style="text-align:center;width:80px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Box #</th>
+            <th style="text-align:center;width:110px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Serial Number</th>
+            <th style="text-align:center;width:110px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">College / Office</th>
+            <th style="text-align:center;width:130px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrower</th>
+            <th style="text-align:center;width:90px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrower Type</th>
+            <th style="text-align:center;width:130px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Accountable Officer</th>
+            <th style="text-align:center;width:90px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Device</th>
+            <th style="text-align:center;width:80px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Serviceable</th>
+            <th style="text-align:center;width:80px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Non-Svc</th>
+            <th style="text-align:center;width:60px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Sealed</th>
+            <th style="text-align:center;width:60px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Missing</th>
+            <th style="text-align:center;width:70px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Incomplete</th>
+            <th style="text-align:center;width:100px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Release / Return</th>
+            <th style="text-align:center;width:130px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Date Returned</th>
+            <th style="text-align:center;width:160px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Remarks</th>
+            <th style="text-align:center;width:160px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Issue</th>
+            <th style="text-align:center;width:110px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Actions</th>
           </tr>
         </thead>
         <tbody id="dm-tbody">
@@ -276,6 +275,27 @@ textarea.form-control {
   resize: vertical;
   min-height: 48px;
   line-height: 1.4;
+}
+
+/* Table container for scrolling */
+.table-container {
+  overflow-x: auto;
+  max-height: 70vh;
+  position: relative;
+}
+
+/* Make table headers sticky */
+#dm-table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--surface);
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Ensure thead has proper background */
+#dm-table thead {
+  background-color: var(--surface);
 }
 </style>
 

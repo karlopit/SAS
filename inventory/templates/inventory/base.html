@@ -3,9 +3,105 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
   <title>{% block title %}InvSys{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
+  <style>
+    /* Hide scrollbars but keep functionality */
+    * {
+      scrollbar-width: none !important; /* Firefox */
+      -ms-overflow-style: none !important; /* IE and Edge */
+    }
+    
+    *::-webkit-scrollbar {
+      display: none !important; /* Chrome, Safari, Opera */
+      width: 0 !important;
+      height: 0 !important;
+    }
+    
+    /* OVERRIDE - Make topbar responsive */
+    .topbar {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      flex-wrap: nowrap !important;
+      gap: 10px !important;
+      width: 100% !important;
+      overflow-x: auto !important;
+    }
+    
+    .page-title {
+      flex: 1 !important;
+      min-width: 0 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+    
+    .topbar-actions {
+      flex-shrink: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+    
+    .topbar-images {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      flex-shrink: 0 !important;
+    }
+    
+    .topbar-profile-image {
+      flex-shrink: 0 !important;
+      object-fit: contain !important;
+    }
+    
+    .topbar-image-1 {
+      width: 65px !important;
+      height: 65px !important;
+    }
+    
+    .topbar-image-2 {
+      width: 75px !important;
+      height: 75px !important;
+    }
+    
+    /* Remove scrollbars from main and content */
+    .main {
+      overflow-x: auto !important;
+    }
+    
+    .content {
+      overflow-x: auto !important;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .topbar-image-1 {
+        width: 35px !important;
+        height: 35px !important;
+      }
+      .topbar-image-2 {
+        width: 45px !important;
+        height: 45px !important;
+      }
+      .page-title {
+        font-size: 14px !important;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .topbar-image-1 {
+        width: 28px !important;
+        height: 28px !important;
+      }
+      .topbar-image-2 {
+        width: 35px !important;
+        height: 35px !important;
+      }
+    }
+  </style>
 </head>
 <body>
 
@@ -114,7 +210,24 @@
   <div class="main">
     <div class="topbar">
       <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
-      <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+        
+        <!-- TWO PICTURES IN UPPER RIGHT PANEL -->
+        <div class="topbar-images">
+          <!-- First Picture - EARIST Logo -->
+          <img src="{% static 'inventory/images/EARIST LOGO.png' %}" 
+               alt="EARIST Logo" 
+               class="topbar-profile-image topbar-image-1"
+               onerror="this.style.display='none'">
+          
+          <!-- Second Picture - SAS Logo (ENLARGED) -->
+          <img src="{% static 'inventory/images/SAS LOGO.png' %}" 
+               alt="SAS Logo" 
+               class="topbar-profile-image topbar-image-2"
+               onerror="this.style.display='none'">
+        </div>
+      </div>
     </div>
     <div class="content">
       {% block content %}{% endblock %}

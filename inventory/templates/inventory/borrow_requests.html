@@ -30,17 +30,17 @@
     </span>
   </div>
 
-  <div style="overflow-x:auto">
-    <table id="requests-table" style="width:100%;margin:0 auto;min-width:800px">
+  <div class="requests-table-container" style="overflow-x: auto; max-height: 70vh; position: relative;">
+    <table id="requests-table" style="width:100%;min-width:800px; border-collapse: collapse;">
       <thead>
         <tr>
-          <th style="text-align:center;width:15%">Transaction ID</th>
-          <th style="text-align:center;width:20%">Borrower Name</th>
-          <th style="text-align:center;width:20%">College / Office</th>
-          <th style="text-align:center;width:20%">Item Requested</th>
-          <th style="text-align:center;width:10%">Quantity</th>
-          <th style="text-align:center;width:15%">Requested On</th>
-          <th style="text-align:center;width:10%">Actions</th>
+          <th style="text-align:center;width:15%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Transaction ID</th>
+          <th style="text-align:center;width:20%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Borrower Name</th>
+          <th style="text-align:center;width:20%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">College / Office</th>
+          <th style="text-align:center;width:20%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Item Requested</th>
+          <th style="text-align:center;width:10%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Quantity</th>
+          <th style="text-align:center;width:15%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Requested On</th>
+          <th style="text-align:center;width:10%;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Actions</th>
         </tr>
       </thead>
       <tbody id="requests-tbody">
@@ -88,6 +88,27 @@
   #requests-table td, #requests-table th {
     vertical-align: middle;
     padding: 12px 8px;
+  }
+  
+  /* Table container for scrolling */
+  .requests-table-container {
+    overflow-x: auto;
+    max-height: 70vh;
+    position: relative;
+  }
+  
+  /* Make table headers sticky */
+  #requests-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--surface);
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  /* Ensure thead has proper background */
+  #requests-table thead {
+    background-color: var(--surface);
   }
   
   .row-new {
