@@ -1,1 +1,1 @@
-web: gunicorn inventory_project.wsgi --log-file -
+web: daphne inventory_project.asgi:application --port $PORT --bind 0.0.0.0 -v2

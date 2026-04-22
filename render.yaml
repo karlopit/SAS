@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: invsys
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "daphne inventory_project.asgi:application --port $PORT --bind 0.0.0.0 -v2"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DATABASE_URL
+        sync: false          # set manually in Render dashboard from Neon
+      - key: REDIS_URL
+        sync: false          # set manually if you add a Redis service
+      - key: PYTHON_VERSION
+        value: "3.11.9"
