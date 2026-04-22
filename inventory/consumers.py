@@ -134,59 +134,47 @@ def _build_borrow_requests_payload():
 
 
 def _build_device_monitoring_payload():
-    """
-    Build device monitoring payload.
-    Release/Return status and Date Returned are looked up from Transaction
-    by matching serial_number. A DeviceMonitor serial might appear in a
-    comma-separated Transaction.serial_number field, so we search all
-    transactions for each serial.
-    """
-    from inventory.models import DeviceMonitor, Transaction
-
-    # Build a lookup: serial_number (stripped) → Transaction
-    # Transactions store serial_numbers as comma-separated string.
-    # We want the most-recent transaction per serial.
-    serial_to_tx = {}
-    for tx in Transaction.objects.select_related('borrow_request').order_by('-borrowed_at'):
-        if not tx.serial_number:
-            continue
-        for sn in [s.strip() for s in tx.serial_number.split(',') if s.strip()]:
-            if sn not in serial_to_tx:
-                serial_to_tx[sn] = tx
+    from inventory.models import DeviceMonitor, TransactionDevice
+    from .views import format_ph_time
 
     rows_qs = DeviceMonitor.objects.all().order_by('id')
     rows = []
-    for r in rows_qs:
-        # Look up transaction for this device's serial number
-        tx = serial_to_tx.get(r.serial_number.strip()) if r.serial_number else None
-
-        # Release/Return status: map 'borrowed' → 'Released', 'returned' → 'Returned'
-        if tx:
-            if tx.returned_qty >= tx.quantity_borrowed:
-                release_status = 'Returned'
-            else:
-                release_status = 'Released'
-            date_returned_str = tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—'
+    for row in rows_qs:
+        if row.date_returned:
+            release_status = 'Returned'
+            date_returned_str = format_ph_time(row.date_returned)
         else:
-            release_status    = '—'
-            date_returned_str = r.date_returned.strftime('%b %d, %Y %H:%M') if r.date_returned else '—'
+            active_td = TransactionDevice.objects.filter(
+                serial_number=row.serial_number,
+                returned=False
+            ).select_related('transaction').first()
+            if active_td and active_td.transaction:
+                tx = active_td.transaction
+                tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
+                if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
+                    release_status = 'Released'
+                else:
+                    release_status = '—'
+            else:
+                release_status = '—'
+            date_returned_str = '—'
 
         rows.append({
-            'id':                 r.id,
-            'box_number':         r.box_number,
-            'office_college':     r.office_college,
-            'accountable_person': r.accountable_person,
-            'borrower_type':      r.borrower_type,
-            'accountable_officer': r.accountable_officer,
-            'device':             r.device,
-            'serial_number':      r.serial_number,
-            'serviceable':        r.serviceable,
-            'non_serviceable':    r.non_serviceable,
-            'sealed':             r.sealed,
-            'missing':            r.missing,
-            'incomplete':         r.incomplete,
-            'remarks':            r.remarks,
-            'issue':              r.issue,
+            'id':                 row.id,
+            'box_number':         row.box_number,
+            'office_college':     row.office_college,
+            'accountable_person': row.accountable_person,
+            'borrower_type':      row.borrower_type,
+            'accountable_officer': row.accountable_officer,
+            'device':             row.device,
+            'serial_number':      row.serial_number,
+            'serviceable':        row.serviceable,
+            'non_serviceable':    row.non_serviceable,
+            'sealed':             row.sealed,
+            'missing':            row.missing,
+            'incomplete':         row.incomplete,
+            'remarks':            row.remarks,
+            'issue':              row.issue,
             'release_status':     release_status,
             'date_returned':      date_returned_str,
         })
