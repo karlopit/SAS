@@ -7,17 +7,30 @@ class CustomUser(AbstractUser):
         ('admin', 'Admin'),
         ('staff', 'Staff'),
     ]
-    role           = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff')
+
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default='staff'
+    )
+
     middle_initial = models.CharField(max_length=5, blank=True)
 
+    REQUIRED_FIELDS = []
+
+    def save(self, *args, **kwargs):
+        # 🔥 AUTO-FIX ROLE FOR SUPERUSER
+        if self.is_superuser:
+            self.role = 'admin'
+        elif not self.role:
+            self.role = 'staff'
+
+        super().save(*args, **kwargs)
+
     def get_full_name(self):
-        """
-        Returns name in: First MI. Last format.
-        Falls back gracefully if parts are missing.
-        """
-        first = self.first_name.strip()
-        last  = self.last_name.strip()
-        mi    = self.middle_initial.strip()
+        first = (self.first_name or "").strip()
+        last  = (self.last_name or "").strip()
+        mi    = (self.middle_initial or "").strip()
 
         if not first and not last:
             return self.username
