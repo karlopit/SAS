@@ -1,0 +1,120 @@
+{% extends 'inventory/base.html' %}
+{% block title %}Graduation Warnings — InvSys{% endblock %}
+{% block page_title %}Graduation Warnings{% endblock %}
+
+{% block content %}
+
+{% if warnings %}
+
+<!-- Warnings Table -->
+<div class="table-card">
+  <div class="table-header" style="flex-wrap:wrap;gap:10px">
+    <span class="table-title">
+      🎓 Graduating Students with Active Borrows
+      <span style="background:var(--warning);color:#000;border-radius:10px;
+                   padding:1px 8px;font-size:11px;font-weight:700;margin-left:8px">
+        {{ warning_count }}
+      </span>
+    </span>
+    <div class="table-search" style="margin-left:auto">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" id="warn-search" placeholder="Search…"/>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto;max-height:70vh">
+    <table id="warn-table" style="width:100%;min-width:1100px;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Tx ID</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Student Name</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Student ID</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Year Level</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Section</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">College</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Academic Year</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Device / Item</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Serial #</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Outstanding</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Accountable Officer</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Borrowed On</th>
+          <th style="text-align:center;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Action</th>
+        </tr>
+      </thead>
+      <tbody id="warn-tbody">
+        {% for w in warnings %}
+        <tr style="border-left: 3px solid var(--warning)">
+          <td style="text-align:center">
+            <span class="badge badge-yellow">#{{ w.tx_id }}</span>
+          </td>
+          <td style="text-align:center;font-weight:600">{{ w.borrower_name }}</td>
+          <td style="text-align:center;color:var(--muted)">{{ w.student_id }}</td>
+          <td style="text-align:center">
+            <span style="background:rgba(255,179,71,0.15);color:#ffb347;padding:3px 10px;
+                         border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap">
+              {{ w.year_level }}
+            </span>
+          </td>
+          <td style="text-align:center;color:var(--muted)">{{ w.section }}</td>
+          <td style="text-align:center">{{ w.college }}</td>
+          <td style="text-align:center;color:var(--muted)">{{ w.academic_year }}</td>
+          <td style="text-align:center;font-weight:600">{{ w.item_name }}</td>
+          <td style="text-align:center;color:var(--muted);font-size:12px">{{ w.serial_number }}</td>
+          <td style="text-align:center">
+            <span style="background:rgba(255,76,76,0.15);color:var(--danger);padding:4px 12px;
+                         border-radius:20px;font-size:13px;font-weight:700">
+              {{ w.qty_outstanding }} unit{% if w.qty_outstanding != 1 %}s{% endif %}
+            </span>
+          </td>
+          <td style="text-align:center;color:var(--accent2);font-weight:600">{{ w.officer }}</td>
+          <td style="text-align:center;color:var(--muted);font-size:12px">{{ w.borrowed_at }}</td>
+          <td style="text-align:center">
+            <a href="{% url 'borrow_management' %}"
+               class="btn btn-secondary btn-sm"
+               style="border-color:rgba(255,179,71,0.4);color:#ffb347;font-size:11px">
+              View Transaction
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<!-- Empty state -->
+<div class="table-card">
+  <div style="padding:80px 20px;text-align:center;color:var(--muted)">
+    <div style="font-size:64px;margin-bottom:16px">🎓</div>
+    <div style="font-family:var(--font-head);font-size:20px;font-weight:700;
+                color:var(--text);margin-bottom:8px">
+      No Graduation Warnings
+    </div>
+    <p style="font-size:14px;max-width:400px;margin:0 auto">
+      There are currently no graduating students with active device borrows.
+      This page will show alerts when 4th or 5th year students still have items checked out.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* Search filter */
+document.addEventListener('DOMContentLoaded', function () {
+  const input = document.getElementById('warn-search');
+  if (!input) return;
+  input.addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#warn-tbody tr').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+});
+</script>
+{% endblock %}

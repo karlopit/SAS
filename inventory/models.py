@@ -45,7 +45,9 @@ class BorrowRequest(models.Model):
 
     # Student-specific fields
     student_id    = models.CharField(max_length=50, null=True, blank=True)
-    year_section  = models.CharField(max_length=100, null=True, blank=True)
+    year_section  = models.CharField(max_length=100, null=True, blank=True)   # kept for legacy data
+    year_level    = models.CharField(max_length=50, null=True, blank=True)    # new: e.g. "4th Year"
+    section       = models.CharField(max_length=50, null=True, blank=True)    # new: e.g. "A"
     college       = models.CharField(max_length=200, null=True, blank=True)
     academic_year = models.CharField(max_length=50, null=True, blank=True)
 
@@ -56,7 +58,19 @@ class BorrowRequest(models.Model):
     def save(self, *args, **kwargs):
         if not self.transaction_id:
             self.transaction_id = generate_transaction_id()
+        # Keep year_section in sync for backward compatibility
+        if self.year_level or self.section:
+            parts = [p for p in [self.year_level, self.section] if p]
+            self.year_section = ' - '.join(parts)
         super().save(*args, **kwargs)
+
+    def is_graduating(self):
+        """Returns True if this student is 4th year or higher."""
+        if not self.year_level:
+            return False
+        yl = self.year_level.strip().lower()
+        graduating_keywords = ['4th', '4', 'fourth', '5th', '5', 'fifth']
+        return any(k in yl for k in graduating_keywords)
 
     def __str__(self):
         return f"Request #{self.transaction_id} — {self.borrower_name}"
@@ -88,13 +102,6 @@ class Transaction(models.Model):
 
 
 class TransactionDevice(models.Model):
-    """
-    One row per individual device (serial + box) within a Transaction.
-    Enables per-device return tracking so partial returns are handled correctly.
-    When staff confirm a borrow, one TransactionDevice is created per serial/box pair.
-    When returning, only the checked devices get their returned/returned_at updated,
-    and the corresponding DeviceMonitor.date_returned is stamped only for those devices.
-    """
     transaction   = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='devices')
     serial_number = models.CharField(max_length=255)
     box_number    = models.CharField(max_length=100, blank=True)
@@ -126,7 +133,6 @@ class DeviceMonitor(models.Model):
     date_returned       = models.DateTimeField(blank=True, null=True)
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
-    # Add this field to link directly to the transaction
     transaction_id      = models.IntegerField(null=True, blank=True, db_index=True)
 
     class Meta:

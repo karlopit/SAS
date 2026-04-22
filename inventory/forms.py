@@ -1,6 +1,15 @@
 from django import forms
 from .models import Item, BorrowRequest, Transaction
 
+YEAR_LEVEL_CHOICES = [
+    ('', '— Select Year Level —'),
+    ('1st Year', '1st Year'),
+    ('2nd Year', '2nd Year'),
+    ('3rd Year', '3rd Year'),
+    ('4th Year', '4th Year'),
+    ('5th Year', '5th Year'),
+]
+
 
 class BorrowRequestForm(forms.ModelForm):
     borrower_role = forms.ChoiceField(
@@ -9,27 +18,29 @@ class BorrowRequestForm(forms.ModelForm):
         required=True,
         label="Borrower Type"
     )
-    
-    # Student name fields (split)
-    student_last_name = forms.CharField(max_length=100, required=False, label="Last Name")
-    student_first_name = forms.CharField(max_length=100, required=False, label="First Name")
-    student_middle_initial = forms.CharField(max_length=2, required=False, label="Middle Initial")
-    
-    # Student fields
-    year_section = forms.CharField(max_length=100, required=False, label="Year & Section")
-    student_id = forms.CharField(max_length=50, required=False, label="Student ID")
-    college = forms.CharField(max_length=200, required=False, label="College")
-    academic_year = forms.CharField(max_length=50, required=False, label="Academic Year")
-    
-    # Employee name fields (split)
-    employee_last_name = forms.CharField(max_length=100, required=False, label="Last Name")
-    employee_first_name = forms.CharField(max_length=100, required=False, label="First Name")
-    employee_middle_initial = forms.CharField(max_length=2, required=False, label="Middle Initial")
-    
+
+    # Student name fields
+    student_last_name      = forms.CharField(max_length=100, required=False, label="Last Name")
+    student_first_name     = forms.CharField(max_length=100, required=False, label="First Name")
+    student_middle_initial = forms.CharField(max_length=2,   required=False, label="Middle Initial")
+
+    # Student fields — split year_section into two
+    year_level    = forms.ChoiceField(choices=YEAR_LEVEL_CHOICES, required=False, label="Year Level")
+    section       = forms.CharField(max_length=50, required=False, label="Section",
+                                    widget=forms.TextInput(attrs={'placeholder': 'e.g. A, B, BSIT-3A'}))
+    student_id    = forms.CharField(max_length=50,  required=False, label="Student ID")
+    college       = forms.CharField(max_length=200, required=False, label="College")
+    academic_year = forms.CharField(max_length=50,  required=False, label="Academic Year")
+
+    # Employee name fields
+    employee_last_name      = forms.CharField(max_length=100, required=False, label="Last Name")
+    employee_first_name     = forms.CharField(max_length=100, required=False, label="First Name")
+    employee_middle_initial = forms.CharField(max_length=2,   required=False, label="Middle Initial")
+
     # Employee fields
-    employee_id = forms.CharField(max_length=50, required=False, label="Employee ID")
-    office = forms.CharField(max_length=200, required=False, label="Office")
-    
+    employee_id = forms.CharField(max_length=50,  required=False, label="Employee ID")
+    office      = forms.CharField(max_length=200, required=False, label="Office")
+
     # Common fields
     item = forms.ModelChoiceField(
         queryset=Item.objects.filter(available_quantity__gt=0),
@@ -37,169 +48,175 @@ class BorrowRequestForm(forms.ModelForm):
         label="Item to Borrow"
     )
     quantity = forms.IntegerField(min_value=1, required=True, label="Quantity Needed")
-    
+
     class Meta:
         model = BorrowRequest
         fields = ['item', 'quantity']
-    
+
     def clean(self):
         cleaned_data = super().clean()
         borrower_role = cleaned_data.get('borrower_role')
-        
+
         if borrower_role == 'student':
-            required_fields = ['student_last_name', 'student_first_name', 'year_section', 
-                              'student_id', 'college', 'academic_year']
+            required_fields = [
+                'student_last_name', 'student_first_name',
+                'year_level', 'section', 'student_id', 'college', 'academic_year',
+            ]
             for field in required_fields:
                 value = cleaned_data.get(field)
-                if not value or value.strip() == '':
-                    self.add_error(field, f'This field is required for students.')
-        
+                if not value or (isinstance(value, str) and value.strip() == ''):
+                    self.add_error(field, 'This field is required for students.')
+
         elif borrower_role == 'employee':
             required_fields = ['employee_last_name', 'employee_first_name', 'employee_id', 'office']
             for field in required_fields:
                 value = cleaned_data.get(field)
                 if not value or value.strip() == '':
-                    self.add_error(field, f'This field is required for employees.')
-        
-        # Validate quantity against available stock
-        item = cleaned_data.get('item')
+                    self.add_error(field, 'This field is required for employees.')
+
+        item     = cleaned_data.get('item')
         quantity = cleaned_data.get('quantity')
         if item and quantity:
             if quantity > item.available_quantity:
                 self.add_error('quantity', f'Only {item.available_quantity} item(s) available.')
-        
+
         return cleaned_data
-    
+
     def save(self, commit=True):
         instance = super().save(commit=False)
-        
-        # Populate borrower name and type based on role
+
         if self.cleaned_data['borrower_role'] == 'student':
-            first_name = self.cleaned_data['student_first_name']
+            first_name     = self.cleaned_data['student_first_name']
             middle_initial = self.cleaned_data['student_middle_initial']
-            last_name = self.cleaned_data['student_last_name']
-            
+            last_name      = self.cleaned_data['student_last_name']
+
             full_name = first_name
             if middle_initial:
                 full_name += f" {middle_initial}."
             full_name += f" {last_name}"
-            
+
+            year_level = self.cleaned_data['year_level']
+            section    = self.cleaned_data['section']
+
             instance.borrower_name = full_name
             instance.borrower_type = 'student'
-            instance.student_id = self.cleaned_data['student_id']
-            instance.year_section = self.cleaned_data['year_section']
-            instance.college = self.cleaned_data['college']
+            instance.student_id    = self.cleaned_data['student_id']
+            instance.year_level    = year_level
+            instance.section       = section
+            instance.year_section  = f"{year_level} - {section}" if year_level and section else (year_level or section or '')
+            instance.college       = self.cleaned_data['college']
             instance.academic_year = self.cleaned_data['academic_year']
-            instance.employee_id = None
-            instance.office = None
+            instance.employee_id   = None
+            instance.office        = None
             instance.office_college = self.cleaned_data['college']
         else:
-            first_name = self.cleaned_data['employee_first_name']
+            first_name     = self.cleaned_data['employee_first_name']
             middle_initial = self.cleaned_data['employee_middle_initial']
-            last_name = self.cleaned_data['employee_last_name']
-            
+            last_name      = self.cleaned_data['employee_last_name']
+
             full_name = first_name
             if middle_initial:
                 full_name += f" {middle_initial}."
             full_name += f" {last_name}"
-            
+
             instance.borrower_name = full_name
             instance.borrower_type = 'employee'
-            instance.employee_id = self.cleaned_data['employee_id']
-            instance.office = self.cleaned_data['office']
-            instance.student_id = None
-            instance.year_section = None
-            instance.college = None
+            instance.employee_id   = self.cleaned_data['employee_id']
+            instance.office        = self.cleaned_data['office']
+            instance.student_id    = None
+            instance.year_level    = None
+            instance.section       = None
+            instance.year_section  = None
+            instance.college       = None
             instance.academic_year = None
             instance.office_college = self.cleaned_data['office']
-        
+
         if commit:
             instance.save()
         return instance
 
 
 class StaffBorrowForm(forms.ModelForm):
-    # Dynamic field for multiple serial numbers
     serial_numbers = forms.CharField(
         required=True,
         label="Device Serial Numbers",
-        help_text="Enter one serial number per line. You need to enter exactly the same number as the quantity requested.",
+        help_text="Enter one serial number per line. Must match quantity.",
         widget=forms.Textarea(attrs={
             'rows': 4,
             'placeholder': 'SN-001\nSN-002\nSN-003',
             'class': 'form-control'
         })
     )
-    
-    # Dynamic field for multiple box numbers
     box_numbers = forms.CharField(
         required=True,
         label="Box Numbers",
-        help_text="Enter one box number per line. Must match the quantity and correspond to the serial numbers (first box number with first serial number).",
+        help_text="Enter one box number per line. Must match quantity and serial order.",
         widget=forms.Textarea(attrs={
             'rows': 4,
             'placeholder': 'BOX-001\nBOX-002\nBOX-003',
             'class': 'form-control'
         })
     )
-    
+
     class Meta:
         model = Transaction
         fields = ['item', 'quantity_borrowed', 'office_college']
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['item'].queryset = Item.objects.filter(available_quantity__gt=0)
         self.fields['quantity_borrowed'].widget.attrs['min'] = 1
-    
+
     def clean_serial_numbers(self):
         serial_numbers_text = self.cleaned_data.get('serial_numbers')
         quantity = self.cleaned_data.get('quantity_borrowed')
-        
+
         if not serial_numbers_text:
             raise forms.ValidationError('Please enter serial numbers.')
-        
+
         serials = [s.strip() for s in serial_numbers_text.split('\n') if s.strip()]
-        
+
         if len(serials) != quantity:
-            raise forms.ValidationError(f'You entered {len(serials)} serial number(s), but requested quantity is {quantity}. Please enter exactly {quantity} serial number(s).')
-        
+            raise forms.ValidationError(
+                f'You entered {len(serials)} serial number(s), but quantity is {quantity}.')
+
         if len(serials) != len(set(serials)):
-            raise forms.ValidationError('Duplicate serial numbers found. Each serial number must be unique.')
-        
+            raise forms.ValidationError('Duplicate serial numbers found.')
+
         existing_serials = Transaction.objects.filter(
             serial_number__in=serials,
             status='borrowed'
         ).values_list('serial_number', flat=True)
-        
+
         if existing_serials:
-            raise forms.ValidationError(f'The following serial numbers are already borrowed: {", ".join(existing_serials)}')
-        
+            raise forms.ValidationError(
+                f'Already borrowed: {", ".join(existing_serials)}')
+
         return serials
-    
+
     def clean_box_numbers(self):
         box_numbers_text = self.cleaned_data.get('box_numbers')
         quantity = self.cleaned_data.get('quantity_borrowed')
-        serials = self.cleaned_data.get('serial_numbers')
-        
+
         if not box_numbers_text:
             raise forms.ValidationError('Please enter box numbers.')
-        
+
         boxes = [b.strip() for b in box_numbers_text.split('\n') if b.strip()]
-        
+
         if len(boxes) != quantity:
-            raise forms.ValidationError(f'You entered {len(boxes)} box number(s), but requested quantity is {quantity}. Please enter exactly {quantity} box number(s).')
-        
+            raise forms.ValidationError(
+                f'You entered {len(boxes)} box number(s), but quantity is {quantity}.')
+
         return boxes
-    
+
     def clean(self):
         cleaned_data = super().clean()
         serials = cleaned_data.get('serial_numbers')
-        boxes = cleaned_data.get('box_numbers')
-        
+        boxes   = cleaned_data.get('box_numbers')
+
         if serials and boxes and len(serials) != len(boxes):
-            self.add_error('box_numbers', 'Number of box numbers must match number of serial numbers.')
-        
+            self.add_error('box_numbers', 'Number of box numbers must match serial numbers.')
+
         return cleaned_data
 
 
@@ -207,7 +224,7 @@ class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
         fields = ['name', 'description', 'serial', 'quantity']
-    
+
     def save(self, commit=True):
         instance = super().save(commit=False)
         instance.available_quantity = instance.quantity

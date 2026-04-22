@@ -7,235 +7,91 @@
   <title>Welcome — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   <style>
-    /* Popup Modal Styles */
     .modal-popup {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      animation: fadeIn 0.3s ease;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); display: flex; align-items: center;
+      justify-content: center; z-index: 1000; animation: fadeIn 0.3s ease;
     }
-    
     .modal-popup-content {
-      background: var(--surface);
-      border-radius: 16px;
-      padding: 28px;
-      max-width: 400px;
-      width: 90%;
-      text-align: center;
-      border: 1px solid var(--border);
-      animation: slideIn 0.3s ease;
+      background: var(--surface); border-radius: 16px; padding: 28px;
+      max-width: 400px; width: 90%; text-align: center;
+      border: 1px solid var(--border); animation: slideIn 0.3s ease;
     }
-    
     .modal-popup-icon {
-      width: 60px;
-      height: 60px;
-      margin: 0 auto 16px;
-      background: #22c55e20;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 60px; height: 60px; margin: 0 auto 16px;
+      background: #22c55e20; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
     }
-    
-    .modal-popup-icon svg {
-      width: 32px;
-      height: 32px;
-      color: #22c55e;
-    }
-    
-    .modal-popup-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: #fff;
-    }
-    
-    .modal-popup-message {
-      color: var(--muted);
-      margin-bottom: 20px;
-      line-height: 1.5;
-    }
-    
+    .modal-popup-icon svg { width: 32px; height: 32px; color: #22c55e; }
+    .modal-popup-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+    .modal-popup-message { color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
     .modal-popup-transaction {
-      background: var(--surface2);
-      padding: 12px;
-      border-radius: 8px;
-      margin: 16px 0;
-      border: 1px solid var(--border);
+      background: var(--surface2); padding: 12px; border-radius: 8px;
+      margin: 16px 0; border: 1px solid var(--border);
     }
-    
     .modal-popup-transaction label {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
-    
     .modal-popup-transaction .tx-id {
-      font-family: var(--font-mono);
-      font-size: 24px;
-      font-weight: 700;
-      color: var(--accent);
-      margin-top: 4px;
+      font-family: var(--font-mono); font-size: 24px; font-weight: 700;
+      color: var(--accent); margin-top: 4px;
     }
-    
     .modal-popup-btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      padding: 10px 24px;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
+      background: var(--accent); color: #000; border: none;
+      padding: 10px 24px; border-radius: 8px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
     }
-    
-    .modal-popup-btn:hover {
-      background: var(--accent-dark);
-      transform: translateY(-1px);
-    }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    
-    @keyframes slideIn {
-      from {
-        transform: translateY(-30px);
-        opacity: 0;
-      }
-      to {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
+    .modal-popup-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-    /* Radio Group Styles */
-    .radio-group {
-      display: flex;
-      gap: 20px;
-      margin-top: 8px;
-    }
-    
-    .radio-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-    }
-    
-    .radio-label input[type="radio"] {
-      width: auto;
-      margin: 0;
-      cursor: pointer;
-    }
-    
-    .radio-label span {
-      font-size: 0.95rem;
-      color: var(--text-primary);
-    }
-    
-    .form-hint {
-      display: block;
-      margin-top: 4px;
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-    }
-    
-    /* Dynamic Form Sections */
+    /* Radio group */
+    .radio-group { display: flex; gap: 20px; margin-top: 8px; }
+    .radio-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .radio-label input[type="radio"] { width: auto; margin: 0; cursor: pointer; }
+    .radio-label span { font-size: 0.95rem; color: var(--text); }
+
+    /* Dynamic form sections */
     .dynamic-form-section {
-      margin-top: 16px;
-      padding: 16px;
-      background: var(--surface2);
-      border-radius: 8px;
-      border: 1px solid var(--border);
+      margin-top: 16px; padding: 16px; background: var(--surface2);
+      border-radius: 8px; border: 1px solid var(--border);
     }
-    
-    .dynamic-form-section h4 {
-      margin-bottom: 16px;
-      font-size: 14px;
-      color: var(--accent);
-      font-weight: 600;
-    }
-    
-    /* Name fields row layout */
-    .name-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 0.8fr;
-      gap: 10px;
-    }
-    
-    /* Header with images */
-    .auth-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-    
-    .auth-header-images {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    
-    .auth-header-image {
-      object-fit: contain;
-      background-color: transparent;
-    }
-    
-    .auth-image-1 {
-      width: 75px;
-      height: 75px;
-    }
-    
-    .auth-image-2 {
-      width: 85px;
-      height: 85px;
-    }
-    
+    .dynamic-form-section h4 { margin-bottom: 16px; font-size: 14px; color: var(--accent); font-weight: 600; }
+
+    /* Name row */
+    .name-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 10px; }
+
+    /* Year Level + Section row — side by side */
+    .year-section-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* Header */
+    .auth-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .auth-header-images { display: flex; align-items: center; gap: 10px; }
+    .auth-header-image { object-fit: contain; background-color: transparent; }
+    .auth-image-1 { width: 75px; height: 75px; }
+    .auth-image-2 { width: 85px; height: 85px; }
+
     @media (max-width: 480px) {
-      .name-row {
-        grid-template-columns: 1fr;
-        gap: 10px;
-      }
-      .auth-image-1 {
-        width: 35px;
-        height: 35px;
-      }
-      .auth-image-2 {
-        width: 45px;
-        height: 45px;
-      }
+      .name-row        { grid-template-columns: 1fr; }
+      .year-section-row{ grid-template-columns: 1fr; }
+      .auth-image-1    { width: 35px; height: 35px; }
+      .auth-image-2    { width: 45px; height: 45px; }
     }
   </style>
 </head>
 <body>
 <div class="auth-wrapper">
   <div class="auth-card" style="max-width:480px">
-    <!-- Header with Logo and Images -->
+
+    <!-- Header -->
     <div class="auth-header">
       <div class="auth-logo">Inv<span>Sys</span></div>
       <div class="auth-header-images">
-        <!-- First Picture - EARIST Logo -->
-        <img src="{% static 'inventory/images/EARIST LOGO.png' %}" 
-             alt="EARIST Logo" 
-             class="auth-header-image auth-image-1"
-             onerror="this.style.display='none'">
-        
-        <!-- Second Picture - SAS Logo -->
-        <img src="{% static 'inventory/images/SAS LOGO.png' %}" 
-             alt="SAS Logo" 
-             class="auth-header-image auth-image-2"
-             onerror="this.style.display='none'">
+        <img src="{% static 'inventory/images/EARIST LOGO.png' %}" alt="EARIST Logo"
+             class="auth-header-image auth-image-1" onerror="this.style.display='none'">
+        <img src="{% static 'inventory/images/SAS LOGO.png' %}" alt="SAS Logo"
+             class="auth-header-image auth-image-2" onerror="this.style.display='none'">
       </div>
     </div>
     <p class="auth-sub">Inventory Management System</p>
@@ -250,7 +106,7 @@
       </select>
     </div>
 
-    <!-- Borrower: fill out request form -->
+    <!-- Borrower section -->
     <div id="borrower-section" style="display:none">
       <hr class="auth-divider"/>
       <p style="color:var(--muted);font-size:13px;margin-bottom:16px">
@@ -260,7 +116,7 @@
       {% if borrow_form.errors %}
         <div class="alert alert-error">
           Please fix the errors below:
-          <ul>
+          <ul style="margin:6px 0 0 16px">
             {% for field, errors in borrow_form.errors.items %}
               {% for error in errors %}
                 <li>{{ field }}: {{ error }}</li>
@@ -274,12 +130,12 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="borrow_request"/>
 
-        <!-- Borrower Type Selection -->
+        <!-- Borrower Type -->
         <div class="form-group">
-          <label class="form-label">Borrower Type <span style="color:red;">*</span></label>
+          <label class="form-label">Borrower Type <span style="color:red">*</span></label>
           <div class="radio-group">
             <label class="radio-label">
-              <input type="radio" name="borrower_role" value="student" 
+              <input type="radio" name="borrower_role" value="student"
                      {% if borrow_form.borrower_role.value == 'student' %}checked{% endif %}
                      onchange="toggleBorrowerForms()" required>
               <span>Student</span>
@@ -296,42 +152,71 @@
           {% endif %}
         </div>
 
-        <!-- Student Dynamic Form -->
-        <div id="student-form" style="display: none;" class="dynamic-form-section">
+        <!-- ── STUDENT FORM ── -->
+        <div id="student-form" style="display:none" class="dynamic-form-section">
           <h4>📚 Student Information</h4>
-          
+
+          <!-- Name -->
           <div class="form-group">
-            <label class="form-label">Student Name <span style="color:red;">*</span></label>
+            <label class="form-label">Student Name <span style="color:red">*</span></label>
             <div class="name-row">
-              <input type="text" name="student_last_name" 
-                     class="form-control" placeholder="Last Name"
+              <input type="text" name="student_last_name" class="form-control"
+                     placeholder="Last Name"
                      value="{{ borrow_form.student_last_name.value|default:'' }}">
-              <input type="text" name="student_first_name" 
-                     class="form-control" placeholder="First Name"
+              <input type="text" name="student_first_name" class="form-control"
+                     placeholder="First Name"
                      value="{{ borrow_form.student_first_name.value|default:'' }}">
-              <input type="text" name="student_middle_initial" 
-                     class="form-control" placeholder="M.I."
-                     value="{{ borrow_form.student_middle_initial.value|default:'' }}" maxlength="2">
+              <input type="text" name="student_middle_initial" class="form-control"
+                     placeholder="M.I." maxlength="2"
+                     value="{{ borrow_form.student_middle_initial.value|default:'' }}">
             </div>
             {% if borrow_form.student_last_name.errors %}
               <span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>
             {% endif %}
           </div>
 
+          <!-- Year Level + Section — separate fields -->
           <div class="form-group">
-            <label class="form-label">Year & Section <span style="color:red;">*</span></label>
-            <input type="text" name="year_section" 
-                   class="form-control" placeholder="e.g., 3rd Year - Section A"
-                   value="{{ borrow_form.year_section.value|default:'' }}">
-            {% if borrow_form.year_section.errors %}
-              <span class="form-error">{{ borrow_form.year_section.errors.0 }}</span>
-            {% endif %}
+            <label class="form-label">Year Level &amp; Section <span style="color:red">*</span></label>
+            <div class="year-section-row">
+              <!-- Year Level dropdown -->
+              <div>
+                <select name="year_level" class="form-control" id="year-level-select">
+                  <option value="">— Year Level —</option>
+                  <option value="1st Year" {% if borrow_form.year_level.value == '1st Year' %}selected{% endif %}>1st Year</option>
+                  <option value="2nd Year" {% if borrow_form.year_level.value == '2nd Year' %}selected{% endif %}>2nd Year</option>
+                  <option value="3rd Year" {% if borrow_form.year_level.value == '3rd Year' %}selected{% endif %}>3rd Year</option>
+                  <option value="4th Year" {% if borrow_form.year_level.value == '4th Year' %}selected{% endif %}>4th Year</option>
+                  <option value="5th Year" {% if borrow_form.year_level.value == '5th Year' %}selected{% endif %}>5th Year</option>
+                </select>
+                {% if borrow_form.year_level.errors %}
+                  <span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>
+                {% endif %}
+              </div>
+              <!-- Section -->
+              <div>
+                <input type="text" name="section" class="form-control"
+                       placeholder="Section (e.g. A, BSIT-3A)"
+                       value="{{ borrow_form.section.value|default:'' }}">
+                {% if borrow_form.section.errors %}
+                  <span class="form-error">{{ borrow_form.section.errors.0 }}</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- 4th year warning banner -->
+            <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;
+                 background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);
+                 border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
+              ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed
+              devices must be returned before graduation. Staff will be notified of your request.
+            </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Student ID <span style="color:red;">*</span></label>
-            <input type="text" name="student_id" 
-                   class="form-control" placeholder="Student ID Number"
+            <label class="form-label">Student ID <span style="color:red">*</span></label>
+            <input type="text" name="student_id" class="form-control"
+                   placeholder="Student ID Number"
                    value="{{ borrow_form.student_id.value|default:'' }}">
             {% if borrow_form.student_id.errors %}
               <span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>
@@ -339,9 +224,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">College <span style="color:red;">*</span></label>
-            <input type="text" name="college" 
-                   class="form-control" placeholder="College/Department"
+            <label class="form-label">College <span style="color:red">*</span></label>
+            <input type="text" name="college" class="form-control"
+                   placeholder="College/Department"
                    value="{{ borrow_form.college.value|default:'' }}">
             {% if borrow_form.college.errors %}
               <span class="form-error">{{ borrow_form.college.errors.0 }}</span>
@@ -349,9 +234,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Academic Year <span style="color:red;">*</span></label>
-            <input type="text" name="academic_year" 
-                   class="form-control" placeholder="e.g., 2024-2025"
+            <label class="form-label">Academic Year <span style="color:red">*</span></label>
+            <input type="text" name="academic_year" class="form-control"
+                   placeholder="e.g. 2024-2025"
                    value="{{ borrow_form.academic_year.value|default:'' }}">
             {% if borrow_form.academic_year.errors %}
               <span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>
@@ -359,22 +244,22 @@
           </div>
         </div>
 
-        <!-- Employee Dynamic Form -->
-        <div id="employee-form" style="display: none;" class="dynamic-form-section">
+        <!-- ── EMPLOYEE FORM ── -->
+        <div id="employee-form" style="display:none" class="dynamic-form-section">
           <h4>💼 Employee Information</h4>
-          
+
           <div class="form-group">
-            <label class="form-label">Employee Name <span style="color:red;">*</span></label>
+            <label class="form-label">Employee Name <span style="color:red">*</span></label>
             <div class="name-row">
-              <input type="text" name="employee_last_name" 
-                     class="form-control" placeholder="Last Name"
+              <input type="text" name="employee_last_name" class="form-control"
+                     placeholder="Last Name"
                      value="{{ borrow_form.employee_last_name.value|default:'' }}">
-              <input type="text" name="employee_first_name" 
-                     class="form-control" placeholder="First Name"
+              <input type="text" name="employee_first_name" class="form-control"
+                     placeholder="First Name"
                      value="{{ borrow_form.employee_first_name.value|default:'' }}">
-              <input type="text" name="employee_middle_initial" 
-                     class="form-control" placeholder="M.I."
-                     value="{{ borrow_form.employee_middle_initial.value|default:'' }}" maxlength="2">
+              <input type="text" name="employee_middle_initial" class="form-control"
+                     placeholder="M.I." maxlength="2"
+                     value="{{ borrow_form.employee_middle_initial.value|default:'' }}">
             </div>
             {% if borrow_form.employee_last_name.errors %}
               <span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>
@@ -382,9 +267,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Employee ID <span style="color:red;">*</span></label>
-            <input type="text" name="employee_id" 
-                   class="form-control" placeholder="Employee ID Number"
+            <label class="form-label">Employee ID <span style="color:red">*</span></label>
+            <input type="text" name="employee_id" class="form-control"
+                   placeholder="Employee ID Number"
                    value="{{ borrow_form.employee_id.value|default:'' }}">
             {% if borrow_form.employee_id.errors %}
               <span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>
@@ -392,9 +277,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Office <span style="color:red;">*</span></label>
-            <input type="text" name="office" 
-                   class="form-control" placeholder="Office/Department"
+            <label class="form-label">Office <span style="color:red">*</span></label>
+            <input type="text" name="office" class="form-control"
+                   placeholder="Office/Department"
                    value="{{ borrow_form.office.value|default:'' }}">
             {% if borrow_form.office.errors %}
               <span class="form-error">{{ borrow_form.office.errors.0 }}</span>
@@ -402,13 +287,13 @@
           </div>
         </div>
 
-        <!-- Common Fields -->
+        <!-- ── COMMON FIELDS ── -->
         <div class="form-group">
-          <label class="form-label">Item to Borrow <span style="color:red;">*</span></label>
+          <label class="form-label">Item to Borrow <span style="color:red">*</span></label>
           <select name="item" id="item-select" class="form-control" required>
             <option value="">— Select an item —</option>
             {% for item in available_items %}
-              <option value="{{ item.id }}" 
+              <option value="{{ item.id }}"
                 {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>
                 {{ item.name }}
               </option>
@@ -420,9 +305,10 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Quantity Needed <span style="color:red;">*</span></label>
-          <input type="number" name="quantity" id="quantity-input" class="form-control" placeholder="1" min="1" required
-            value="{{ borrow_form.quantity.value|default:'' }}"/>
+          <label class="form-label">Quantity Needed <span style="color:red">*</span></label>
+          <input type="number" name="quantity" id="quantity-input" class="form-control"
+                 placeholder="1" min="1" required
+                 value="{{ borrow_form.quantity.value|default:'' }}"/>
           {% if borrow_form.quantity.errors %}
             <span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>
           {% endif %}
@@ -442,11 +328,11 @@
           Submit Request
         </button>
       </form>
-    </div>
+    </div><!-- /borrower-section -->
   </div>
 </div>
 
-<!-- Success Popup Modal -->
+<!-- Success Popup -->
 {% if borrow_success %}
 <div id="successModal" class="modal-popup">
   <div class="modal-popup-content">
@@ -456,9 +342,7 @@
       </svg>
     </div>
     <h2 class="modal-popup-title">Request Submitted! 🎉</h2>
-    <div class="modal-popup-message">
-      Your borrow request has been successfully submitted.
-    </div>
+    <div class="modal-popup-message">Your borrow request has been successfully submitted.</div>
     <div class="modal-popup-transaction">
       <label>Transaction ID</label>
       <div class="tx-id">#{{ borrow_success }}</div>
@@ -466,15 +350,12 @@
     <div class="modal-popup-message" style="font-size:13px">
       Please wait for staff approval.
     </div>
-    <button class="modal-popup-btn" onclick="closeSuccessModal()">
-      Got it, thanks!
-    </button>
+    <button class="modal-popup-btn" onclick="closeSuccessModal()">Got it, thanks!</button>
   </div>
 </div>
 {% endif %}
 
 <script>
-// Role selection handler
 function handleRoleChange(val) {
   if (val === 'admin_staff') {
     window.location.href = "{% url 'login' %}";
@@ -483,92 +364,65 @@ function handleRoleChange(val) {
   document.getElementById('borrower-section').style.display = val === 'borrower' ? 'block' : 'none';
 }
 
-// Toggle between student and employee forms
 function toggleBorrowerForms() {
   const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-  const studentForm = document.getElementById('student-form');
+  const studentForm  = document.getElementById('student-form');
   const employeeForm = document.getElementById('employee-form');
-  
-  if (selectedRole) {
-    if (selectedRole.value === 'student') {
-      studentForm.style.display = 'block';
-      employeeForm.style.display = 'none';
-      
-      // Enable student fields
-      const studentFields = ['student_last_name', 'student_first_name', 'student_middle_initial', 
-                            'year_section', 'student_id', 'college', 'academic_year'];
-      studentFields.forEach(field => {
-        const element = document.querySelector(`[name="${field}"]`);
-        if (element) element.disabled = false;
-      });
-      
-      // Disable employee fields
-      const employeeFields = ['employee_last_name', 'employee_first_name', 'employee_middle_initial', 
-                             'employee_id', 'office'];
-      employeeFields.forEach(field => {
-        const element = document.querySelector(`[name="${field}"]`);
-        if (element) element.disabled = true;
-      });
-    } else {
-      studentForm.style.display = 'none';
-      employeeForm.style.display = 'block';
-      
-      // Disable student fields
-      const studentFields = ['student_last_name', 'student_first_name', 'student_middle_initial',
-                            'year_section', 'student_id', 'college', 'academic_year'];
-      studentFields.forEach(field => {
-        const element = document.querySelector(`[name="${field}"]`);
-        if (element) element.disabled = true;
-      });
-      
-      // Enable employee fields
-      const employeeFields = ['employee_last_name', 'employee_first_name', 'employee_middle_initial',
-                             'employee_id', 'office'];
-      employeeFields.forEach(field => {
-        const element = document.querySelector(`[name="${field}"]`);
-        if (element) element.disabled = false;
-      });
-    }
-  }
+  if (!selectedRole) return;
+
+  const isStudent = selectedRole.value === 'student';
+  studentForm.style.display  = isStudent ? 'block' : 'none';
+  employeeForm.style.display = isStudent ? 'none'  : 'block';
+
+  const studentFields  = ['student_last_name','student_first_name','student_middle_initial',
+                          'year_level','section','student_id','college','academic_year'];
+  const employeeFields = ['employee_last_name','employee_first_name','employee_middle_initial',
+                          'employee_id','office'];
+
+  studentFields.forEach(f => {
+    const el = document.querySelector(`[name="${f}"]`);
+    if (el) el.disabled = !isStudent;
+  });
+  employeeFields.forEach(f => {
+    const el = document.querySelector(`[name="${f}"]`);
+    if (el) el.disabled = isStudent;
+  });
 }
 
-// Close modal function
-function closeSuccessModal() {
-  const modal = document.getElementById('successModal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
-}
+// Show 4th/5th year warning banner when selected
+document.addEventListener('DOMContentLoaded', function () {
+  const yearSelect = document.getElementById('year-level-select');
+  const warningEl  = document.getElementById('fourth-year-warning');
 
-// Initialize everything on page load
-document.addEventListener('DOMContentLoaded', function() {
-  // Hide both dynamic forms initially
-  const studentForm = document.getElementById('student-form');
-  const employeeForm = document.getElementById('employee-form');
-  
-  if (studentForm) studentForm.style.display = 'none';
-  if (employeeForm) employeeForm.style.display = 'none';
-  
-  // Check if a role is selected and show appropriate form
+  function checkYearWarning() {
+    if (!yearSelect || !warningEl) return;
+    const val = yearSelect.value.toLowerCase();
+    const isLate = val.includes('4th') || val.includes('5th');
+    warningEl.style.display = isLate ? 'block' : 'none';
+  }
+
+  if (yearSelect) yearSelect.addEventListener('change', checkYearWarning);
+  checkYearWarning();
+
+  // Init borrower role
   const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-  if (selectedRole) {
-    toggleBorrowerForms();
-  }
+  if (selectedRole) toggleBorrowerForms();
 });
 
-// Show borrower section if there are form errors or success
+function closeSuccessModal() {
+  const modal = document.getElementById('successModal');
+  if (modal) modal.style.display = 'none';
+}
+
+document.addEventListener('click', function (e) {
+  const modal = document.getElementById('successModal');
+  if (modal && e.target === modal) closeSuccessModal();
+});
+
 {% if borrow_form.errors or borrow_success %}
   document.getElementById('role-select').value = 'borrower';
   document.getElementById('borrower-section').style.display = 'block';
 {% endif %}
-
-// Close modal when clicking outside
-document.addEventListener('click', function(e) {
-  const modal = document.getElementById('successModal');
-  if (modal && e.target === modal) {
-    closeSuccessModal();
-  }
-});
 </script>
 <script src="{% static 'inventory/js/script.js' %}"></script>
 </body>
