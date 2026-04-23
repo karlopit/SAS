@@ -1,24 +1,37 @@
-from django.db.models import Q
+"""
+inventory/context_processors.py
+
+Injects `graduation_warning_count` into every template context.
+Cached per-user for 60 seconds so the DB is not hit on every single page load.
+"""
+from django.core.cache import cache
 
 
 def graduation_warning_count(request):
-    if not request.user.is_authenticated or request.user.role != 'staff':
+    if not request.user.is_authenticated:
         return {'graduation_warning_count': 0}
 
-    from inventory.models import BorrowRequest
+    if not hasattr(request.user, 'role') or request.user.role != 'staff':
+        return {'graduation_warning_count': 0}
 
-    graduating_keywords = ['4th', '4', 'fourth', '5th', '5', 'fifth']
+    cache_key = f'grad_warn_count_{request.user.id}'
+    count = cache.get(cache_key)
 
-    # Get all active borrow requests for students that have active transactions
-    active_borrow_requests = BorrowRequest.objects.filter(
-        borrower_type='student',
-        transaction__status='borrowed',  # Only active transactions
-    ).select_related('transaction')
+    if count is None:
+        from inventory.models import BorrowRequest
+        graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
 
-    count = 0
-    for br in active_borrow_requests:
-        year_level = (br.year_level or br.year_section or '').strip().lower()
-        if any(k in year_level for k in graduating_keywords):
-            count += 1
+        active_brs = BorrowRequest.objects.filter(
+            borrower_type='student',
+            transaction__status='borrowed',
+        ).values('year_level', 'year_section')
+
+        count = 0
+        for br in active_brs:
+            yl = (br['year_level'] or br['year_section'] or '').strip().lower()
+            if any(k in yl for k in graduating_keywords):
+                count += 1
+
+        cache.set(cache_key, count, 60)
 
     return {'graduation_warning_count': count}

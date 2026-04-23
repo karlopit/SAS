@@ -294,37 +294,116 @@ def borrow_management(request):
 def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-
+ 
     rows = list(DeviceMonitor.objects.all())
-
+ 
+    # ── Build lookup maps in ONE query each instead of per-row queries ────────
+    # Map serial_number → active TransactionDevice (unreturned)
+    active_tds = TransactionDevice.objects.filter(
+        returned=False
+    ).select_related('transaction', 'transaction__borrow_request')
+ 
+    active_serial_map = {}
+    for td in active_tds:
+        sn = td.serial_number
+        if sn and sn not in active_serial_map:
+            active_serial_map[sn] = td
+ 
+    # Annotate each row using the pre-built map — zero extra DB queries
     for row in rows:
+        sn = (row.serial_number or '').strip()
+ 
         if row.date_returned:
-            row.release_status = 'Returned'
+            row.release_status        = 'Returned'
             row.date_returned_display = format_ph_time(row.date_returned)
-        else:
-            active_td = TransactionDevice.objects.filter(
-                serial_number=row.serial_number,
-                returned=False
-            ).select_related('transaction').first()
-
-            if active_td and active_td.transaction:
-                tx = active_td.transaction
-                tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
-
-                if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
-                    row.release_status = 'Released'
-                    row.date_returned_display = '—'
-                else:
-                    row.release_status = '—'
-                    row.date_returned_display = '—'
+        elif sn and sn in active_serial_map:
+            td = active_serial_map[sn]
+            tx = td.transaction
+            tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower_id
+ 
+            if str(tx_borrower) == row.accountable_person and tx.office_college == row.office_college:
+                row.release_status = 'Released'
             else:
                 row.release_status = '—'
-                row.date_returned_display = '—'
-
+            row.date_returned_display = '—'
+        else:
+            row.release_status        = '—'
+            row.date_returned_display = '—'
+ 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
-
+ 
     return render(request, 'inventory/device_monitoring.html', {
-        'rows': rows,
+        'rows':          rows,
+        'pending_count': pending_count,
+    })
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# REPLACE: graduation_warnings view  (was Python-looping all transactions)
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+@login_required
+@no_cache
+def graduation_warnings(request):
+    if request.user.role != 'staff':
+        raise PermissionDenied
+ 
+    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+ 
+    # Filter as much as possible in the DB query
+    active_transactions = Transaction.objects.select_related(
+        'item', 'borrower', 'borrow_request'
+    ).filter(
+        status='borrowed',
+        borrow_request__borrower_type='student',
+    ).order_by('-borrowed_at')
+ 
+    # Prefetch all devices in one query instead of per-transaction
+    from django.db.models import Prefetch
+    active_transactions = active_transactions.prefetch_related(
+        Prefetch('devices', queryset=TransactionDevice.objects.all())
+    )
+ 
+    warnings = []
+    for tx in active_transactions:
+        br = tx.borrow_request
+        if not br:
+            continue
+        year_level = (br.year_level or '').strip().lower()
+        if not year_level:
+            year_level = (br.year_section or '').strip().lower()
+        if not any(k in year_level for k in graduating_keywords):
+            continue
+ 
+        qty_outstanding = tx.quantity_borrowed - tx.returned_qty
+ 
+        # devices already prefetched — no extra query here
+        all_devices = tx.devices.all()
+        if all_devices:
+            serials_display = ', '.join(d.serial_number for d in all_devices)
+        else:
+            serials_display = tx.serial_number or '—'
+ 
+        warnings.append({
+            'borrower_name':   br.borrower_name,
+            'year_level':      br.year_level or br.year_section or '—',
+            'section':         br.section or '—',
+            'college':         br.college or br.office_college or '—',
+            'academic_year':   br.academic_year or '—',
+            'student_id':      br.student_id or '—',
+            'item_name':       tx.item.name,
+            'qty_outstanding': qty_outstanding,
+            'serial_number':   serials_display,
+            'borrowed_at':     format_ph_time(tx.borrowed_at),
+            'officer':         (tx.borrower.get_full_name() or '').strip() or tx.borrower.username,
+            'tx_id':           br.transaction_id,
+        })
+ 
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
+ 
+    return render(request, 'inventory/graduation_warnings.html', {
+        'warnings':      warnings,
+        'warning_count': len(warnings),
         'pending_count': pending_count,
     })
 

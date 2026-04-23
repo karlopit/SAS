@@ -15,7 +15,6 @@ RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
-# CSRF — required for Render's HTTPS domain
 CSRF_TRUSTED_ORIGINS = []
 _csrf_raw = config('CSRF_TRUSTED_ORIGINS', default='')
 if _csrf_raw:
@@ -25,7 +24,7 @@ if RENDER_EXTERNAL_HOSTNAME:
 
 # ── Applications ──────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
-    'daphne',                             # Must be first for ASGI
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -71,9 +70,6 @@ TEMPLATES = [
 ASGI_APPLICATION = 'inventory_project.asgi.application'
 WSGI_APPLICATION  = 'inventory_project.wsgi.application'
 
-# Channel Layers
-# Production: set REDIS_URL env var (e.g. from Render Redis or Upstash)
-# Development: falls back to in-memory (no Redis needed)
 REDIS_URL = config('REDIS_URL', default=None)
 
 if REDIS_URL:
@@ -82,12 +78,12 @@ if REDIS_URL:
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
                 'hosts': [REDIS_URL],
+                'capacity': 1500,
+                'expiry': 10,
             },
         },
     }
 else:
-    # In-memory: works fine for single-dyno / local dev
-    # NOTE: WebSocket broadcasts won't work across multiple dynos without Redis
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels.layers.InMemoryChannelLayer',
@@ -95,21 +91,21 @@ else:
     }
 
 # ── Database (Neon PostgreSQL) ────────────────────────────────────────────────
-# On Render, set DATABASE_URL to your Neon connection string
-# Format: postgresql://user:password@host/dbname?sslmode=require
 DATABASE_URL = config('DATABASE_URL', default=None)
 
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=600,           # persistent connections
-            conn_health_checks=True,    # auto-reconnect if Neon sleeps
-            ssl_require=True,           # Neon requires SSL
+            conn_max_age=300,
+            conn_health_checks=True,
+            ssl_require=True,
         )
     }
+    # Neon-specific: use pgbouncer-style connection pooling via the URL
+    # If using Neon's built-in pooler, your DATABASE_URL already points to
+    # the pooler endpoint (port 6432) — no extra config needed here.
 else:
-    # Local development fallback
     DATABASES = {
         'default': {
             'ENGINE':   'django.db.backends.postgresql',
@@ -118,6 +114,28 @@ else:
             'PASSWORD': config('DB_PASSWORD'),
             'HOST':     config('DB_HOST', default='localhost'),
             'PORT':     config('DB_PORT', default='5432'),
+        }
+    }
+
+# ── Cache — used by context_processors to avoid per-request DB hits ───────────
+# Uses Redis if available, falls back to local-memory cache
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'db': '1',  # use DB 1 so it doesn't collide with Channels (DB 0)
+            },
+            'TIMEOUT': 60,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'invsys-cache',
+            'TIMEOUT': 60,
         }
     }
 
@@ -138,15 +156,15 @@ STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# ── Security headers (production) ────────────────────────────────────────────
+# ── Security headers (production only) ───────────────────────────────────────
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER       = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT           = True
-    SESSION_COOKIE_SECURE         = True
-    CSRF_COOKIE_SECURE            = True
-    SECURE_HSTS_SECONDS           = 31536000
+    SECURE_PROXY_SSL_HEADER        = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT            = True
+    SESSION_COOKIE_SECURE          = True
+    CSRF_COOKIE_SECURE             = True
+    SECURE_HSTS_SECONDS            = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD           = True
-    SECURE_CONTENT_TYPE_NOSNIFF   = True
+    SECURE_HSTS_PRELOAD            = True
+    SECURE_CONTENT_TYPE_NOSNIFF    = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
