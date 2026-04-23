@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Welcome — InvSys</title>
+  <title>Borrow Request — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   <style>
     .modal-popup {
@@ -94,241 +94,226 @@
              class="auth-header-image auth-image-2" onerror="this.style.display='none'">
       </div>
     </div>
-    <p class="auth-sub">Inventory Management System</p>
+    <p class="auth-sub">Inventory Management System — Borrow Request</p>
 
-    <!-- Role Selector -->
-    <div class="form-group">
-      <label class="form-label">I am a…</label>
-      <select id="role-select" class="form-control" onchange="handleRoleChange(this.value)">
-        <option value="">Select your role</option>
-        <option value="borrower">Borrower</option>
-        <option value="admin_staff">Admin / Staff</option>
-      </select>
+    {% if borrow_form.errors %}
+      <div class="alert alert-error">
+        Please fix the errors below:
+        <ul style="margin:6px 0 0 16px">
+          {% for field, errors in borrow_form.errors.items %}
+            {% for error in errors %}
+              <li>{{ field }}: {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="post" id="borrower-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="borrow_request"/>
+
+      <!-- Borrower Type -->
+      <div class="form-group">
+        <label class="form-label">Borrower Type <span style="color:red">*</span></label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="borrower_role" value="student"
+                   {% if borrow_form.borrower_role.value == 'student' %}checked{% endif %}
+                   onchange="toggleBorrowerForms()" required>
+            <span>Student</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="borrower_role" value="employee"
+                   {% if borrow_form.borrower_role.value == 'employee' %}checked{% endif %}
+                   onchange="toggleBorrowerForms()" required>
+            <span>Employee</span>
+          </label>
+        </div>
+        {% if borrow_form.borrower_role.errors %}
+          <span class="form-error">{{ borrow_form.borrower_role.errors.0 }}</span>
+        {% endif %}
+      </div>
+
+      <!-- ── STUDENT FORM ── -->
+      <div id="student-form" style="display:none" class="dynamic-form-section">
+        <h4>📚 Student Information</h4>
+
+        <div class="form-group">
+          <label class="form-label">Student Name <span style="color:red">*</span></label>
+          <div class="name-row">
+            <input type="text" name="student_last_name" class="form-control"
+                   placeholder="Last Name"
+                   value="{{ borrow_form.student_last_name.value|default:'' }}">
+            <input type="text" name="student_first_name" class="form-control"
+                   placeholder="First Name"
+                   value="{{ borrow_form.student_first_name.value|default:'' }}">
+            <input type="text" name="student_middle_initial" class="form-control"
+                   placeholder="M.I." maxlength="2"
+                   value="{{ borrow_form.student_middle_initial.value|default:'' }}">
+          </div>
+          {% if borrow_form.student_last_name.errors %}
+            <span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Year Level &amp; Section <span style="color:red">*</span></label>
+          <div class="year-section-row">
+            <div>
+              <select name="year_level" class="form-control" id="year-level-select">
+                <option value="">— Year Level —</option>
+                <option value="1st Year" {% if borrow_form.year_level.value == '1st Year' %}selected{% endif %}>1st Year</option>
+                <option value="2nd Year" {% if borrow_form.year_level.value == '2nd Year' %}selected{% endif %}>2nd Year</option>
+                <option value="3rd Year" {% if borrow_form.year_level.value == '3rd Year' %}selected{% endif %}>3rd Year</option>
+                <option value="4th Year" {% if borrow_form.year_level.value == '4th Year' %}selected{% endif %}>4th Year</option>
+                <option value="5th Year" {% if borrow_form.year_level.value == '5th Year' %}selected{% endif %}>5th Year</option>
+              </select>
+              {% if borrow_form.year_level.errors %}
+                <span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>
+              {% endif %}
+            </div>
+            <div>
+              <input type="text" name="section" class="form-control"
+                     placeholder="Section (e.g. A, BSIT-3A)"
+                     value="{{ borrow_form.section.value|default:'' }}">
+              {% if borrow_form.section.errors %}
+                <span class="form-error">{{ borrow_form.section.errors.0 }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;
+               background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);
+               border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
+            ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed
+            devices must be returned before graduation. Staff will be notified of your request.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Student ID <span style="color:red">*</span></label>
+          <input type="text" name="student_id" class="form-control"
+                 placeholder="Student ID Number"
+                 value="{{ borrow_form.student_id.value|default:'' }}">
+          {% if borrow_form.student_id.errors %}
+            <span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">College <span style="color:red">*</span></label>
+          <input type="text" name="college" class="form-control"
+                 placeholder="College/Department"
+                 value="{{ borrow_form.college.value|default:'' }}">
+          {% if borrow_form.college.errors %}
+            <span class="form-error">{{ borrow_form.college.errors.0 }}</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Academic Year <span style="color:red">*</span></label>
+          <input type="text" name="academic_year" class="form-control"
+                 placeholder="e.g. 2024-2025"
+                 value="{{ borrow_form.academic_year.value|default:'' }}">
+          {% if borrow_form.academic_year.errors %}
+            <span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── EMPLOYEE FORM ── -->
+      <div id="employee-form" style="display:none" class="dynamic-form-section">
+        <h4>💼 Employee Information</h4>
+
+        <div class="form-group">
+          <label class="form-label">Employee Name <span style="color:red">*</span></label>
+          <div class="name-row">
+            <input type="text" name="employee_last_name" class="form-control"
+                   placeholder="Last Name"
+                   value="{{ borrow_form.employee_last_name.value|default:'' }}">
+            <input type="text" name="employee_first_name" class="form-control"
+                   placeholder="First Name"
+                   value="{{ borrow_form.employee_first_name.value|default:'' }}">
+            <input type="text" name="employee_middle_initial" class="form-control"
+                   placeholder="M.I." maxlength="2"
+                   value="{{ borrow_form.employee_middle_initial.value|default:'' }}">
+          </div>
+          {% if borrow_form.employee_last_name.errors %}
+            <span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Employee ID <span style="color:red">*</span></label>
+          <input type="text" name="employee_id" class="form-control"
+                 placeholder="Employee ID Number"
+                 value="{{ borrow_form.employee_id.value|default:'' }}">
+          {% if borrow_form.employee_id.errors %}
+            <span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Office <span style="color:red">*</span></label>
+          <input type="text" name="office" class="form-control"
+                 placeholder="Office/Department"
+                 value="{{ borrow_form.office.value|default:'' }}">
+          {% if borrow_form.office.errors %}
+            <span class="form-error">{{ borrow_form.office.errors.0 }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── COMMON FIELDS ── -->
+      <div class="form-group" style="margin-top:16px">
+        <label class="form-label">Item to Borrow <span style="color:red">*</span></label>
+        <select name="item" id="item-select" class="form-control" required>
+          <option value="">— Select an item —</option>
+          {% for item in available_items %}
+            <option value="{{ item.id }}"
+              {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>
+              {{ item.name }}
+            </option>
+          {% endfor %}
+        </select>
+        {% if borrow_form.item.errors %}
+          <span class="form-error">{{ borrow_form.item.errors.0 }}</span>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Quantity Needed <span style="color:red">*</span></label>
+        <input type="number" name="quantity" id="quantity-input" class="form-control"
+               placeholder="1" min="1" required
+               value="{{ borrow_form.quantity.value|default:'' }}"/>
+        {% if borrow_form.quantity.errors %}
+          <span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>
+        {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Your Transaction ID</label>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">
+            #{{ generated_tx_id }}
+          </div>
+          <input type="hidden" name="transaction_id" value="{{ generated_tx_id }}"/>
+        </div>
+        <span class="form-hint">Save this ID to track your request status.</span>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+        Submit Borrow Request
+      </button>
+    </form>
+
+    <!-- Staff/Admin link at bottom -->
+    <hr class="auth-divider" style="margin-top:24px"/>
+    <div style="text-align:center;font-size:12px;color:var(--muted)">
+      Are you a staff or admin?
+      <a href="{% url 'login' %}" style="color:var(--accent);margin-left:4px">Sign in here →</a>
     </div>
 
-    <!-- Borrower section -->
-    <div id="borrower-section" style="display:none">
-      <hr class="auth-divider"/>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:16px">
-        Fill out the form below. A staff member will review your request.
-      </p>
-
-      {% if borrow_form.errors %}
-        <div class="alert alert-error">
-          Please fix the errors below:
-          <ul style="margin:6px 0 0 16px">
-            {% for field, errors in borrow_form.errors.items %}
-              {% for error in errors %}
-                <li>{{ field }}: {{ error }}</li>
-              {% endfor %}
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-
-      <form method="post" id="borrower-form">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="borrow_request"/>
-
-        <!-- Borrower Type -->
-        <div class="form-group">
-          <label class="form-label">Borrower Type <span style="color:red">*</span></label>
-          <div class="radio-group">
-            <label class="radio-label">
-              <input type="radio" name="borrower_role" value="student"
-                     {% if borrow_form.borrower_role.value == 'student' %}checked{% endif %}
-                     onchange="toggleBorrowerForms()" required>
-              <span>Student</span>
-            </label>
-            <label class="radio-label">
-              <input type="radio" name="borrower_role" value="employee"
-                     {% if borrow_form.borrower_role.value == 'employee' %}checked{% endif %}
-                     onchange="toggleBorrowerForms()" required>
-              <span>Employee</span>
-            </label>
-          </div>
-          {% if borrow_form.borrower_role.errors %}
-            <span class="form-error">{{ borrow_form.borrower_role.errors.0 }}</span>
-          {% endif %}
-        </div>
-
-        <!-- ── STUDENT FORM ── -->
-        <div id="student-form" style="display:none" class="dynamic-form-section">
-          <h4>📚 Student Information</h4>
-
-          <!-- Name -->
-          <div class="form-group">
-            <label class="form-label">Student Name <span style="color:red">*</span></label>
-            <div class="name-row">
-              <input type="text" name="student_last_name" class="form-control"
-                     placeholder="Last Name"
-                     value="{{ borrow_form.student_last_name.value|default:'' }}">
-              <input type="text" name="student_first_name" class="form-control"
-                     placeholder="First Name"
-                     value="{{ borrow_form.student_first_name.value|default:'' }}">
-              <input type="text" name="student_middle_initial" class="form-control"
-                     placeholder="M.I." maxlength="2"
-                     value="{{ borrow_form.student_middle_initial.value|default:'' }}">
-            </div>
-            {% if borrow_form.student_last_name.errors %}
-              <span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>
-            {% endif %}
-          </div>
-
-          <!-- Year Level + Section — separate fields -->
-          <div class="form-group">
-            <label class="form-label">Year Level &amp; Section <span style="color:red">*</span></label>
-            <div class="year-section-row">
-              <!-- Year Level dropdown -->
-              <div>
-                <select name="year_level" class="form-control" id="year-level-select">
-                  <option value="">— Year Level —</option>
-                  <option value="1st Year" {% if borrow_form.year_level.value == '1st Year' %}selected{% endif %}>1st Year</option>
-                  <option value="2nd Year" {% if borrow_form.year_level.value == '2nd Year' %}selected{% endif %}>2nd Year</option>
-                  <option value="3rd Year" {% if borrow_form.year_level.value == '3rd Year' %}selected{% endif %}>3rd Year</option>
-                  <option value="4th Year" {% if borrow_form.year_level.value == '4th Year' %}selected{% endif %}>4th Year</option>
-                  <option value="5th Year" {% if borrow_form.year_level.value == '5th Year' %}selected{% endif %}>5th Year</option>
-                </select>
-                {% if borrow_form.year_level.errors %}
-                  <span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>
-                {% endif %}
-              </div>
-              <!-- Section -->
-              <div>
-                <input type="text" name="section" class="form-control"
-                       placeholder="Section (e.g. A, BSIT-3A)"
-                       value="{{ borrow_form.section.value|default:'' }}">
-                {% if borrow_form.section.errors %}
-                  <span class="form-error">{{ borrow_form.section.errors.0 }}</span>
-                {% endif %}
-              </div>
-            </div>
-
-            <!-- 4th year warning banner -->
-            <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;
-                 background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);
-                 border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
-              ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed
-              devices must be returned before graduation. Staff will be notified of your request.
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Student ID <span style="color:red">*</span></label>
-            <input type="text" name="student_id" class="form-control"
-                   placeholder="Student ID Number"
-                   value="{{ borrow_form.student_id.value|default:'' }}">
-            {% if borrow_form.student_id.errors %}
-              <span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>
-            {% endif %}
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">College <span style="color:red">*</span></label>
-            <input type="text" name="college" class="form-control"
-                   placeholder="College/Department"
-                   value="{{ borrow_form.college.value|default:'' }}">
-            {% if borrow_form.college.errors %}
-              <span class="form-error">{{ borrow_form.college.errors.0 }}</span>
-            {% endif %}
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Academic Year <span style="color:red">*</span></label>
-            <input type="text" name="academic_year" class="form-control"
-                   placeholder="e.g. 2024-2025"
-                   value="{{ borrow_form.academic_year.value|default:'' }}">
-            {% if borrow_form.academic_year.errors %}
-              <span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- ── EMPLOYEE FORM ── -->
-        <div id="employee-form" style="display:none" class="dynamic-form-section">
-          <h4>💼 Employee Information</h4>
-
-          <div class="form-group">
-            <label class="form-label">Employee Name <span style="color:red">*</span></label>
-            <div class="name-row">
-              <input type="text" name="employee_last_name" class="form-control"
-                     placeholder="Last Name"
-                     value="{{ borrow_form.employee_last_name.value|default:'' }}">
-              <input type="text" name="employee_first_name" class="form-control"
-                     placeholder="First Name"
-                     value="{{ borrow_form.employee_first_name.value|default:'' }}">
-              <input type="text" name="employee_middle_initial" class="form-control"
-                     placeholder="M.I." maxlength="2"
-                     value="{{ borrow_form.employee_middle_initial.value|default:'' }}">
-            </div>
-            {% if borrow_form.employee_last_name.errors %}
-              <span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>
-            {% endif %}
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Employee ID <span style="color:red">*</span></label>
-            <input type="text" name="employee_id" class="form-control"
-                   placeholder="Employee ID Number"
-                   value="{{ borrow_form.employee_id.value|default:'' }}">
-            {% if borrow_form.employee_id.errors %}
-              <span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>
-            {% endif %}
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Office <span style="color:red">*</span></label>
-            <input type="text" name="office" class="form-control"
-                   placeholder="Office/Department"
-                   value="{{ borrow_form.office.value|default:'' }}">
-            {% if borrow_form.office.errors %}
-              <span class="form-error">{{ borrow_form.office.errors.0 }}</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- ── COMMON FIELDS ── -->
-        <div class="form-group">
-          <label class="form-label">Item to Borrow <span style="color:red">*</span></label>
-          <select name="item" id="item-select" class="form-control" required>
-            <option value="">— Select an item —</option>
-            {% for item in available_items %}
-              <option value="{{ item.id }}"
-                {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>
-                {{ item.name }}
-              </option>
-            {% endfor %}
-          </select>
-          {% if borrow_form.item.errors %}
-            <span class="form-error">{{ borrow_form.item.errors.0 }}</span>
-          {% endif %}
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Quantity Needed <span style="color:red">*</span></label>
-          <input type="number" name="quantity" id="quantity-input" class="form-control"
-                 placeholder="1" min="1" required
-                 value="{{ borrow_form.quantity.value|default:'' }}"/>
-          {% if borrow_form.quantity.errors %}
-            <span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>
-          {% endif %}
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Transaction ID</label>
-          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-            <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">
-              #{{ generated_tx_id }}
-            </div>
-            <input type="hidden" name="transaction_id" value="{{ generated_tx_id }}"/>
-          </div>
-        </div>
-
-        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
-          Submit Request
-        </button>
-      </form>
-    </div><!-- /borrower-section -->
   </div>
 </div>
 
@@ -348,7 +333,7 @@
       <div class="tx-id">#{{ borrow_success }}</div>
     </div>
     <div class="modal-popup-message" style="font-size:13px">
-      Please wait for staff approval.
+      Please wait for staff approval. Keep your Transaction ID for reference.
     </div>
     <button class="modal-popup-btn" onclick="closeSuccessModal()">Got it, thanks!</button>
   </div>
@@ -356,14 +341,6 @@
 {% endif %}
 
 <script>
-function handleRoleChange(val) {
-  if (val === 'admin_staff') {
-    window.location.href = "{% url 'login' %}";
-    return;
-  }
-  document.getElementById('borrower-section').style.display = val === 'borrower' ? 'block' : 'none';
-}
-
 function toggleBorrowerForms() {
   const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
   const studentForm  = document.getElementById('student-form');
@@ -389,7 +366,6 @@ function toggleBorrowerForms() {
   });
 }
 
-// Show 4th/5th year warning banner when selected
 document.addEventListener('DOMContentLoaded', function () {
   const yearSelect = document.getElementById('year-level-select');
   const warningEl  = document.getElementById('fourth-year-warning');
@@ -404,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (yearSelect) yearSelect.addEventListener('change', checkYearWarning);
   checkYearWarning();
 
-  // Init borrower role
+  // Init borrower role state on page load (e.g. after validation error)
   const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
   if (selectedRole) toggleBorrowerForms();
 });
@@ -418,11 +394,6 @@ document.addEventListener('click', function (e) {
   const modal = document.getElementById('successModal');
   if (modal && e.target === modal) closeSuccessModal();
 });
-
-{% if borrow_form.errors or borrow_success %}
-  document.getElementById('role-select').value = 'borrower';
-  document.getElementById('borrower-section').style.display = 'block';
-{% endif %}
 </script>
 <script src="{% static 'inventory/js/script.js' %}"></script>
 </body>

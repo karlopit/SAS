@@ -31,6 +31,7 @@ urlpatterns = [
     # ── Borrow requests ───────────────────────────────────────────────────────
     path('requests/',                          views.borrow_requests,  name='borrow_requests'),
     path('requests/<int:request_id>/decline/', views.decline_request,  name='decline_request'),
+    path('borrow/', views.borrow_item_public, name='borrow_item_public'),
 
     # ── Borrow management ─────────────────────────────────────────────────────
     path('borrow-management/',        views.borrow_management,        name='borrow_management'),

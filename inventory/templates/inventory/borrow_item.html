@@ -1,10 +1,79 @@
-{% extends 'inventory/base.html' %}
-{% block title %}Borrow Item — InvSys{% endblock %}
-{% block page_title %}Borrow Item{% endblock %}
-
-{% block content %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Borrow Item — InvSys</title>
+  <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
+  <style>
+    /* Minimal adjustments to center the form and remove any leftover staff UI */
+    body {
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      margin: 0;
+    }
+    .form-card {
+      max-width: 500px;
+      width: 100%;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
+    .form-title {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .alert {
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .alert-success {
+      background: rgba(0,229,160,0.1);
+      border: 1px solid rgba(0,229,160,0.3);
+      color: #00e5a0;
+    }
+    .alert-info {
+      background: rgba(0,100,255,0.1);
+      border: 1px solid rgba(0,100,255,0.3);
+      color: #448aff;
+    }
+    .btn-primary {
+      width: 100%;
+    }
+    .btn-primary svg {
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
 <div class="form-card">
   <h2 class="form-title">Borrow an Item</h2>
+  <p class="auth-sub">Fill out the form below. A staff member will review your request.</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-success">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
 
   {% if form.errors %}
     <div class="alert alert-error">
@@ -12,66 +81,89 @@
         <circle cx="12" cy="12" r="10"/>
         <path stroke-linecap="round" d="M12 8v4m0 4h.01"/>
       </svg>
-      {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+      Please fix the errors below.
     </div>
   {% endif %}
 
   <form method="post">
     {% csrf_token %}
 
+    <!-- College / Office -->
     <div class="form-group">
-      <label class="form-label" for="{{ form.office_college.id_for_label }}">College/Office</label>
+      <label class="form-label" for="{{ form.office_college.id_for_label }}">College / Office</label>
       <input type="text" id="{{ form.office_college.id_for_label }}"
-        name="{{ form.office_college.html_name }}"
-        class="form-control"
-        placeholder="Enter College/Office"
-        value="{{ form.office_college.value|default:'' }}"/>
-        {% if form.office_college.errors %}
-      <span class="form-error">{{ form.office_college.errors.0 }}</span>
+             name="{{ form.office_college.html_name }}"
+             class="form-control"
+             placeholder="e.g., CCS, Engineering, Administration"
+             value="{{ form.office_college.value|default:'' }}" required/>
+      {% if form.office_college.errors %}
+        <span class="form-error">{{ form.office_college.errors.0 }}</span>
       {% endif %}
     </div>
 
+    <!-- Item -->
     <div class="form-group">
       <label class="form-label" for="{{ form.item.id_for_label }}">Select Item</label>
-      <select id="{{ form.item.id_for_label }}" name="{{ form.item.html_name }}" class="form-control">
+      <select id="{{ form.item.id_for_label }}" name="{{ form.item.html_name }}" class="form-control" required>
         <option value="">— Choose an item —</option>
         {% for item in available_items %}
-          <option value="{{ item.id }}" data-available="{{ item.available_quantity }}"
-            {% if request.GET.item == item.id|stringformat:"s" %}selected{% endif %}>
+          <option value="{{ item.id }}" data-available="{{ item.available_quantity }}">
             {{ item.name }} ({{ item.available_quantity }} available)
           </option>
         {% endfor %}
       </select>
-      {% if form.item.errors %}<span class="form-error">{{ form.item.errors.0 }}</span>{% endif %}
+      {% if form.item.errors %}
+        <span class="form-error">{{ form.item.errors.0 }}</span>
+      {% endif %}
     </div>
 
+    <!-- Quantity -->
     <div class="form-group">
       <label class="form-label" for="{{ form.quantity_borrowed.id_for_label }}">Quantity</label>
       <input type="number" id="{{ form.quantity_borrowed.id_for_label }}"
-        name="{{ form.quantity_borrowed.html_name }}"
-        class="form-control" placeholder="1" min="1"
-        value="{{ form.quantity_borrowed.value|default:'' }}"/>
+             name="{{ form.quantity_borrowed.html_name }}"
+             class="form-control" placeholder="1" min="1" required
+             value="{{ form.quantity_borrowed.value|default:1 }}"/>
       <span id="qty-hint" class="form-hint">Select an item to see availability.</span>
-      {% if form.quantity_borrowed.errors %}<span class="form-error">{{ form.quantity_borrowed.errors.0 }}</span>{% endif %}
-    </div>
-
-    <div class="alert alert-info">
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <path stroke-linecap="round" d="M12 16v-4m0-4h.01"/>
-      </svg>
-      Borrowing as <strong>{{ request.user.username }}</strong>.
+      {% if form.quantity_borrowed.errors %}
+        <span class="form-error">{{ form.quantity_borrowed.errors.0 }}</span>
+      {% endif %}
     </div>
 
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
         </svg>
-        Confirm Borrow
+        Submit Request
       </button>
     </div>
   </form>
 </div>
-{% endblock %}
+
+<script>
+  // Update quantity hint based on selected item
+  const itemSelect = document.getElementById('{{ form.item.id_for_label }}');
+  const quantityInput = document.getElementById('{{ form.quantity_borrowed.id_for_label }}');
+  const hintSpan = document.getElementById('qty-hint');
+
+  if (itemSelect && quantityInput) {
+    itemSelect.addEventListener('change', function() {
+      const selectedOption = itemSelect.options[itemSelect.selectedIndex];
+      const maxQty = selectedOption.getAttribute('data-available');
+      if (maxQty && maxQty !== 'None') {
+        quantityInput.max = maxQty;
+        hintSpan.textContent = `Maximum available: ${maxQty}`;
+        if (parseInt(quantityInput.value) > parseInt(maxQty)) {
+          quantityInput.value = maxQty;
+        }
+      } else {
+        hintSpan.textContent = 'Select an item to see availability.';
+      }
+    });
+    // Trigger on page load if an item is pre‑selected
+    itemSelect.dispatchEvent(new Event('change'));
+  }
+</script>
+</body>
+</html>

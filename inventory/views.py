@@ -79,7 +79,6 @@ def welcome(request):
         'available_items': Item.objects.filter(available_quantity__gt=0),
     })
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  Dashboard
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +257,22 @@ def borrow_requests(request):
         'pending_count': pending_count,
     })
 
+
+def borrow_item_public(request):
+    if request.method == 'POST':
+        form = BorrowRequestForm(request.POST)
+        if form.is_valid():
+            br = form.save(commit=False)
+            br.save()
+            messages.success(request, 'Your request has been submitted. Staff will review it soon.')
+            return redirect('borrow_item_public')
+    else:
+        form = BorrowRequestForm()
+    
+    return render(request, 'inventory/borrow_item.html', {
+        'form': form,
+        'available_items': Item.objects.filter(available_quantity__gt=0),
+    })
 
 @login_required
 @no_cache
