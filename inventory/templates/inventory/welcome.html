@@ -7,7 +7,7 @@
   <title>Borrow Request — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   <style>
-    /* ========== All existing modal, form, header styles (unchanged) ========== */
+    /* ========== All existing modal, form, header styles ========== */
     .modal-popup {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.7); display: flex; align-items: center;
@@ -44,7 +44,7 @@
       cursor: pointer; transition: all 0.2s;
     }
     .modal-popup-btn:hover { opacity: 0.85; transform: translateY(-1px); }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
     .radio-group { display: flex; gap: 20px; margin-top: 8px; }
@@ -74,76 +74,70 @@
       .auth-image-2     { width: 45px; height: 45px; }
     }
 
-    /* ========== ENHANCED BELLY DANCE – SMOOTH, SENSUAL & FLUID ========== */
+    /* ========== ORANGE JUSTICE DANCING TABLET – FULL EMOTE ========== */
     .dance-tablet {
       position: fixed;
       bottom: 20px;
       right: 20px;
       z-index: 999999;
       pointer-events: none;
-      width: 130px;
-      height: 210px;
+      width: 120px;
+      height: 200px;
     }
 
-    /* Main character container */
+    /* The whole character bounces + sways side‑to‑side */
     .dt-char {
       position: absolute;
       bottom: 0;
       left: 50%;
       transform: translateX(-50%);
-      width: 110px;
-      animation: bellyDanceBody 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+      width: 100px;
+      animation: ojBodyMove 1s infinite linear;
       transform-origin: center bottom;
     }
 
-    /* Arms – graceful serpentine movement */
+    /* Arms – long, with cross‑over motion */
     .dt-arm-l,
     .dt-arm-r {
       position: absolute;
-      width: 42px;
-      height: 11px;
-      background: linear-gradient(90deg, #00e5a0, #00c48a);
-      border-radius: 20px;
-      top: 46px;
-      box-shadow: 0 3px 8px rgba(0, 229, 160, 0.4);
+      width: 36px;
+      height: 9px;
+      background: #00e5a0;
+      border-radius: 12px;
+      top: 45px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
-
     .dt-arm-l {
-      right: calc(100% - 12px);
+      right: calc(100% - 8px);
       transform-origin: right center;
-      animation: bellyArmLeft 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+      animation: ojArmLeft 1s infinite linear;
     }
-
     .dt-arm-r {
-      left: calc(100% - 12px);
+      left: calc(100% - 8px);
       transform-origin: left center;
-      animation: bellyArmRight 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+      animation: ojArmRight 1s infinite linear;
     }
 
     /* Tablet shell */
     .dt-device {
       position: relative;
-      width: 74px;
-      height: 106px;
+      width: 72px;
+      height: 104px;
       margin: 0 auto;
       background: #1e2029;
       border-radius: 14px;
       border: 2px solid #00e5a0;
-      box-shadow: 
-        0 0 0 3px rgba(0,229,160,0.25),
-        0 12px 30px rgba(0,0,0,0.55),
-        inset 0 4px 12px rgba(255,255,255,0.06);
+      box-shadow: 0 0 0 3px rgba(0,229,160,0.25), 0 8px 20px rgba(0,0,0,0.6);
       z-index: 2;
-      transition: transform 0.25s ease;
     }
 
-    /* Screen with stronger shine */
+    /* Screen */
     .dt-screen {
       position: absolute;
       top: 8px;
       left: 6px;
       right: 6px;
-      height: 58px;
+      height: 56px;
       background: #0e0f13;
       border-radius: 6px;
       border: 1px solid #2a2d3a;
@@ -152,17 +146,17 @@
     .dt-screen::after {
       content: '';
       position: absolute;
-      top: 0; left: -80%;
-      width: 60%; height: 100%;
-      background: linear-gradient(115deg, transparent 30%, rgba(0,229,160,0.35) 50%, transparent 70%);
-      transform: skewX(-25deg);
-      animation: shine 3.5s infinite linear;
+      top: 0; left: -50%;
+      width: 150%; height: 100%;
+      background: linear-gradient(115deg, transparent 30%, rgba(0,229,160,0.18) 50%, transparent 70%);
+      transform: skewX(-20deg);
+      animation: shine 3s infinite;
     }
 
-    /* Face */
+    /* Face – eyes and smile inside screen */
     .dt-face {
       position: absolute;
-      top: 22px;
+      top: 20px;
       left: 0;
       right: 0;
       display: flex;
@@ -173,21 +167,20 @@
     }
     .dt-eyes {
       display: flex;
-      gap: 13px;
-      animation: eyeBlink 4s infinite;
+      gap: 12px;
+      animation: eyeBlink 2.5s infinite;
     }
     .dt-eye {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       background: #00e5a0;
       border-radius: 50%;
-      box-shadow: 0 0 4px #00e5a0;
     }
     .dt-smile {
-      width: 23px;
-      height: 9px;
+      width: 20px;
+      height: 8px;
       border-bottom: 3px solid #00e5a0;
-      border-radius: 0 0 16px 16px;
+      border-radius: 0 0 12px 12px;
     }
 
     /* Home button */
@@ -196,136 +189,106 @@
       bottom: 7px;
       left: 50%;
       transform: translateX(-50%);
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       background: #00e5a0;
-      box-shadow: 0 0 8px #00e5a0;
+      opacity: 0.85;
     }
 
-    /* Legs */
+    /* Legs – alternating high kicks */
     .dt-legs {
       display: flex;
       justify-content: center;
-      gap: 13px;
-      margin-top: 6px;
+      gap: 10px;
+      margin-top: 3px;
     }
-    .dt-leg-l, .dt-leg-r {
+    .dt-leg-l,
+    .dt-leg-r {
       display: flex;
       flex-direction: column;
       align-items: center;
     }
     .dt-thigh {
-      width: 15px;
-      height: 26px;
+      width: 12px;
+      height: 22px;
       background: #00e5a0;
-      border-radius: 8px 8px 4px 4px;
+      border-radius: 0 0 4px 4px;
     }
     .dt-foot {
-      width: 21px;
-      height: 10px;
+      width: 19px;
+      height: 9px;
       background: #00b87a;
-      border-radius: 4px;
-      margin-top: -3px;
+      border-radius: 3px;
+      margin-top: -2px;
+    }
+    .dt-leg-l {
+      transform-origin: top center;
+      animation: ojLegLeft 1s infinite linear;
+    }
+    .dt-leg-r {
+      transform-origin: top center;
+      animation: ojLegRight 1s infinite linear;
     }
 
-    .dt-leg-l { animation: bellyLegLeft 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1); }
-    .dt-leg-r { animation: bellyLegRight 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1); }
-
-    /* Hip scarf beads */
-    .dt-hip-beads {
-      position: absolute;
-      bottom: -9px;
-      left: 8%;
-      width: 84%;
-      height: 10px;
-      display: flex;
-      justify-content: space-between;
-      z-index: 1;
-    }
-    .dt-bead {
-      width: 7px;
-      height: 7px;
-      background: #ffb347;
-      border-radius: 50%;
-      box-shadow: 0 0 6px #ffb347;
-      animation: beadShake 0.55s infinite alternate ease-in-out;
-    }
-
-    /* Floating veil particles */
+    /* Floating particles – confetti effect */
     .dt-particle {
       position: absolute;
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
       background: #00e5a0;
       border-radius: 50%;
-      box-shadow: 0 0 8px #00e5a0;
       opacity: 0;
-      animation: bellyPop 2.8s infinite ease-in-out;
+      animation: ojPop 1.2s infinite;
     }
 
-    /* ===== IMPROVED BELLY DANCE KEYFRAMES ===== */
-    @keyframes bellyDanceBody {
-      0%, 100%   { transform: translateX(-50%) translateY(0) rotate(0deg); }
-      12%        { transform: translateX(-47%) translateY(-4px) rotate(3deg); }
-      25%        { transform: translateX(-53%) translateY(-8px) rotate(-5deg); }
-      37%        { transform: translateX(-46%) translateY(-2px) rotate(6deg); }
-      50%        { transform: translateX(-54%) translateY(-5px) rotate(-4deg); }
-      62%        { transform: translateX(-48%) translateY(3px) rotate(3deg); }
-      75%        { transform: translateX(-52%) translateY(-6px) rotate(-6deg); }
-      87%        { transform: translateX(-49%) translateY(1px) rotate(2deg); }
+    /* ===== ORANGE JUSTICE KEYFRAMES – emote style ===== */
+    @keyframes ojBodyMove {
+      0%, 50%, 100% { transform: translateX(-50%) translateY(0px) rotate(0deg); }
+      25% { transform: translateX(-50%) translateY(14px) rotate(3deg); }
+      75% { transform: translateX(-50%) translateY(14px) rotate(-3deg); }
     }
 
-    @keyframes bellyArmLeft {
-      0%, 100%   { transform: rotate(8deg) translateX(-2px); }
-      20%        { transform: rotate(32deg) translateX(-6px); }
-      45%        { transform: rotate(-18deg) translateX(5px); }
-      70%        { transform: rotate(38deg) translateX(-3px); }
-      85%        { transform: rotate(-22deg) translateX(6px); }
+    @keyframes ojArmLeft {
+      0%   { transform: rotate(-60deg); }
+      25%  { transform: rotate(70deg) translateX(5px); }
+      50%  { transform: rotate(-100deg); }
+      75%  { transform: rotate(70deg) translateX(5px); }
+      100% { transform: rotate(-60deg); }
     }
 
-    @keyframes bellyArmRight {
-      0%, 100%   { transform: rotate(-8deg) translateX(2px); }
-      25%        { transform: rotate(-35deg) translateX(7px); }
-      50%        { transform: rotate(20deg) translateX(-6px); }
-      72%        { transform: rotate(-40deg) translateX(4px); }
-      90%        { transform: rotate(18deg) translateX(-7px); }
+    @keyframes ojArmRight {
+      0%   { transform: rotate(60deg); }
+      25%  { transform: rotate(-70deg) translateX(-5px); }
+      50%  { transform: rotate(-20deg); }
+      75%  { transform: rotate(-70deg) translateX(-5px); }
+      100% { transform: rotate(60deg); }
     }
 
-    @keyframes bellyLegLeft {
-      0%, 100%   { transform: rotate(0deg) scaleY(1); }
-      22%        { transform: rotate(18deg) scaleY(1.06); }
-      48%        { transform: rotate(-14deg) scaleY(0.94); }
-      75%        { transform: rotate(11deg) scaleY(1.03); }
+    @keyframes ojLegLeft {
+      0%, 50%, 100% { transform: rotate(0deg); }
+      25%, 75% { transform: rotate(25deg) scaleY(0.7); }
     }
 
-    @keyframes bellyLegRight {
-      0%, 100%   { transform: rotate(0deg) scaleY(1); }
-      20%        { transform: rotate(-16deg) scaleY(1.05); }
-      45%        { transform: rotate(13deg) scaleY(0.95); }
-      70%        { transform: rotate(-10deg) scaleY(1.04); }
+    @keyframes ojLegRight {
+      0%, 50%, 100% { transform: rotate(0deg); }
+      25%, 75% { transform: rotate(-25deg) scaleY(0.7); }
     }
 
-    @keyframes beadShake {
-      from { transform: translateY(0) rotate(-8deg); }
-      to   { transform: translateY(5px) rotate(8deg); }
-    }
-
-    @keyframes bellyPop {
-      0%, 100% { transform: translateY(0) scale(0.4); opacity: 0; }
-      15%      { transform: translateY(-12px) scale(1.3); opacity: 0.85; }
-      50%      { transform: translateY(-28px) scale(0.8); opacity: 0.45; }
-      80%      { transform: translateY(-8px) scale(1.1); opacity: 0.6; }
+    @keyframes ojPop {
+      0%, 100% { transform: translateY(0px) scale(0.5); opacity: 0; }
+      30%      { transform: translateY(-12px) scale(1.2); opacity: 1; }
+      70%      { transform: translateY(-28px) scale(0.6); opacity: 0.4; }
     }
 
     @keyframes shine {
-      0%   { left: -80%; }
-      100% { left: 180%; }
+      0%   { left: -50%; }
+      100% { left: 150%; }
     }
 
     @keyframes eyeBlink {
-      0%, 88%, 100% { transform: scaleY(1); }
-      92%           { transform: scaleY(0.08); }
+      0%,88%,100% { transform: scaleY(1);   }
+      93%          { transform: scaleY(0.1); }
     }
   </style>
 </head>
@@ -382,7 +345,6 @@
         {% endif %}
       </div>
 
-      <!-- STUDENT FORM -->
       <div id="student-form" style="display:none" class="dynamic-form-section">
         <h4>📚 Student Information</h4>
         <div class="form-group">
@@ -434,7 +396,6 @@
         </div>
       </div>
 
-      <!-- EMPLOYEE FORM -->
       <div id="employee-form" style="display:none" class="dynamic-form-section">
         <h4>💼 Employee Information</h4>
         <div class="form-group">
@@ -458,7 +419,6 @@
         </div>
       </div>
 
-      <!-- COMMON FIELDS -->
       <div class="form-group" style="margin-top:16px">
         <label class="form-label">Item to Borrow <span style="color:red">*</span></label>
         <select name="item" id="item-select" class="form-control" required>
@@ -512,20 +472,13 @@
 </div>
 {% endif %}
 
-<!-- ========== ENHANCED BELLY DANCING TABLET ========== -->
 <div class="dance-tablet" aria-hidden="true">
-  <!-- More particles for richer veil effect -->
-  <div class="dt-particle" style="top: 12px; left: 8px; animation-delay:0s;"></div>
-  <div class="dt-particle" style="top: 5px; right: 18px; animation-delay:0.4s;"></div>
-  <div class="dt-particle" style="top: 25px; left: 14px; animation-delay:0.9s;"></div>
-  <div class="dt-particle" style="top: 18px; right: 10px; animation-delay:1.3s;"></div>
-  <div class="dt-particle" style="top: 32px; left: 22px; animation-delay:0.7s; width:4px; height:4px;"></div>
-  <div class="dt-particle" style="top: 9px; right: 25px; animation-delay:2.1s; width:5px; height:5px;"></div>
-
+  <div class="dt-particle" style="top: 6px; left: 12px; animation-delay:0s;"></div>
+  <div class="dt-particle" style="top: 0px; right: 18px; animation-delay:0.4s;"></div>
+  <div class="dt-particle" style="top: 18px; left: 8px; animation-delay:0.8s;"></div>
   <div class="dt-char">
     <div class="dt-arm-l"></div>
     <div class="dt-arm-r"></div>
-    
     <div class="dt-device">
       <div class="dt-screen"></div>
       <div class="dt-face">
@@ -536,18 +489,7 @@
         <div class="dt-smile"></div>
       </div>
       <div class="dt-home"></div>
-      
-      <!-- Hip scarf beads -->
-      <div class="dt-hip-beads">
-        <div class="dt-bead" style="animation-delay:0s;"></div>
-        <div class="dt-bead" style="animation-delay:0.1s;"></div>
-        <div class="dt-bead" style="animation-delay:0.25s;"></div>
-        <div class="dt-bead" style="animation-delay:0.4s;"></div>
-        <div class="dt-bead" style="animation-delay:0.55s;"></div>
-        <div class="dt-bead" style="animation-delay:0.7s;"></div>
-      </div>
     </div>
-
     <div class="dt-legs">
       <div class="dt-leg-l">
         <div class="dt-thigh"></div>
