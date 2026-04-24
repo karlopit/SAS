@@ -683,89 +683,85 @@ def return_devices(request, transaction_id):
     tx = get_object_or_404(Transaction, id=transaction_id)
 
     try:
-        # --- original logic begins ---
         body = json.loads(request.body)
-        device_ids = body.get('device_ids', [])
-        serials = body.get('serials', [])
-    except (json.JSONDecodeError, AttributeError) as e:
+    except (json.JSONDecodeError, AttributeError):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    device_ids = body.get('device_ids', [])
+    serials    = body.get('serials', [])
 
     now_ph = get_ph_time()
     returned_serials = []
 
-    try:
-        if device_ids:
-            real_ids = [d for d in device_ids if d is not None]
-            if real_ids:
-                updated_devices = TransactionDevice.objects.filter(
-                    id__in=real_ids,
-                    transaction=tx,
-                    returned=False,
-                )
-                returned_serials = list(updated_devices.values_list('serial_number', flat=True))
-                updated_devices.update(returned=True, returned_at=now_ph)
-        elif serials:
-            for sn in serials:
-                td = tx.devices.filter(serial_number=sn, returned=False).first()
-                if td:
-                    td.returned = True
-                    td.returned_at = now_ph
-                    td.save()
-                    returned_serials.append(sn)
+    # ── Mark TransactionDevice rows as returned ───────────────────────────────
+    if device_ids:
+        real_ids = [d for d in device_ids if d is not None]
+        if real_ids:
+            updated_devices = TransactionDevice.objects.filter(
+                id__in=real_ids,
+                transaction=tx,
+                returned=False,
+            )
+            returned_serials = list(updated_devices.values_list('serial_number', flat=True))
+            updated_devices.update(returned=True, returned_at=now_ph)
+    elif serials:
+        for sn in serials:
+            td = tx.devices.filter(serial_number=sn, returned=False).first()
+            if td:
+                td.returned    = True
+                td.returned_at = now_ph
+                td.save()
+                returned_serials.append(sn)
 
-        if returned_serials:
-            if tx.borrow_request:
-                borrower_name = tx.borrow_request.borrower_name
-                office = tx.borrow_request.office_college
-            else:
-                borrower_name = tx.borrower.get_full_name() or tx.borrower.username
-                office = tx.office_college
+    # ── Mirror the return into DeviceMonitor (sets date_returned) ────────────
+    if returned_serials:
+        if tx.borrow_request:
+            borrower_name = tx.borrow_request.borrower_name
+            office        = tx.borrow_request.office_college
+        else:
+            borrower_name = tx.borrower.get_full_name() or tx.borrower.username
+            office        = tx.office_college
 
-            for serial in returned_serials:
-                DeviceMonitor.objects.filter(
-                    serial_number=serial,
-                    accountable_person=borrower_name,
-                    office_college=office,
-                    date_returned__isnull=True
-                ).update(date_returned=now_ph)
+        DeviceMonitor.objects.filter(
+            serial_number__in=returned_serials,
+            accountable_person=borrower_name,
+            office_college=office,
+            date_returned__isnull=True,
+        ).update(date_returned=now_ph)
 
+    # ── Recalculate returned count ────────────────────────────────────────────
+    if tx.devices.exists():
         returned_count = tx.devices.filter(returned=True).count()
-        if not tx.devices.exists():
-            returned_count = tx.returned_qty + len(serials)
+    else:
+        # Legacy path: no TransactionDevice rows
+        returned_count = tx.returned_qty + len(returned_serials)
 
-        returned_count = min(returned_count, tx.quantity_borrowed)
+    returned_count = min(returned_count, tx.quantity_borrowed)
 
-        delta = returned_count - tx.returned_qty
-        if delta > 0:
-            tx.item.available_quantity = tx.item.available_quantity + delta
-            tx.item.save()
+    # ── Update Transaction ────────────────────────────────────────────────────
+    delta = returned_count - tx.returned_qty
+    if delta > 0:
+        tx.item.available_quantity = tx.item.available_quantity + delta
+        tx.item.save()
 
-        tx.returned_qty = returned_count
-        tx.returned_at = now_ph if returned_count > 0 else tx.returned_at
-        tx.status = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
-        tx.save()
+    tx.returned_qty = returned_count
+    tx.returned_at  = now_ph if returned_count > 0 else tx.returned_at
+    tx.status       = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
+    tx.save()
 
-        b = _broadcasts()
-        b.broadcast_borrow_management()
-        b.broadcast_dashboard()
-        b.broadcast_device_monitoring()
+    # ── Broadcast live updates to ALL connected pages ─────────────────────────
+    b = _broadcasts()
+    b.broadcast_borrow_management()
+    b.broadcast_dashboard()
+    b.broadcast_device_monitoring()   # ← device monitoring page updates live
 
-        return JsonResponse({
-            'ok': True,
-            'returned_qty': tx.returned_qty,
-            'status': tx.status,
-            'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
-            'returned_at': format_ph_time(tx.returned_at),
-        })
-
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print("ERROR in return_devices:", error_details)   # will appear in Render logs
-        return JsonResponse({
-            'error': str(e),
-            'trace': error_details   # optional, can be removed after debugging
-        }, status=500)
+    return JsonResponse({
+        'ok':            True,
+        'returned_qty':  tx.returned_qty,
+        'status':        tx.status,
+        'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
+        'returned_at':   format_ph_time(tx.returned_at),
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────

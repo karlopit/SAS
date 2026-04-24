@@ -7,7 +7,6 @@
   <title>Borrow Item — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   <style>
-    /* Minimal adjustments to center the form and remove any leftover staff UI */
     body {
       background: var(--bg);
       display: flex;
@@ -51,15 +50,124 @@
       border: 1px solid rgba(0,100,255,0.3);
       color: #448aff;
     }
-    .btn-primary {
-      width: 100%;
+    .btn-primary { width: 100%; }
+    .btn-primary svg { margin-right: 6px; }
+
+    /* ========== DANCING TABLET (lower‑right corner) ========== */
+    .dance-tablet {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 100px;
+      height: 130px;
+      background: red;        /* TEMPORARY – will be removed */
+      border-radius: 12px;
+      z-index: 999999;
+      pointer-events: none;   /* so clicks pass through */
+      animation: danceMove 1.8s infinite ease-in-out;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    .btn-primary svg {
-      margin-right: 6px;
+
+    /* The tablet device itself */
+    .tablet-device {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 100px;
+      background: #1e2029;           /* --surface2 */
+      border-radius: 12px;
+      border: 2px solid #00e5a0;     /* --accent */
+      box-shadow: 0 0 0 3px rgba(0,229,160,0.3), 0 8px 20px rgba(0,0,0,0.6);
+    }
+
+    /* Screen */
+    .tablet-screen {
+      position: absolute;
+      top: 8px;
+      left: 6px;
+      right: 6px;
+      bottom: 28px;
+      background: #0e0f13;           /* --bg */
+      border-radius: 6px;
+      border: 1px solid #2a2d3a;     /* --border */
+      overflow: hidden;
+    }
+
+    /* Glossy shine sweep */
+    .tablet-screen::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -50%;
+      width: 150%;
+      height: 100%;
+      background: linear-gradient(115deg, transparent 30%, rgba(0,229,160,0.18) 50%, transparent 70%);
+      transform: skewX(-20deg);
+      animation: shine 3s infinite;
+    }
+
+    /* Tiny screen content lines (personality) */
+    .tablet-screen::before {
+      content: '';
+      position: absolute;
+      top: 10px;
+      left: 6px;
+      right: 6px;
+      height: 2px;
+      background: rgba(0,229,160,0.5);
+      border-radius: 1px;
+      box-shadow: 0 5px 0 rgba(0,229,160,0.3), 0 10px 0 rgba(0,229,160,0.15);
+    }
+
+    /* Home button */
+    .tablet-home {
+      position: absolute;
+      bottom: 7px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #00e5a0;           /* --accent */
+      opacity: 0.85;
+    }
+
+    /* Floating particles */
+    .dance-particle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: #00e5a0;
+      border-radius: 50%;
+      opacity: 0;
+      animation: floatUp 1.4s infinite;
+    }
+
+    @keyframes danceMove {
+      0%   { transform: translateY(0px) rotate(0deg);  }
+      20%  { transform: translateY(-12px) rotate(-8deg); }
+      40%  { transform: translateY(0px) rotate(6deg);  }
+      60%  { transform: translateY(-6px) rotate(-4deg); }
+      80%  { transform: translateY(0px) rotate(2deg);  }
+      100% { transform: translateY(0px) rotate(0deg);  }
+    }
+
+    @keyframes shine {
+      0%   { left: -50%;  }
+      100% { left: 150%;  }
+    }
+
+    @keyframes floatUp {
+      0%   { transform: translateY(0) scale(1);   opacity: 0.8; }
+      80%  { transform: translateY(-22px) scale(0.4); opacity: 0.3; }
+      100% { transform: translateY(-28px) scale(0);   opacity: 0;   }
     }
   </style>
 </head>
 <body>
+
 <div class="form-card">
   <h2 class="form-title">Borrow an Item</h2>
   <p class="auth-sub">Fill out the form below. A staff member will review your request.</p>
@@ -88,10 +196,10 @@
   <form method="post">
     {% csrf_token %}
 
-    <!-- College / Office -->
     <div class="form-group">
       <label class="form-label" for="{{ form.office_college.id_for_label }}">College / Office</label>
-      <input type="text" id="{{ form.office_college.id_for_label }}"
+      <input type="text"
+             id="{{ form.office_college.id_for_label }}"
              name="{{ form.office_college.html_name }}"
              class="form-control"
              placeholder="e.g., CCS, Engineering, Administration"
@@ -101,7 +209,6 @@
       {% endif %}
     </div>
 
-    <!-- Item -->
     <div class="form-group">
       <label class="form-label" for="{{ form.item.id_for_label }}">Select Item</label>
       <select id="{{ form.item.id_for_label }}" name="{{ form.item.html_name }}" class="form-control" required>
@@ -117,12 +224,13 @@
       {% endif %}
     </div>
 
-    <!-- Quantity -->
     <div class="form-group">
       <label class="form-label" for="{{ form.quantity_borrowed.id_for_label }}">Quantity</label>
-      <input type="number" id="{{ form.quantity_borrowed.id_for_label }}"
+      <input type="number"
+             id="{{ form.quantity_borrowed.id_for_label }}"
              name="{{ form.quantity_borrowed.html_name }}"
-             class="form-control" placeholder="1" min="1" required
+             class="form-control"
+             placeholder="1" min="1" required
              value="{{ form.quantity_borrowed.value|default:1 }}"/>
       <span id="qty-hint" class="form-hint">Select an item to see availability.</span>
       {% if form.quantity_borrowed.errors %}
@@ -141,16 +249,26 @@
   </form>
 </div>
 
+<!-- Dancing tablet character (fixed lower‑right) -->
+<div class="dance-tablet" aria-hidden="true">
+  <div class="tablet-device">
+    <div class="tablet-screen"></div>
+    <div class="tablet-home"></div>
+  </div>
+  <div class="dance-particle" style="top: 4px;  right: 8px;  animation-delay: 0s;"></div>
+  <div class="dance-particle" style="top: 14px; left: 6px;   animation-delay: 0.45s;"></div>
+  <div class="dance-particle" style="top: 8px;  right: 20px; animation-delay: 0.9s;"></div>
+</div>
+
 <script>
-  // Update quantity hint based on selected item
-  const itemSelect = document.getElementById('{{ form.item.id_for_label }}');
+  const itemSelect    = document.getElementById('{{ form.item.id_for_label }}');
   const quantityInput = document.getElementById('{{ form.quantity_borrowed.id_for_label }}');
-  const hintSpan = document.getElementById('qty-hint');
+  const hintSpan      = document.getElementById('qty-hint');
 
   if (itemSelect && quantityInput) {
-    itemSelect.addEventListener('change', function() {
-      const selectedOption = itemSelect.options[itemSelect.selectedIndex];
-      const maxQty = selectedOption.getAttribute('data-available');
+    itemSelect.addEventListener('change', function () {
+      const opt    = itemSelect.options[itemSelect.selectedIndex];
+      const maxQty = opt.getAttribute('data-available');
       if (maxQty && maxQty !== 'None') {
         quantityInput.max = maxQty;
         hintSpan.textContent = `Maximum available: ${maxQty}`;
@@ -161,7 +279,6 @@
         hintSpan.textContent = 'Select an item to see availability.';
       }
     });
-    // Trigger on page load if an item is pre‑selected
     itemSelect.dispatchEvent(new Event('change'));
   }
 </script>

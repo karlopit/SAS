@@ -619,9 +619,15 @@ function openReturnModal(btn) {
   document.getElementById('return-modal-loading').style.display  = 'block';
   document.getElementById('return-device-list').style.display    = 'none';
   document.getElementById('return-empty-state').style.display    = 'none';
-  document.getElementById('confirm-return-btn').disabled         = true;
   document.getElementById('return-device-rows').innerHTML        = '';
   document.getElementById('return-footer-note').textContent      = '';
+
+  // ── Always reset the confirm button to its default state ──────────────
+  const confirmBtn = document.getElementById('confirm-return-btn');
+  confirmBtn.disabled  = true;   // disabled until devices are loaded & checked
+  confirmBtn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+  </svg> Confirm Return`;
 
   document.getElementById('returnModal').style.display = 'flex';
 
@@ -638,6 +644,89 @@ function openReturnModal(btn) {
       document.getElementById('return-footer-note').textContent = 'Error loading devices.';
       showToast('Error loading devices', 'error');
     });
+}
+
+async function confirmReturn() {
+  const checkedBoxes = document.querySelectorAll(
+    '#return-device-rows input[type="checkbox"]:not(:disabled):checked'
+  );
+  if (checkedBoxes.length === 0) return;
+
+  const serials   = [];
+  const deviceIds = [];
+
+  checkedBoxes.forEach(cb => {
+    serials.push(cb.dataset.serial);
+    if (cb.dataset.deviceId && cb.dataset.deviceId !== 'null' && cb.dataset.deviceId !== 'undefined') {
+      deviceIds.push(parseInt(cb.dataset.deviceId));
+    }
+  });
+
+  const btn = document.getElementById('confirm-return-btn');
+  btn.disabled  = true;
+  btn.innerHTML = 'Processing…';
+
+  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+  try {
+    const payload = { serials };
+    if (deviceIds.length > 0) payload.device_ids = deviceIds;
+
+    const resp = await fetch(`/transaction/${_returnTxId}/return-devices/`, {
+      method:      'POST',
+      headers:     { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body:        JSON.stringify(payload),
+      credentials: 'same-origin',
+    });
+
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Server error');
+
+    // Update the table row in place
+    const txRow = document.getElementById('tx-row-' + _returnTxId);
+    if (txRow) {
+      const qtyDisplay = txRow.querySelector('.returned-qty-display');
+      if (qtyDisplay) qtyDisplay.textContent = data.returned_qty;
+
+      const statusCell = txRow.querySelector('.status-cell');
+      if (statusCell) {
+        if (data.fully_returned) {
+          statusCell.innerHTML = '<span class="badge badge-returned-full">✓ Returned</span>';
+        } else {
+          const borrowerName = txRow.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
+          const qtyBorrowed  = txRow.querySelector('td:nth-child(7)')?.textContent?.trim() || '';
+          statusCell.innerHTML = `
+            <button class="btn-return-action"
+                    data-tx-id="${_returnTxId}"
+                    data-borrower="${escapeHtml(borrowerName)}"
+                    data-qty="${qtyBorrowed}"
+                    onclick="openReturnModal(this)">
+              ↩ Return
+            </button>`;
+        }
+      }
+
+      const returnedOnCell = txRow.querySelector('.returned-on-cell');
+      if (returnedOnCell && data.returned_at && data.returned_at !== '—') {
+        returnedOnCell.textContent = data.returned_at;
+      }
+
+      txRow.dataset.status = data.fully_returned ? 'returned' : 'borrowed';
+    }
+
+    showToast(`${serials.length} device(s) returned successfully`, 'success');
+    // Close the modal on success
+    document.getElementById('returnModal').style.display = 'none';
+
+  } catch (err) {
+    console.error('Return error:', err);
+    showToast('Error: ' + err.message, 'error');
+    // On error: re-enable button so staff can retry without reopening modal
+    btn.disabled  = false;
+    btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg> Confirm Return`;
+  }
 }
 
 function closeReturnModal(e) {
@@ -816,8 +905,12 @@ async function confirmReturn() {
   } catch (err) {
     console.error('Return error:', err);
     showToast('Error: ' + err.message, 'error');
-    btn.disabled = false;
-    btn.innerHTML = originalHtml;
+  } finally {
+    // Always reset button — runs whether success or error
+    btn.disabled  = false;
+    btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg> Confirm Return`;
   }
 }
 

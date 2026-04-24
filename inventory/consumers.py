@@ -1,48 +1,28 @@
-"""
-inventory/consumers.py
-"""
 import json
+import pytz
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
+PH_TZ = pytz.timezone('Asia/Manila')
+
+def _fmt_ph(dt):
+    """Format a datetime to Philippine time — matches format_ph_time() in views.py."""
+    if not dt:
+        return '—'
+    import django.utils.timezone as tz
+    if tz.is_naive(dt):
+        dt = tz.make_aware(dt, tz.utc)
+    return dt.astimezone(PH_TZ).strftime('%b %d, %Y %I:%M %p')
+
 
 def _build_dashboard_payload():
-    from django.db.models import Sum, F, ExpressionWrapper, IntegerField, Q
+    from django.db.models import Sum, F, ExpressionWrapper, IntegerField
     from inventory.models import Item, Transaction, BorrowRequest, DeviceMonitor
 
-    # Single aggregate query instead of loading all items into Python
-    from django.db.models import Sum as DSum
-    item_agg = Item.objects.aggregate(
-        total_count=DSum('quantity') - DSum('quantity') + DSum('id') - DSum('id'),  # just count
-        available_total=DSum('available_quantity'),
-    )
-    items_count    = Item.objects.count()
-    available_qty  = item_agg['available_total'] or 0
+    items_count   = Item.objects.count()
+    available_qty = Item.objects.aggregate(t=Sum('available_quantity'))['t'] or 0
 
-    # Combine status counts in fewer queries
-    tx_agg = Transaction.objects.aggregate(
-        active=Sum(
-            ExpressionWrapper(
-                F('status') == 'borrowed',
-                output_field=IntegerField()
-            )
-        ),
-        returned=Sum(
-            ExpressionWrapper(
-                F('status') == 'returned',
-                output_field=IntegerField()
-            )
-        ),
-        borrowed_qty=Sum(
-            ExpressionWrapper(
-                F('quantity_borrowed') - F('returned_qty'),
-                output_field=IntegerField()
-            )
-        ),
-    )
-
-    # Django ORM doesn't support boolean → int directly in aggregate,
-    # so keep as two fast .count() calls (they use index scans)
+    # Two fast index-scan counts — no broken boolean aggregate
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
     pending_count  = BorrowRequest.objects.filter(status='pending').count()
@@ -55,7 +35,9 @@ def _build_dashboard_payload():
     ).aggregate(total=Sum('still_out'))
     borrowed_qty = max(0, out_agg['total'] or 0)
 
-    # Bar chart — one query per stat instead of one per office per stat
+    # Bar chart — one bulk query per status flag, grouped by office
+    from django.db.models import Count, Case, When, BooleanField
+
     monitors = DeviceMonitor.objects.all()
     offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
@@ -82,7 +64,6 @@ def _build_dashboard_payload():
 
 def _build_borrow_management_payload():
     from .models import Transaction, BorrowRequest, Item
-    from .views import format_ph_time
 
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
@@ -111,8 +92,8 @@ def _build_borrow_management_payload():
             'item_name':           tx.item.name,
             'qty_borrowed':        tx.quantity_borrowed,
             'returned_qty':        tx.returned_qty,
-            'borrowed_at':         format_ph_time(tx.borrowed_at),
-            'returned_at':         format_ph_time(tx.returned_at) if tx.returned_at else '—',
+            'borrowed_at':         _fmt_ph(tx.borrowed_at),
+            'returned_at':         _fmt_ph(tx.returned_at) if tx.returned_at else '—',
             'fully_returned':      tx.returned_qty >= tx.quantity_borrowed,
         })
 
@@ -162,7 +143,6 @@ def _build_device_monitoring_payload():
     from inventory.models import DeviceMonitor, Transaction, TransactionDevice
 
     # ── Build serial → TransactionDevice lookup in ONE query ──────────────────
-    # Get all unreturned TransactionDevices with their transaction in one shot
     active_tds = TransactionDevice.objects.filter(
         returned=False
     ).select_related('transaction', 'transaction__borrow_request').values(
@@ -197,7 +177,7 @@ def _build_device_monitoring_payload():
 
         if r.date_returned:
             release_status    = 'Returned'
-            date_returned_str = r.date_returned.strftime('%b %d, %Y %H:%M')
+            date_returned_str = _fmt_ph(r.date_returned)
         elif sn and sn in active_serial_map:
             td_data = active_serial_map[sn]
             tx_borrower = td_data['transaction__borrow_request__borrower_name'] or ''
@@ -211,7 +191,7 @@ def _build_device_monitoring_payload():
         elif sn and sn in serial_to_tx:
             tx = serial_to_tx[sn]
             release_status    = 'Returned' if tx.returned_qty >= tx.quantity_borrowed else 'Released'
-            date_returned_str = tx.returned_at.strftime('%b %d, %Y %H:%M') if tx.returned_at else '—'
+            date_returned_str = _fmt_ph(tx.returned_at) if tx.returned_at else '—'
         else:
             release_status    = '—'
             date_returned_str = '—'

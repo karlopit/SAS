@@ -7,6 +7,7 @@
   <title>Borrow Request — InvSys</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   <style>
+    /* ========== All existing modal, form, header styles (unchanged) ========== */
     .modal-popup {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.7); display: flex; align-items: center;
@@ -43,29 +44,23 @@
       cursor: pointer; transition: all 0.2s;
     }
     .modal-popup-btn:hover { opacity: 0.85; transform: translateY(-1px); }
-    @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-    /* Radio group */
     .radio-group { display: flex; gap: 20px; margin-top: 8px; }
     .radio-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .radio-label input[type="radio"] { width: auto; margin: 0; cursor: pointer; }
     .radio-label span { font-size: 0.95rem; color: var(--text); }
 
-    /* Dynamic form sections */
     .dynamic-form-section {
       margin-top: 16px; padding: 16px; background: var(--surface2);
       border-radius: 8px; border: 1px solid var(--border);
     }
     .dynamic-form-section h4 { margin-bottom: 16px; font-size: 14px; color: var(--accent); font-weight: 600; }
 
-    /* Name row */
     .name-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 10px; }
-
-    /* Year Level + Section row — side by side */
     .year-section-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    /* Header */
     .auth-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .auth-header-images { display: flex; align-items: center; gap: 10px; }
     .auth-header-image { object-fit: contain; background-color: transparent; }
@@ -73,10 +68,264 @@
     .auth-image-2 { width: 85px; height: 85px; }
 
     @media (max-width: 480px) {
-      .name-row        { grid-template-columns: 1fr; }
-      .year-section-row{ grid-template-columns: 1fr; }
-      .auth-image-1    { width: 35px; height: 35px; }
-      .auth-image-2    { width: 45px; height: 45px; }
+      .name-row         { grid-template-columns: 1fr; }
+      .year-section-row { grid-template-columns: 1fr; }
+      .auth-image-1     { width: 35px; height: 35px; }
+      .auth-image-2     { width: 45px; height: 45px; }
+    }
+
+    /* ========== ENHANCED BELLY DANCE – SMOOTH, SENSUAL & FLUID ========== */
+    .dance-tablet {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 999999;
+      pointer-events: none;
+      width: 130px;
+      height: 210px;
+    }
+
+    /* Main character container */
+    .dt-char {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 110px;
+      animation: bellyDanceBody 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+      transform-origin: center bottom;
+    }
+
+    /* Arms – graceful serpentine movement */
+    .dt-arm-l,
+    .dt-arm-r {
+      position: absolute;
+      width: 42px;
+      height: 11px;
+      background: linear-gradient(90deg, #00e5a0, #00c48a);
+      border-radius: 20px;
+      top: 46px;
+      box-shadow: 0 3px 8px rgba(0, 229, 160, 0.4);
+    }
+
+    .dt-arm-l {
+      right: calc(100% - 12px);
+      transform-origin: right center;
+      animation: bellyArmLeft 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+    }
+
+    .dt-arm-r {
+      left: calc(100% - 12px);
+      transform-origin: left center;
+      animation: bellyArmRight 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1);
+    }
+
+    /* Tablet shell */
+    .dt-device {
+      position: relative;
+      width: 74px;
+      height: 106px;
+      margin: 0 auto;
+      background: #1e2029;
+      border-radius: 14px;
+      border: 2px solid #00e5a0;
+      box-shadow: 
+        0 0 0 3px rgba(0,229,160,0.25),
+        0 12px 30px rgba(0,0,0,0.55),
+        inset 0 4px 12px rgba(255,255,255,0.06);
+      z-index: 2;
+      transition: transform 0.25s ease;
+    }
+
+    /* Screen with stronger shine */
+    .dt-screen {
+      position: absolute;
+      top: 8px;
+      left: 6px;
+      right: 6px;
+      height: 58px;
+      background: #0e0f13;
+      border-radius: 6px;
+      border: 1px solid #2a2d3a;
+      overflow: hidden;
+    }
+    .dt-screen::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -80%;
+      width: 60%; height: 100%;
+      background: linear-gradient(115deg, transparent 30%, rgba(0,229,160,0.35) 50%, transparent 70%);
+      transform: skewX(-25deg);
+      animation: shine 3.5s infinite linear;
+    }
+
+    /* Face */
+    .dt-face {
+      position: absolute;
+      top: 22px;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      z-index: 3;
+    }
+    .dt-eyes {
+      display: flex;
+      gap: 13px;
+      animation: eyeBlink 4s infinite;
+    }
+    .dt-eye {
+      width: 7px;
+      height: 7px;
+      background: #00e5a0;
+      border-radius: 50%;
+      box-shadow: 0 0 4px #00e5a0;
+    }
+    .dt-smile {
+      width: 23px;
+      height: 9px;
+      border-bottom: 3px solid #00e5a0;
+      border-radius: 0 0 16px 16px;
+    }
+
+    /* Home button */
+    .dt-home {
+      position: absolute;
+      bottom: 7px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #00e5a0;
+      box-shadow: 0 0 8px #00e5a0;
+    }
+
+    /* Legs */
+    .dt-legs {
+      display: flex;
+      justify-content: center;
+      gap: 13px;
+      margin-top: 6px;
+    }
+    .dt-leg-l, .dt-leg-r {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .dt-thigh {
+      width: 15px;
+      height: 26px;
+      background: #00e5a0;
+      border-radius: 8px 8px 4px 4px;
+    }
+    .dt-foot {
+      width: 21px;
+      height: 10px;
+      background: #00b87a;
+      border-radius: 4px;
+      margin-top: -3px;
+    }
+
+    .dt-leg-l { animation: bellyLegLeft 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1); }
+    .dt-leg-r { animation: bellyLegRight 4s infinite cubic-bezier(0.4, 0.0, 0.6, 1); }
+
+    /* Hip scarf beads */
+    .dt-hip-beads {
+      position: absolute;
+      bottom: -9px;
+      left: 8%;
+      width: 84%;
+      height: 10px;
+      display: flex;
+      justify-content: space-between;
+      z-index: 1;
+    }
+    .dt-bead {
+      width: 7px;
+      height: 7px;
+      background: #ffb347;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #ffb347;
+      animation: beadShake 0.55s infinite alternate ease-in-out;
+    }
+
+    /* Floating veil particles */
+    .dt-particle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: #00e5a0;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #00e5a0;
+      opacity: 0;
+      animation: bellyPop 2.8s infinite ease-in-out;
+    }
+
+    /* ===== IMPROVED BELLY DANCE KEYFRAMES ===== */
+    @keyframes bellyDanceBody {
+      0%, 100%   { transform: translateX(-50%) translateY(0) rotate(0deg); }
+      12%        { transform: translateX(-47%) translateY(-4px) rotate(3deg); }
+      25%        { transform: translateX(-53%) translateY(-8px) rotate(-5deg); }
+      37%        { transform: translateX(-46%) translateY(-2px) rotate(6deg); }
+      50%        { transform: translateX(-54%) translateY(-5px) rotate(-4deg); }
+      62%        { transform: translateX(-48%) translateY(3px) rotate(3deg); }
+      75%        { transform: translateX(-52%) translateY(-6px) rotate(-6deg); }
+      87%        { transform: translateX(-49%) translateY(1px) rotate(2deg); }
+    }
+
+    @keyframes bellyArmLeft {
+      0%, 100%   { transform: rotate(8deg) translateX(-2px); }
+      20%        { transform: rotate(32deg) translateX(-6px); }
+      45%        { transform: rotate(-18deg) translateX(5px); }
+      70%        { transform: rotate(38deg) translateX(-3px); }
+      85%        { transform: rotate(-22deg) translateX(6px); }
+    }
+
+    @keyframes bellyArmRight {
+      0%, 100%   { transform: rotate(-8deg) translateX(2px); }
+      25%        { transform: rotate(-35deg) translateX(7px); }
+      50%        { transform: rotate(20deg) translateX(-6px); }
+      72%        { transform: rotate(-40deg) translateX(4px); }
+      90%        { transform: rotate(18deg) translateX(-7px); }
+    }
+
+    @keyframes bellyLegLeft {
+      0%, 100%   { transform: rotate(0deg) scaleY(1); }
+      22%        { transform: rotate(18deg) scaleY(1.06); }
+      48%        { transform: rotate(-14deg) scaleY(0.94); }
+      75%        { transform: rotate(11deg) scaleY(1.03); }
+    }
+
+    @keyframes bellyLegRight {
+      0%, 100%   { transform: rotate(0deg) scaleY(1); }
+      20%        { transform: rotate(-16deg) scaleY(1.05); }
+      45%        { transform: rotate(13deg) scaleY(0.95); }
+      70%        { transform: rotate(-10deg) scaleY(1.04); }
+    }
+
+    @keyframes beadShake {
+      from { transform: translateY(0) rotate(-8deg); }
+      to   { transform: translateY(5px) rotate(8deg); }
+    }
+
+    @keyframes bellyPop {
+      0%, 100% { transform: translateY(0) scale(0.4); opacity: 0; }
+      15%      { transform: translateY(-12px) scale(1.3); opacity: 0.85; }
+      50%      { transform: translateY(-28px) scale(0.8); opacity: 0.45; }
+      80%      { transform: translateY(-8px) scale(1.1); opacity: 0.6; }
+    }
+
+    @keyframes shine {
+      0%   { left: -80%; }
+      100% { left: 180%; }
+    }
+
+    @keyframes eyeBlink {
+      0%, 88%, 100% { transform: scaleY(1); }
+      92%           { transform: scaleY(0.08); }
     }
   </style>
 </head>
@@ -84,7 +333,6 @@
 <div class="auth-wrapper">
   <div class="auth-card" style="max-width:480px">
 
-    <!-- Header -->
     <div class="auth-header">
       <div class="auth-logo">Inv<span>Sys</span></div>
       <div class="auth-header-images">
@@ -94,7 +342,7 @@
              class="auth-header-image auth-image-2" onerror="this.style.display='none'">
       </div>
     </div>
-    <p class="auth-sub">Inventory Management System — Borrow Request</p>
+    <p class="auth-sub">Borrow Request Form</p>
 
     {% if borrow_form.errors %}
       <div class="alert alert-error">
@@ -113,7 +361,6 @@
       {% csrf_token %}
       <input type="hidden" name="action" value="borrow_request"/>
 
-      <!-- Borrower Type -->
       <div class="form-group">
         <label class="form-label">Borrower Type <span style="color:red">*</span></label>
         <div class="radio-group">
@@ -135,28 +382,18 @@
         {% endif %}
       </div>
 
-      <!-- ── STUDENT FORM ── -->
+      <!-- STUDENT FORM -->
       <div id="student-form" style="display:none" class="dynamic-form-section">
         <h4>📚 Student Information</h4>
-
         <div class="form-group">
           <label class="form-label">Student Name <span style="color:red">*</span></label>
           <div class="name-row">
-            <input type="text" name="student_last_name" class="form-control"
-                   placeholder="Last Name"
-                   value="{{ borrow_form.student_last_name.value|default:'' }}">
-            <input type="text" name="student_first_name" class="form-control"
-                   placeholder="First Name"
-                   value="{{ borrow_form.student_first_name.value|default:'' }}">
-            <input type="text" name="student_middle_initial" class="form-control"
-                   placeholder="M.I." maxlength="2"
-                   value="{{ borrow_form.student_middle_initial.value|default:'' }}">
+            <input type="text" name="student_last_name" class="form-control" placeholder="Last Name" value="{{ borrow_form.student_last_name.value|default:'' }}">
+            <input type="text" name="student_first_name" class="form-control" placeholder="First Name" value="{{ borrow_form.student_first_name.value|default:'' }}">
+            <input type="text" name="student_middle_initial" class="form-control" placeholder="M.I." maxlength="2" value="{{ borrow_form.student_middle_initial.value|default:'' }}">
           </div>
-          {% if borrow_form.student_last_name.errors %}
-            <span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>
-          {% endif %}
+          {% if borrow_form.student_last_name.errors %}<span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>{% endif %}
         </div>
-
         <div class="form-group">
           <label class="form-label">Year Level &amp; Section <span style="color:red">*</span></label>
           <div class="year-section-row">
@@ -169,134 +406,80 @@
                 <option value="4th Year" {% if borrow_form.year_level.value == '4th Year' %}selected{% endif %}>4th Year</option>
                 <option value="5th Year" {% if borrow_form.year_level.value == '5th Year' %}selected{% endif %}>5th Year</option>
               </select>
-              {% if borrow_form.year_level.errors %}
-                <span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>
-              {% endif %}
+              {% if borrow_form.year_level.errors %}<span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>{% endif %}
             </div>
             <div>
-              <input type="text" name="section" class="form-control"
-                     placeholder="Section (e.g. A, BSIT-3A)"
-                     value="{{ borrow_form.section.value|default:'' }}">
-              {% if borrow_form.section.errors %}
-                <span class="form-error">{{ borrow_form.section.errors.0 }}</span>
-              {% endif %}
+              <input type="text" name="section" class="form-control" placeholder="Section (e.g. A, BSIT-3A)" value="{{ borrow_form.section.value|default:'' }}">
+              {% if borrow_form.section.errors %}<span class="form-error">{{ borrow_form.section.errors.0 }}</span>{% endif %}
             </div>
           </div>
-          <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;
-               background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);
-               border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
-            ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed
-            devices must be returned before graduation. Staff will be notified of your request.
+          <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
+            ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed devices must be returned before graduation. Staff will be notified of your request.
           </div>
         </div>
-
         <div class="form-group">
           <label class="form-label">Student ID <span style="color:red">*</span></label>
-          <input type="text" name="student_id" class="form-control"
-                 placeholder="Student ID Number"
-                 value="{{ borrow_form.student_id.value|default:'' }}">
-          {% if borrow_form.student_id.errors %}
-            <span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>
-          {% endif %}
+          <input type="text" name="student_id" class="form-control" placeholder="Student ID Number" value="{{ borrow_form.student_id.value|default:'' }}">
+          {% if borrow_form.student_id.errors %}<span class="form-error">{{ borrow_form.student_id.errors.0 }}</span>{% endif %}
         </div>
-
         <div class="form-group">
           <label class="form-label">College <span style="color:red">*</span></label>
-          <input type="text" name="college" class="form-control"
-                 placeholder="College/Department"
-                 value="{{ borrow_form.college.value|default:'' }}">
-          {% if borrow_form.college.errors %}
-            <span class="form-error">{{ borrow_form.college.errors.0 }}</span>
-          {% endif %}
+          <input type="text" name="college" class="form-control" placeholder="College/Department" value="{{ borrow_form.college.value|default:'' }}">
+          {% if borrow_form.college.errors %}<span class="form-error">{{ borrow_form.college.errors.0 }}</span>{% endif %}
         </div>
-
         <div class="form-group">
           <label class="form-label">Academic Year <span style="color:red">*</span></label>
-          <input type="text" name="academic_year" class="form-control"
-                 placeholder="e.g. 2024-2025"
-                 value="{{ borrow_form.academic_year.value|default:'' }}">
-          {% if borrow_form.academic_year.errors %}
-            <span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>
-          {% endif %}
+          <input type="text" name="academic_year" class="form-control" placeholder="e.g. 2024-2025" value="{{ borrow_form.academic_year.value|default:'' }}">
+          {% if borrow_form.academic_year.errors %}<span class="form-error">{{ borrow_form.academic_year.errors.0 }}</span>{% endif %}
         </div>
       </div>
 
-      <!-- ── EMPLOYEE FORM ── -->
+      <!-- EMPLOYEE FORM -->
       <div id="employee-form" style="display:none" class="dynamic-form-section">
         <h4>💼 Employee Information</h4>
-
         <div class="form-group">
           <label class="form-label">Employee Name <span style="color:red">*</span></label>
           <div class="name-row">
-            <input type="text" name="employee_last_name" class="form-control"
-                   placeholder="Last Name"
-                   value="{{ borrow_form.employee_last_name.value|default:'' }}">
-            <input type="text" name="employee_first_name" class="form-control"
-                   placeholder="First Name"
-                   value="{{ borrow_form.employee_first_name.value|default:'' }}">
-            <input type="text" name="employee_middle_initial" class="form-control"
-                   placeholder="M.I." maxlength="2"
-                   value="{{ borrow_form.employee_middle_initial.value|default:'' }}">
+            <input type="text" name="employee_last_name" class="form-control" placeholder="Last Name" value="{{ borrow_form.employee_last_name.value|default:'' }}">
+            <input type="text" name="employee_first_name" class="form-control" placeholder="First Name" value="{{ borrow_form.employee_first_name.value|default:'' }}">
+            <input type="text" name="employee_middle_initial" class="form-control" placeholder="M.I." maxlength="2" value="{{ borrow_form.employee_middle_initial.value|default:'' }}">
           </div>
-          {% if borrow_form.employee_last_name.errors %}
-            <span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>
-          {% endif %}
+          {% if borrow_form.employee_last_name.errors %}<span class="form-error">{{ borrow_form.employee_last_name.errors.0 }}</span>{% endif %}
         </div>
-
         <div class="form-group">
           <label class="form-label">Employee ID <span style="color:red">*</span></label>
-          <input type="text" name="employee_id" class="form-control"
-                 placeholder="Employee ID Number"
-                 value="{{ borrow_form.employee_id.value|default:'' }}">
-          {% if borrow_form.employee_id.errors %}
-            <span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>
-          {% endif %}
+          <input type="text" name="employee_id" class="form-control" placeholder="Employee ID Number" value="{{ borrow_form.employee_id.value|default:'' }}">
+          {% if borrow_form.employee_id.errors %}<span class="form-error">{{ borrow_form.employee_id.errors.0 }}</span>{% endif %}
         </div>
-
         <div class="form-group">
           <label class="form-label">Office <span style="color:red">*</span></label>
-          <input type="text" name="office" class="form-control"
-                 placeholder="Office/Department"
-                 value="{{ borrow_form.office.value|default:'' }}">
-          {% if borrow_form.office.errors %}
-            <span class="form-error">{{ borrow_form.office.errors.0 }}</span>
-          {% endif %}
+          <input type="text" name="office" class="form-control" placeholder="Office/Department" value="{{ borrow_form.office.value|default:'' }}">
+          {% if borrow_form.office.errors %}<span class="form-error">{{ borrow_form.office.errors.0 }}</span>{% endif %}
         </div>
       </div>
 
-      <!-- ── COMMON FIELDS ── -->
+      <!-- COMMON FIELDS -->
       <div class="form-group" style="margin-top:16px">
         <label class="form-label">Item to Borrow <span style="color:red">*</span></label>
         <select name="item" id="item-select" class="form-control" required>
           <option value="">— Select an item —</option>
           {% for item in available_items %}
-            <option value="{{ item.id }}"
-              {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>
-              {{ item.name }}
-            </option>
+            <option value="{{ item.id }}" {% if borrow_form.item.value|stringformat:"s" == item.id|stringformat:"s" %}selected{% endif %}>{{ item.name }}</option>
           {% endfor %}
         </select>
-        {% if borrow_form.item.errors %}
-          <span class="form-error">{{ borrow_form.item.errors.0 }}</span>
-        {% endif %}
+        {% if borrow_form.item.errors %}<span class="form-error">{{ borrow_form.item.errors.0 }}</span>{% endif %}
       </div>
 
       <div class="form-group">
         <label class="form-label">Quantity Needed <span style="color:red">*</span></label>
-        <input type="number" name="quantity" id="quantity-input" class="form-control"
-               placeholder="1" min="1" required
-               value="{{ borrow_form.quantity.value|default:'' }}"/>
-        {% if borrow_form.quantity.errors %}
-          <span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>
-        {% endif %}
+        <input type="number" name="quantity" id="quantity-input" class="form-control" placeholder="1" min="1" required value="{{ borrow_form.quantity.value|default:'' }}"/>
+        {% if borrow_form.quantity.errors %}<span class="form-error">{{ borrow_form.quantity.errors.0 }}</span>{% endif %}
       </div>
 
       <div class="form-group">
         <label class="form-label">Your Transaction ID</label>
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-          <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">
-            #{{ generated_tx_id }}
-          </div>
+          <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent)">#{{ generated_tx_id }}</div>
           <input type="hidden" name="transaction_id" value="{{ generated_tx_id }}"/>
         </div>
         <span class="form-hint">Save this ID to track your request status.</span>
@@ -306,18 +489,9 @@
         Submit Borrow Request
       </button>
     </form>
-
-    <!-- Staff/Admin link at bottom -->
-    <hr class="auth-divider" style="margin-top:24px"/>
-    <div style="text-align:center;font-size:12px;color:var(--muted)">
-      Are you a staff or admin?
-      <a href="{% url 'login' %}" style="color:var(--accent);margin-left:4px">Sign in here →</a>
-    </div>
-
   </div>
 </div>
 
-<!-- Success Popup -->
 {% if borrow_success %}
 <div id="successModal" class="modal-popup">
   <div class="modal-popup-content">
@@ -332,68 +506,102 @@
       <label>Transaction ID</label>
       <div class="tx-id">#{{ borrow_success }}</div>
     </div>
-    <div class="modal-popup-message" style="font-size:13px">
-      Please wait for staff approval. Keep your Transaction ID for reference.
-    </div>
+    <div class="modal-popup-message" style="font-size:13px">Please wait for staff approval. Keep your Transaction ID for reference.</div>
     <button class="modal-popup-btn" onclick="closeSuccessModal()">Got it, thanks!</button>
   </div>
 </div>
 {% endif %}
 
+<!-- ========== ENHANCED BELLY DANCING TABLET ========== -->
+<div class="dance-tablet" aria-hidden="true">
+  <!-- More particles for richer veil effect -->
+  <div class="dt-particle" style="top: 12px; left: 8px; animation-delay:0s;"></div>
+  <div class="dt-particle" style="top: 5px; right: 18px; animation-delay:0.4s;"></div>
+  <div class="dt-particle" style="top: 25px; left: 14px; animation-delay:0.9s;"></div>
+  <div class="dt-particle" style="top: 18px; right: 10px; animation-delay:1.3s;"></div>
+  <div class="dt-particle" style="top: 32px; left: 22px; animation-delay:0.7s; width:4px; height:4px;"></div>
+  <div class="dt-particle" style="top: 9px; right: 25px; animation-delay:2.1s; width:5px; height:5px;"></div>
+
+  <div class="dt-char">
+    <div class="dt-arm-l"></div>
+    <div class="dt-arm-r"></div>
+    
+    <div class="dt-device">
+      <div class="dt-screen"></div>
+      <div class="dt-face">
+        <div class="dt-eyes">
+          <div class="dt-eye"></div>
+          <div class="dt-eye"></div>
+        </div>
+        <div class="dt-smile"></div>
+      </div>
+      <div class="dt-home"></div>
+      
+      <!-- Hip scarf beads -->
+      <div class="dt-hip-beads">
+        <div class="dt-bead" style="animation-delay:0s;"></div>
+        <div class="dt-bead" style="animation-delay:0.1s;"></div>
+        <div class="dt-bead" style="animation-delay:0.25s;"></div>
+        <div class="dt-bead" style="animation-delay:0.4s;"></div>
+        <div class="dt-bead" style="animation-delay:0.55s;"></div>
+        <div class="dt-bead" style="animation-delay:0.7s;"></div>
+      </div>
+    </div>
+
+    <div class="dt-legs">
+      <div class="dt-leg-l">
+        <div class="dt-thigh"></div>
+        <div class="dt-foot"></div>
+      </div>
+      <div class="dt-leg-r">
+        <div class="dt-thigh"></div>
+        <div class="dt-foot"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-function toggleBorrowerForms() {
-  const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-  const studentForm  = document.getElementById('student-form');
-  const employeeForm = document.getElementById('employee-form');
-  if (!selectedRole) return;
-
-  const isStudent = selectedRole.value === 'student';
-  studentForm.style.display  = isStudent ? 'block' : 'none';
-  employeeForm.style.display = isStudent ? 'none'  : 'block';
-
-  const studentFields  = ['student_last_name','student_first_name','student_middle_initial',
-                          'year_level','section','student_id','college','academic_year'];
-  const employeeFields = ['employee_last_name','employee_first_name','employee_middle_initial',
-                          'employee_id','office'];
-
-  studentFields.forEach(f => {
-    const el = document.querySelector(`[name="${f}"]`);
-    if (el) el.disabled = !isStudent;
-  });
-  employeeFields.forEach(f => {
-    const el = document.querySelector(`[name="${f}"]`);
-    if (el) el.disabled = isStudent;
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-  const yearSelect = document.getElementById('year-level-select');
-  const warningEl  = document.getElementById('fourth-year-warning');
-
-  function checkYearWarning() {
-    if (!yearSelect || !warningEl) return;
-    const val = yearSelect.value.toLowerCase();
-    const isLate = val.includes('4th') || val.includes('5th');
-    warningEl.style.display = isLate ? 'block' : 'none';
+  function toggleBorrowerForms() {
+    const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
+    const studentForm  = document.getElementById('student-form');
+    const employeeForm = document.getElementById('employee-form');
+    if (!selectedRole) return;
+    const isStudent = selectedRole.value === 'student';
+    studentForm.style.display  = isStudent ? 'block' : 'none';
+    employeeForm.style.display = isStudent ? 'none'  : 'block';
+    ['student_last_name','student_first_name','student_middle_initial','year_level','section','student_id','college','academic_year'].forEach(f => {
+      const el = document.querySelector(`[name="${f}"]`);
+      if (el) el.disabled = !isStudent;
+    });
+    ['employee_last_name','employee_first_name','employee_middle_initial','employee_id','office'].forEach(f => {
+      const el = document.querySelector(`[name="${f}"]`);
+      if (el) el.disabled = isStudent;
+    });
   }
 
-  if (yearSelect) yearSelect.addEventListener('change', checkYearWarning);
-  checkYearWarning();
+  document.addEventListener('DOMContentLoaded', function () {
+    const yearSelect = document.getElementById('year-level-select');
+    const warningEl  = document.getElementById('fourth-year-warning');
+    function checkYearWarning() {
+      if (!yearSelect || !warningEl) return;
+      const val = yearSelect.value.toLowerCase();
+      warningEl.style.display = (val.includes('4th') || val.includes('5th')) ? 'block' : 'none';
+    }
+    if (yearSelect) yearSelect.addEventListener('change', checkYearWarning);
+    checkYearWarning();
+    const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
+    if (selectedRole) toggleBorrowerForms();
+  });
 
-  // Init borrower role state on page load (e.g. after validation error)
-  const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-  if (selectedRole) toggleBorrowerForms();
-});
-
-function closeSuccessModal() {
-  const modal = document.getElementById('successModal');
-  if (modal) modal.style.display = 'none';
-}
-
-document.addEventListener('click', function (e) {
-  const modal = document.getElementById('successModal');
-  if (modal && e.target === modal) closeSuccessModal();
-});
+  function closeSuccessModal() {
+    const modal = document.getElementById('successModal');
+    if (modal) modal.style.display = 'none';
+  }
+  document.addEventListener('click', function (e) {
+    const modal = document.getElementById('successModal');
+    if (modal && e.target === modal) closeSuccessModal();
+  });
 </script>
 <script src="{% static 'inventory/js/script.js' %}"></script>
 </body>
