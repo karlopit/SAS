@@ -683,6 +683,7 @@ def return_devices(request, transaction_id):
     tx = get_object_or_404(Transaction, id=transaction_id)
 
     try:
+        # --- original logic begins ---
         body = json.loads(request.body)
         device_ids = body.get('device_ids', [])
         serials = body.get('serials', [])
@@ -692,70 +693,79 @@ def return_devices(request, transaction_id):
     now_ph = get_ph_time()
     returned_serials = []
 
-    if device_ids:
-        real_ids = [d for d in device_ids if d is not None]
-        if real_ids:
-            updated_devices = TransactionDevice.objects.filter(
-                id__in=real_ids,
-                transaction=tx,
-                returned=False,
-            )
-            returned_serials = list(updated_devices.values_list('serial_number', flat=True))
-            updated_devices.update(returned=True, returned_at=now_ph)
-    elif serials:
-        for sn in serials:
-            td = tx.devices.filter(serial_number=sn, returned=False).first()
-            if td:
-                td.returned = True
-                td.returned_at = now_ph
-                td.save()
-                returned_serials.append(sn)
+    try:
+        if device_ids:
+            real_ids = [d for d in device_ids if d is not None]
+            if real_ids:
+                updated_devices = TransactionDevice.objects.filter(
+                    id__in=real_ids,
+                    transaction=tx,
+                    returned=False,
+                )
+                returned_serials = list(updated_devices.values_list('serial_number', flat=True))
+                updated_devices.update(returned=True, returned_at=now_ph)
+        elif serials:
+            for sn in serials:
+                td = tx.devices.filter(serial_number=sn, returned=False).first()
+                if td:
+                    td.returned = True
+                    td.returned_at = now_ph
+                    td.save()
+                    returned_serials.append(sn)
 
-    if returned_serials:
-        if tx.borrow_request:
-            borrower_name = tx.borrow_request.borrower_name
-            office = tx.borrow_request.office_college
-        else:
-            borrower_name = tx.borrower.get_full_name() or tx.borrower.username
-            office = tx.office_college
+        if returned_serials:
+            if tx.borrow_request:
+                borrower_name = tx.borrow_request.borrower_name
+                office = tx.borrow_request.office_college
+            else:
+                borrower_name = tx.borrower.get_full_name() or tx.borrower.username
+                office = tx.office_college
 
-        for serial in returned_serials:
-            DeviceMonitor.objects.filter(
-                serial_number=serial,
-                accountable_person=borrower_name,
-                office_college=office,
-                date_returned__isnull=True
-            ).update(date_returned=now_ph)
+            for serial in returned_serials:
+                DeviceMonitor.objects.filter(
+                    serial_number=serial,
+                    accountable_person=borrower_name,
+                    office_college=office,
+                    date_returned__isnull=True
+                ).update(date_returned=now_ph)
 
-    returned_count = tx.devices.filter(returned=True).count()
+        returned_count = tx.devices.filter(returned=True).count()
+        if not tx.devices.exists():
+            returned_count = tx.returned_qty + len(serials)
 
-    if not tx.devices.exists():
-        returned_count = tx.returned_qty + len(serials)
+        returned_count = min(returned_count, tx.quantity_borrowed)
 
-    returned_count = min(returned_count, tx.quantity_borrowed)
+        delta = returned_count - tx.returned_qty
+        if delta > 0:
+            tx.item.available_quantity = tx.item.available_quantity + delta
+            tx.item.save()
 
-    delta = returned_count - tx.returned_qty
-    if delta > 0:
-        tx.item.available_quantity = tx.item.available_quantity + delta
-        tx.item.save()
+        tx.returned_qty = returned_count
+        tx.returned_at = now_ph if returned_count > 0 else tx.returned_at
+        tx.status = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
+        tx.save()
 
-    tx.returned_qty = returned_count
-    tx.returned_at = now_ph if returned_count > 0 else tx.returned_at
-    tx.status = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
-    tx.save()
+        b = _broadcasts()
+        b.broadcast_borrow_management()
+        b.broadcast_dashboard()
+        b.broadcast_device_monitoring()
 
-    b = _broadcasts()
-    b.broadcast_borrow_management()
-    b.broadcast_dashboard()
-    b.broadcast_device_monitoring()
+        return JsonResponse({
+            'ok': True,
+            'returned_qty': tx.returned_qty,
+            'status': tx.status,
+            'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
+            'returned_at': format_ph_time(tx.returned_at),
+        })
 
-    return JsonResponse({
-        'ok': True,
-        'returned_qty': tx.returned_qty,
-        'status': tx.status,
-        'fully_returned': tx.returned_qty >= tx.quantity_borrowed,
-        'returned_at': format_ph_time(tx.returned_at),
-    })
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print("ERROR in return_devices:", error_details)   # will appear in Render logs
+        return JsonResponse({
+            'error': str(e),
+            'trace': error_details   # optional, can be removed after debugging
+        }, status=500)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
