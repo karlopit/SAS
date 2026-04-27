@@ -102,9 +102,6 @@ if DATABASE_URL:
             ssl_require=True,
         )
     }
-    # Neon-specific: use pgbouncer-style connection pooling via the URL
-    # If using Neon's built-in pooler, your DATABASE_URL already points to
-    # the pooler endpoint (port 6432) — no extra config needed here.
 else:
     DATABASES = {
         'default': {
@@ -118,7 +115,6 @@ else:
     }
 
 # ── Cache — used by context_processors to avoid per-request DB hits ───────────
-# Uses Redis if available, falls back to local-memory cache
 if REDIS_URL:
     CACHES = {
         'default': {
@@ -168,4 +164,3 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF    = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-CSRF_TRUSTED_ORIGINS = ['http://localhost', 'http://127.0.0.1', 'https://your-app.onrender.com']
