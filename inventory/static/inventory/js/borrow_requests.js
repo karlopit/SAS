@@ -148,6 +148,7 @@
     if (data.type !== 'borrow_requests.update') return;
     renderRequests(data.pending);
     window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.count }));
+    window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
   }
 
   /* ── DOMContentLoaded ─────────────────────────────────────────────────── */

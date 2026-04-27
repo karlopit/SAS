@@ -140,6 +140,7 @@
     flashStat(document.getElementById('stat-pending'),  data.pending_count);
 
     window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+    window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
 
     drawPie(data.available_qty, data.borrowed_qty);
     if (data.bar) drawBar(data.bar);

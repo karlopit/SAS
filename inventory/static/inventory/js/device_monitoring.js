@@ -114,13 +114,13 @@
     let visible = 0;
 
     rows.forEach(row => {
-      const rowText     = row.textContent.toLowerCase();
-      const matchSearch = !search      || rowText.includes(search);
-      const matchCollege  = !college      || (row.dataset.college || '').toLowerCase()      === college.toLowerCase();
-      const matchPerson   = !person       || (row.dataset.person  || '').toLowerCase()      === person.toLowerCase();
-      const matchBT       = !borrowerType || (row.dataset.borrowerType || '').toLowerCase() === borrowerType.toLowerCase();
-      const matchOfficer  = !officer      || (row.dataset.officer || '').toLowerCase()      === officer.toLowerCase();
-      const matchRelease  = !releaseF     || (row.dataset.release || '')                    === releaseF;
+      const rowText       = row.textContent.toLowerCase();
+      const matchSearch   = !search      || rowText.includes(search);
+      const matchCollege  = !college      || (row.dataset.college     || '').toLowerCase() === college.toLowerCase();
+      const matchPerson   = !person       || (row.dataset.person      || '').toLowerCase() === person.toLowerCase();
+      const matchBT       = !borrowerType || (row.dataset.borrowerType|| '').toLowerCase() === borrowerType.toLowerCase();
+      const matchOfficer  = !officer      || (row.dataset.officer     || '').toLowerCase() === officer.toLowerCase();
+      const matchRelease  = !releaseF     || (row.dataset.release     || '')               === releaseF;
       let   matchStatus   = true;
       if (status) {
         const attrKey = 'data-' + status.replace(/_/g, '-');
@@ -228,7 +228,7 @@
     });
 
     data.rows.forEach(row => {
-      const strId   = String(row.id);
+      const strId    = String(row.id);
       const existing = tbody.querySelector(`tr[data-row-id="${strId}"]`);
 
       if (existing) {
@@ -256,11 +256,11 @@
         existing.dataset.device       = (row.device || '').toLowerCase();
         existing.dataset.serial       = (row.serial_number || '').toLowerCase();
         existing.dataset.release      = row.release_status || '—';
-        existing.dataset.serviceable    = row.serviceable    ? '1' : '0';
+        existing.dataset.serviceable    = row.serviceable     ? '1' : '0';
         existing.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
-        existing.dataset.sealed         = row.sealed         ? '1' : '0';
-        existing.dataset.missing        = row.missing        ? '1' : '0';
-        existing.dataset.incomplete     = row.incomplete     ? '1' : '0';
+        existing.dataset.sealed         = row.sealed          ? '1' : '0';
+        existing.dataset.missing        = row.missing         ? '1' : '0';
+        existing.dataset.incomplete     = row.incomplete      ? '1' : '0';
 
         const releaseTd = existing.querySelector('.release-status-badge');
         if (releaseTd) releaseTd.outerHTML = releaseBadgeHtml(row.release_status);
@@ -275,7 +275,7 @@
             if (cb.checked !== val) { cb.checked = val; hidden.value = val ? 'on' : 'off'; }
           }
         };
-        updateCb('serviceable',    row.serviceable);
+        updateCb('serviceable',     row.serviceable);
         updateCb('non_serviceable', row.non_serviceable);
         updateCb('sealed',          row.sealed);
         updateCb('missing',         row.missing);
@@ -286,6 +286,14 @@
 
     populateFilterDropdowns();
     applyDmFilters();
+
+    // ── Live sidebar badge updates ─────────────────────────────────────────
+    if (data.pending_count !== undefined) {
+      window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+    }
+    if (data.graduation_warning_count !== undefined) {
+      window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
+    }
   }
 
   /* ── DOMContentLoaded init ────────────────────────────────────────────── */
@@ -307,22 +315,22 @@
     document.addEventListener('input', e => {
       const row = e.target.closest('tr[data-row-id]');
       if (!row) return;
-      if (e.target.matches('.dm-box-input'))              { row.dataset.box          = e.target.value.toLowerCase(); applyDmFilters(); }
-      if (e.target.matches('.dm-college-input'))          { row.dataset.college       = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
-      if (e.target.matches('.dm-person-input'))           { row.dataset.person        = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
-      if (e.target.matches('.dm-borrower-type-select'))   { row.dataset.borrowerType  = e.target.value.toLowerCase(); applyDmFilters(); }
-      if (e.target.matches('.dm-officer-input'))          { row.dataset.officer       = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
-      if (e.target.matches('.dm-device-input'))           { row.dataset.device        = e.target.value.toLowerCase(); applyDmFilters(); }
-      if (e.target.matches('.dm-serial-input'))           { row.dataset.serial        = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-box-input'))            { row.dataset.box         = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-college-input'))        { row.dataset.college      = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-person-input'))         { row.dataset.person       = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-borrower-type-select')) { row.dataset.borrowerType = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-officer-input'))        { row.dataset.officer      = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-device-input'))         { row.dataset.device       = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-serial-input'))         { row.dataset.serial       = e.target.value.toLowerCase(); applyDmFilters(); }
     });
 
-    document.getElementById('dm-search').addEventListener('input',           applyDmFilters);
-    document.getElementById('dm-filter-college').addEventListener('change',   applyDmFilters);
-    document.getElementById('dm-filter-person').addEventListener('change',    applyDmFilters);
+    document.getElementById('dm-search').addEventListener('input',               applyDmFilters);
+    document.getElementById('dm-filter-college').addEventListener('change',       applyDmFilters);
+    document.getElementById('dm-filter-person').addEventListener('change',        applyDmFilters);
     document.getElementById('dm-filter-borrower-type').addEventListener('change', applyDmFilters);
-    document.getElementById('dm-filter-officer').addEventListener('change',   applyDmFilters);
-    document.getElementById('dm-filter-release').addEventListener('change',   applyDmFilters);
-    document.getElementById('dm-filter-status').addEventListener('change',    applyDmFilters);
+    document.getElementById('dm-filter-officer').addEventListener('change',       applyDmFilters);
+    document.getElementById('dm-filter-release').addEventListener('change',       applyDmFilters);
+    document.getElementById('dm-filter-status').addEventListener('change',        applyDmFilters);
 
     const indicator = document.getElementById('rt-indicator');
     if (typeof InvSysRT !== 'undefined') {

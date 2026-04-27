@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from .forms import RegisterForm, LoginForm, EditUserForm, ResetPasswordForm, AddUserForm
 from django.contrib.auth import get_user_model
+from inventory.models import BorrowRequest   # <-- added import
 
 User = get_user_model()
 
@@ -44,7 +45,11 @@ def logout_view(request):
 @never_cache
 @login_required
 def profile_view(request):
-    return render(request, 'users/profile.html', {'user': request.user})
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
+    return render(request, 'users/profile.html', {
+        'user': request.user,
+        'pending_count': pending_count,
+    })
 
 
 @never_cache
@@ -63,16 +68,16 @@ def user_list_view(request):
             messages.success(request, f"User '{add_form.cleaned_data['username']}' created successfully.")
             return redirect('user_list')
         else:
-            # Re-render page with modal errors
             add_errors = add_form.errors
 
     users = User.objects.all().order_by('username')
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
     return render(request, 'users/user_list.html', {
         'users':      users,
         'add_form':   add_form,
         'add_errors': add_errors,
-        # Re-open modal if there were errors
         'show_add_modal': bool(add_errors),
+        'pending_count': pending_count,
     })
 
 
