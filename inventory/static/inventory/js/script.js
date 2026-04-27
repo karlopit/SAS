@@ -99,3 +99,31 @@ document.addEventListener('DOMContentLoaded', () => {
   qtyInput.addEventListener('input', checkQty);
   checkQty();
 });
+
+/* ── Badge Live Updates (from WebSocket / AJAX) ── */
+(function() {
+  // Pending requests badge
+  const pendingBadge = document.getElementById('nav-pending-badge');
+  if (pendingBadge) {
+    window.addEventListener('invsys:pending_count', (e) => {
+      const count = e.detail;
+      pendingBadge.textContent = count > 0 ? count : '';
+      pendingBadge.style.display = count > 0 ? '' : 'none';
+    });
+  }
+
+  // Graduation warning badge (always visible in DOM, JS controls visibility)
+  const gradBadge = document.getElementById('nav-grad-badge');
+  if (gradBadge) {
+    window.addEventListener('invsys:grad_warning_count', (e) => {
+      const count = e.detail;
+      gradBadge.textContent = count >= 0 ? count : '0';
+      gradBadge.style.display = count > 0 ? '' : 'none';
+      if (count > 0) {
+        gradBadge.classList.add('grad-badge-pulse');
+      } else {
+        gradBadge.classList.remove('grad-badge-pulse');
+      }
+    });
+  }
+})();

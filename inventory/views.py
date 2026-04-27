@@ -16,6 +16,7 @@ from .models import Item, Transaction, BorrowRequest, DeviceMonitor, Transaction
 from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRequestForm
 from .decorators import no_cache
 from django.contrib import messages
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 # Get Philippine timezone
 PH_TZ = pytz.timezone('Asia/Manila')
@@ -257,7 +258,7 @@ def borrow_requests(request):
         'pending_count': pending_count,
     })
 
-
+@ensure_csrf_cookie
 def borrow_item_public(request):
     if request.method == 'POST':
         form = BorrowRequestForm(request.POST)

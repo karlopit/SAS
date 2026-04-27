@@ -159,93 +159,12 @@
   </form>
 </div>
 
-<script>
-// Update quantity hint when item changes
-const itemSelect = document.getElementById('{{ form.item.id_for_label }}');
-const quantityInput = document.getElementById('{{ form.quantity_borrowed.id_for_label }}');
-const hintSpan = document.getElementById('qty-hint');
+{% endblock %}
 
-function updateQuantityHint() {
-  const selectedOption = itemSelect.options[itemSelect.selectedIndex];
-  const maxQty = selectedOption.getAttribute('data-available');
-  
-  if (maxQty && maxQty !== 'None') {
-    quantityInput.max = maxQty;
-    hintSpan.textContent = `Maximum available: ${maxQty}`;
-    if (parseInt(quantityInput.value) > parseInt(maxQty)) {
-      quantityInput.value = maxQty;
-    }
-  } else {
-    hintSpan.textContent = 'Select an item to see availability.';
-  }
-}
-
-if (itemSelect) {
-  itemSelect.addEventListener('change', updateQuantityHint);
-  updateQuantityHint();
-}
-
-// Count serial numbers and box numbers in real-time
-const serialNumbersTextarea = document.getElementById('{{ form.serial_numbers.id_for_label }}');
-const boxNumbersTextarea = document.getElementById('{{ form.box_numbers.id_for_label }}');
-const serialCountHint = document.getElementById('serial-count-hint');
-const boxCountHint = document.getElementById('box-count-hint');
-
-function getLineCount(textarea) {
-  if (!textarea) return 0;
-  const text = textarea.value;
-  return text.split('\n').filter(line => line.trim().length > 0).length;
-}
-
-function updateSerialCount() {
-  if (!serialNumbersTextarea) return;
-  const count = getLineCount(serialNumbersTextarea);
-  const requiredQty = parseInt(quantityInput.value) || 0;
-  
-  if (count === 0) {
-    serialCountHint.innerHTML = '';
-  } else if (count === requiredQty) {
-    serialCountHint.innerHTML = `✓ ${count} of ${requiredQty} serial numbers entered. Ready to submit!`;
-    serialCountHint.style.color = '#00e5a0';
-  } else {
-    serialCountHint.innerHTML = `⚠️ ${count} of ${requiredQty} serial numbers entered. Need ${requiredQty - count} more.`;
-    serialCountHint.style.color = '#ffc107';
-  }
-}
-
-function updateBoxCount() {
-  if (!boxNumbersTextarea) return;
-  const count = getLineCount(boxNumbersTextarea);
-  const requiredQty = parseInt(quantityInput.value) || 0;
-  
-  if (count === 0) {
-    boxCountHint.innerHTML = '';
-  } else if (count === requiredQty) {
-    boxCountHint.innerHTML = `✓ ${count} of ${requiredQty} box numbers entered. Ready to submit!`;
-    boxCountHint.style.color = '#00e5a0';
-  } else {
-    boxCountHint.innerHTML = `⚠️ ${count} of ${requiredQty} box numbers entered. Need ${requiredQty - count} more.`;
-    boxCountHint.style.color = '#ffc107';
-  }
-}
-
-if (serialNumbersTextarea) {
-  serialNumbersTextarea.addEventListener('input', updateSerialCount);
-}
-if (boxNumbersTextarea) {
-  boxNumbersTextarea.addEventListener('input', updateBoxCount);
-}
-if (quantityInput) {
-  quantityInput.addEventListener('change', () => {
-    updateSerialCount();
-    updateBoxCount();
-  });
-}
-
-// Initial calls
-updateSerialCount();
-updateBoxCount();
-</script>
+{% block extra_js %}
+{% load static %}
+<script src="{% static 'inventory/js/staff_confirm_borrow.js' %}"></script>
+{% endblock %}
 
 <style>
 .badge-green {
@@ -276,4 +195,3 @@ updateBoxCount();
   margin-top: 8px;
 }
 </style>
-{% endblock %}

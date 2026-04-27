@@ -268,7 +268,10 @@
 
 {% endblock %}
 
+{# ── REPLACE the entire {% block extra_js %} section in borrow_management.html with this ── #}
+
 {% block extra_js %}
+{% load static %}
 <style>
 /* ── Filter selects ── */
 .filter-select {
@@ -298,872 +301,95 @@
   padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
   display: inline-block; white-space: nowrap; min-width: 80px;
 }
-.badge-released {
-  background: rgba(255,193,7,0.15); color: #ffc107;
-  padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-  display: inline-block; white-space: nowrap; min-width: 80px;
-}
 .badge-green  { background: rgba(0,229,160,0.15); color: #00e5a0; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; display:inline-block; white-space:nowrap; }
 .badge-blue   { background: rgba(0,100,255,0.15); color: #448aff; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; display:inline-block; white-space:nowrap; }
 .badge-red    { background: rgba(255,68,68,0.15);  color: #ff4444; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:500; display:inline-block; white-space:nowrap; }
 
 #transactions-table td, #transactions-table th { vertical-align: middle; padding: 12px 8px; }
 
-/* Table container for scrolling */
-.transactions-table-container {
-  overflow-x: auto;
-  max-height: 70vh;
-  position: relative;
-}
-
-/* Make table headers sticky */
+.transactions-table-container { overflow-x: auto; max-height: 70vh; position: relative; }
 #transactions-table thead th {
-  position: sticky;
-  top: 0;
-  background-color: var(--surface);
-  z-index: 10;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: sticky; top: 0; background-color: var(--surface);
+  z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-
-/* Ensure thead has proper background */
-#transactions-table thead {
-  background-color: var(--surface);
-}
+#transactions-table thead { background-color: var(--surface); }
 
 /* ── Return button ── */
 .btn-return-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid rgba(255,179,71,0.35);
-  background: rgba(255,179,71,0.1);
-  color: #ffb347;
-  transition: all 0.2s ease;
-  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; border-radius: 8px; font-family: var(--font-mono);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid rgba(255,179,71,0.35); background: rgba(255,179,71,0.1);
+  color: #ffb347; transition: all 0.2s ease; white-space: nowrap;
 }
-.btn-return-action:hover {
-  background: rgba(255,179,71,0.22);
-  border-color: #ffb347;
-}
+.btn-return-action:hover { background: rgba(255,179,71,0.22); border-color: #ffb347; }
 
-/* ══════════════════════════════════════════════════════════════════
-   RETURN MODAL STYLES
-══════════════════════════════════════════════════════════════════ */
+/* ══ RETURN MODAL ══════════════════════════════════════════════════════ */
 .return-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  backdrop-filter: blur(2px);
-  animation: modalFadeIn 0.2s ease;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2000; backdrop-filter: blur(2px); animation: modalFadeIn 0.2s ease;
 }
-
-@keyframes modalFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
+@keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .return-modal-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  width: 90%;
-  max-width: 560px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
-  animation: modalSlideIn 0.25s ease;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  width: 90%; max-width: 560px; max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5); animation: modalSlideIn 0.25s ease;
 }
-
-@keyframes modalSlideIn {
-  from { transform: translateY(-20px); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
-}
+@keyframes modalSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 .return-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
-
-.return-modal-title {
-  font-family: var(--font-head);
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0 0 4px;
-  color: var(--text);
-}
-
-.return-modal-subtitle {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 0;
-}
-
-.return-modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--muted);
-  line-height: 1;
-  padding: 0;
-  transition: color 0.2s;
-}
+.return-modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 800; margin: 0 0 4px; color: var(--text); }
+.return-modal-subtitle { font-size: 12px; color: var(--muted); margin: 0; }
+.return-modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted); line-height: 1; padding: 0; transition: color 0.2s; }
 .return-modal-close:hover { color: var(--text); }
+.return-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.return-modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-top: 1px solid var(--border); flex-shrink: 0; }
 
-.return-modal-body {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.return-modal-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-/* Select-all row */
 .return-select-all-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: var(--surface2);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: var(--surface2); border-radius: 8px;
+  border: 1px solid var(--border); margin-bottom: 10px;
 }
-
-/* Count badge */
 .return-count-badge {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  background: rgba(0,229,160,0.12);
-  color: var(--accent);
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1px solid rgba(0,229,160,0.25);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  background: rgba(0,229,160,0.12); color: var(--accent);
+  padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(0,229,160,0.25);
 }
-
-/* Table header */
 .return-device-table-head {
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--muted);
-  font-weight: 600;
-  gap: 10px;
+  display: flex; align-items: center; padding: 6px 12px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--muted); font-weight: 600; gap: 10px;
 }
-
-/* Device row */
 .return-device-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 6px;
-  transition: background 0.15s, border-color 0.15s;
-  cursor: pointer;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 8px; border: 1px solid var(--border); margin-bottom: 6px;
+  transition: background 0.15s, border-color 0.15s; cursor: pointer;
 }
 .return-device-row:hover { background: var(--surface2); }
-.return-device-row.selected {
-  background: rgba(0,229,160,0.06);
-  border-color: rgba(0,229,160,0.3);
-}
-.return-device-row.already-returned {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--surface2);
-}
+.return-device-row.selected { background: rgba(0,229,160,0.06); border-color: rgba(0,229,160,0.3); }
+.return-device-row.already-returned { opacity: 0.5; cursor: not-allowed; background: var(--surface2); }
+.return-device-label { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; font-size: 13px; }
+.return-device-label input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+.return-device-serial { flex: 1; font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text); }
+.return-device-box { flex: 1; font-size: 12px; color: var(--muted); }
+.return-device-status { flex: 0 0 90px; text-align: center; }
 
-.return-device-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  flex: 1;
-  font-size: 13px;
-}
-.return-device-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  cursor: pointer;
-  accent-color: var(--accent);
-}
-
-.return-device-serial {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.return-device-box {
-  flex: 1;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.return-device-status {
-  flex: 0 0 90px;
-  text-align: center;
-}
-
-/* Spinner */
-.return-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto;
-}
+.return-spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Toast notification */
 .custom-toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-weight: 500;
-  z-index: 2000;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all 0.3s ease;
-  font-family: monospace;
-  font-size: 13px;
-  pointer-events: none;
+  position: fixed; bottom: 20px; right: 20px; padding: 12px 20px;
+  border-radius: 8px; font-weight: 500; z-index: 2000; opacity: 0;
+  transform: translateY(20px); transition: all 0.3s ease;
+  font-family: monospace; font-size: 13px; pointer-events: none;
 }
-.custom-toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
+.custom-toast.show { opacity: 1; transform: translateY(0); }
 </style>
 
-<script>
-/* ══════════════════════════════════════════════════════════════════
-   HELPER FUNCTIONS
-══════════════════════════════════════════════════════════════════ */
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/[&<>]/g, function(m) {
-    if (m === '&') return '&amp;';
-    if (m === '<') return '&lt;';
-    if (m === '>') return '&gt;';
-    return m;
-  });
-}
-
-function showToast(message, type = 'success') {
-  let toast = document.querySelector('.custom-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.className = 'custom-toast';
-    document.body.appendChild(toast);
-  }
-  
-  toast.style.background = type === 'success' ? '#00e5a0' : '#ff4444';
-  toast.style.color = type === 'success' ? '#000' : '#fff';
-  toast.textContent = message;
-  toast.classList.add('show');
-  
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   RETURN MODAL
-══════════════════════════════════════════════════════════════════ */
-let _returnTxId    = null;
-let _returnDevices = [];
-
-function openReturnModal(btn) {
-  _returnTxId = btn.dataset.txId;
-  const borrower = btn.dataset.borrower;
-  const qty      = btn.dataset.qty;
-
-  document.getElementById('return-modal-subtitle').textContent =
-    `${borrower} · ${qty} device(s) borrowed`;
-
-  // Reset UI
-  document.getElementById('return-modal-loading').style.display  = 'block';
-  document.getElementById('return-device-list').style.display    = 'none';
-  document.getElementById('return-empty-state').style.display    = 'none';
-  document.getElementById('return-device-rows').innerHTML        = '';
-  document.getElementById('return-footer-note').textContent      = '';
-
-  // ── Always reset the confirm button to its default state ──────────────
-  const confirmBtn = document.getElementById('confirm-return-btn');
-  confirmBtn.disabled  = true;   // disabled until devices are loaded & checked
-  confirmBtn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
-    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-  </svg> Confirm Return`;
-
-  document.getElementById('returnModal').style.display = 'flex';
-
-  // Fetch device list
-  fetch(`/transaction/${_returnTxId}/devices/`, { credentials: 'same-origin' })
-    .then(r => r.json())
-    .then(data => {
-      _returnDevices = data.devices || [];
-      renderReturnDevices(_returnDevices);
-    })
-    .catch((err) => {
-      console.error('Error loading devices:', err);
-      document.getElementById('return-modal-loading').style.display = 'none';
-      document.getElementById('return-footer-note').textContent = 'Error loading devices.';
-      showToast('Error loading devices', 'error');
-    });
-}
-
-async function confirmReturn() {
-  const checkedBoxes = document.querySelectorAll(
-    '#return-device-rows input[type="checkbox"]:not(:disabled):checked'
-  );
-  if (checkedBoxes.length === 0) return;
-
-  const serials   = [];
-  const deviceIds = [];
-
-  checkedBoxes.forEach(cb => {
-    serials.push(cb.dataset.serial);
-    if (cb.dataset.deviceId && cb.dataset.deviceId !== 'null' && cb.dataset.deviceId !== 'undefined') {
-      deviceIds.push(parseInt(cb.dataset.deviceId));
-    }
-  });
-
-  const btn = document.getElementById('confirm-return-btn');
-  btn.disabled  = true;
-  btn.innerHTML = 'Processing…';
-
-  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
-
-  try {
-    const payload = { serials };
-    if (deviceIds.length > 0) payload.device_ids = deviceIds;
-
-    const resp = await fetch(`/transaction/${_returnTxId}/return-devices/`, {
-      method:      'POST',
-      headers:     { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-      body:        JSON.stringify(payload),
-      credentials: 'same-origin',
-    });
-
-    const data = await resp.json();
-    if (!data.ok) throw new Error(data.error || 'Server error');
-
-    // Update the table row in place
-    const txRow = document.getElementById('tx-row-' + _returnTxId);
-    if (txRow) {
-      const qtyDisplay = txRow.querySelector('.returned-qty-display');
-      if (qtyDisplay) qtyDisplay.textContent = data.returned_qty;
-
-      const statusCell = txRow.querySelector('.status-cell');
-      if (statusCell) {
-        if (data.fully_returned) {
-          statusCell.innerHTML = '<span class="badge badge-returned-full">✓ Returned</span>';
-        } else {
-          const borrowerName = txRow.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
-          const qtyBorrowed  = txRow.querySelector('td:nth-child(7)')?.textContent?.trim() || '';
-          statusCell.innerHTML = `
-            <button class="btn-return-action"
-                    data-tx-id="${_returnTxId}"
-                    data-borrower="${escapeHtml(borrowerName)}"
-                    data-qty="${qtyBorrowed}"
-                    onclick="openReturnModal(this)">
-              ↩ Return
-            </button>`;
-        }
-      }
-
-      const returnedOnCell = txRow.querySelector('.returned-on-cell');
-      if (returnedOnCell && data.returned_at && data.returned_at !== '—') {
-        returnedOnCell.textContent = data.returned_at;
-      }
-
-      txRow.dataset.status = data.fully_returned ? 'returned' : 'borrowed';
-    }
-
-    showToast(`${serials.length} device(s) returned successfully`, 'success');
-    // Close the modal on success
-    document.getElementById('returnModal').style.display = 'none';
-
-  } catch (err) {
-    console.error('Return error:', err);
-    showToast('Error: ' + err.message, 'error');
-    // On error: re-enable button so staff can retry without reopening modal
-    btn.disabled  = false;
-    btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-    </svg> Confirm Return`;
-  }
-}
-
-function closeReturnModal(e) {
-  if (e && e.target !== document.getElementById('returnModal')) return;
-  document.getElementById('returnModal').style.display = 'none';
-  _returnTxId    = null;
-  _returnDevices = [];
-}
-
-function renderReturnDevices(devices) {
-  document.getElementById('return-modal-loading').style.display = 'none';
-
-  const allReturned = devices.every(d => d.returned);
-  if (devices.length === 0 || allReturned) {
-    document.getElementById('return-empty-state').style.display = 'block';
-    return;
-  }
-
-  document.getElementById('return-device-list').style.display = 'block';
-
-  const container = document.getElementById('return-device-rows');
-  container.innerHTML = '';
-
-  const totalReturned = devices.filter(d => d.returned).length;
-
-  devices.forEach((d, idx) => {
-    const row = document.createElement('div');
-    row.className = 'return-device-row' + (d.returned ? ' already-returned' : '');
-    row.dataset.idx = idx;
-
-    if (!d.returned) {
-      row.addEventListener('click', (e) => {
-        if (e.target.tagName === 'INPUT') return;
-        const cb = row.querySelector('input[type="checkbox"]');
-        cb.checked = !cb.checked;
-        onDeviceCheckChange(row, cb.checked);
-      });
-    }
-
-    const statusHtml = d.returned
-      ? `<span style="font-size:11px;color:#00e5a0;font-weight:600">✓ Returned</span>`
-      : `<span style="font-size:11px;color:var(--muted)">Pending</span>`;
-
-    row.innerHTML = `
-      <label class="return-device-label" onclick="event.stopPropagation()">
-        <input type="checkbox"
-               data-device-id="${escapeHtml(d.id ?? '')}"
-               data-serial="${escapeHtml(d.serial_number)}"
-               ${d.returned ? 'checked disabled' : ''}
-               onchange="onDeviceCheckChange(this.closest('.return-device-row'), this.checked)"/>
-      </label>
-      <span class="return-device-serial">${escapeHtml(d.serial_number)}</span>
-      <span class="return-device-box">${escapeHtml(d.box_number || '—')}</span>
-      <span class="return-device-status">${statusHtml}</span>
-    `;
-    container.appendChild(row);
-  });
-
-  updateReturnProgress(totalReturned, devices.length);
-  updateReturnConfirmBtn();
-}
-
-function onDeviceCheckChange(row, checked) {
-  if (checked) {
-    row.classList.add('selected');
-  } else {
-    row.classList.remove('selected');
-    document.getElementById('select-all-devices').checked = false;
-  }
-  updateReturnConfirmBtn();
-}
-
-function toggleSelectAll(masterCb) {
-  document.querySelectorAll('#return-device-rows input[type="checkbox"]:not(:disabled)')
-    .forEach(cb => {
-      cb.checked = masterCb.checked;
-      const row  = cb.closest('.return-device-row');
-      if (masterCb.checked) row.classList.add('selected');
-      else                  row.classList.remove('selected');
-    });
-  updateReturnConfirmBtn();
-}
-
-function updateReturnConfirmBtn() {
-  const checkedCount = document.querySelectorAll(
-    '#return-device-rows input[type="checkbox"]:not(:disabled):checked'
-  ).length;
-
-  document.getElementById('confirm-return-btn').disabled = checkedCount === 0;
-  document.getElementById('return-selected-count').textContent =
-    `${checkedCount} selected`;
-}
-
-function updateReturnProgress(returned, total) {
-  const pct = total > 0 ? Math.round((returned / total) * 100) : 0;
-  document.getElementById('return-progress-bar').style.width = pct + '%';
-  document.getElementById('return-progress-label').textContent = `${returned} / ${total} returned`;
-}
-
-async function confirmReturn() {
-  const checkedBoxes = document.querySelectorAll(
-    '#return-device-rows input[type="checkbox"]:not(:disabled):checked'
-  );
-  if (checkedBoxes.length === 0) return;
-
-  const serials = [];
-  const deviceIds = [];
-  
-  checkedBoxes.forEach(cb => {
-    serials.push(cb.dataset.serial);
-    if (cb.dataset.deviceId && cb.dataset.deviceId !== 'null' && cb.dataset.deviceId !== 'undefined') {
-      deviceIds.push(parseInt(cb.dataset.deviceId));
-    }
-  });
-
-  const btn = document.getElementById('confirm-return-btn');
-  const originalHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = 'Processing…';
-
-  const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
-
-  try {
-    const payload = { serials: serials };
-    if (deviceIds.length > 0) {
-      payload.device_ids = deviceIds;
-    }
-    
-    const resp = await fetch(`/transaction/${_returnTxId}/return-devices/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': CSRF,
-      },
-      body: JSON.stringify(payload),
-      credentials: 'same-origin',
-    });
-
-    const data = await resp.json();
-    if (!data.ok) throw new Error(data.error || 'Server error');
-
-    // Update the table row in place
-    const txRow = document.getElementById('tx-row-' + _returnTxId);
-    if (txRow) {
-      const qtyDisplay = txRow.querySelector('.returned-qty-display');
-      if (qtyDisplay) qtyDisplay.textContent = data.returned_qty;
-
-      const statusCell = txRow.querySelector('.status-cell');
-      if (statusCell) {
-        if (data.fully_returned) {
-          statusCell.innerHTML = '<span class="badge badge-returned-full">✓ Returned</span>';
-        } else {
-          const borrower = txRow.querySelector('.btn-return-action')?.dataset.borrower || '';
-          statusCell.innerHTML = `
-            <button class="btn-return-action"
-                    data-tx-id="${_returnTxId}"
-                    data-borrower="${escapeHtml(borrower)}"
-                    data-qty="${data.returned_qty}"
-                    onclick="openReturnModal(this)">
-              ↩ Return
-            </button>`;
-        }
-      }
-
-      const returnedOnCell = txRow.querySelector('.returned-on-cell');
-      if (returnedOnCell && data.returned_at && data.returned_at !== '—') {
-        returnedOnCell.textContent = data.returned_at;
-      }
-
-      txRow.dataset.status = data.fully_returned ? 'returned' : 'borrowed';
-    }
-
-    showToast(`${serials.length} device(s) returned successfully`, 'success');
-    document.getElementById('returnModal').style.display = 'none';
-
-  } catch (err) {
-    console.error('Return error:', err);
-    showToast('Error: ' + err.message, 'error');
-  } finally {
-    // Always reset button — runs whether success or error
-    btn.disabled  = false;
-    btn.innerHTML = `<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-    </svg> Confirm Return`;
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   FILTERS
-══════════════════════════════════════════════════════════════════ */
-(function () {
-  let searchQuery = '', filterCollege = '', filterOfficer = '',
-      filterBorrowerName = '', filterBorrowerType = '', filterStatus = '';
-
-  function applyFilters() {
-    const rows  = document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]');
-    let visible = 0;
-    const total = rows.length;
-
-    rows.forEach(row => {
-      const text         = row.textContent.toLowerCase();
-      const college      = (row.dataset.college || '').toLowerCase();
-      const officer      = (row.dataset.officer || '').toLowerCase();
-      const borrowerName = (row.dataset.borrowerName || '').toLowerCase();
-      const borrowerType = (row.dataset.borrowerType || '').toLowerCase();
-      const status       = (row.dataset.status || '').toLowerCase();
-
-      const show = (
-        (!searchQuery      || text.includes(searchQuery)) &&
-        (!filterCollege    || college === filterCollege.toLowerCase()) &&
-        (!filterOfficer    || officer === filterOfficer.toLowerCase()) &&
-        (!filterBorrowerName || borrowerName === filterBorrowerName.toLowerCase()) &&
-        (!filterBorrowerType || borrowerType === filterBorrowerType.toLowerCase()) &&
-        (!filterStatus     || status === filterStatus.toLowerCase())
-      );
-      row.style.display = show ? '' : 'none';
-      if (show) visible++;
-    });
-
-    const hasFilter = searchQuery || filterCollege || filterOfficer ||
-                      filterBorrowerName || filterBorrowerType || filterStatus;
-    const bar = document.getElementById('filter-status-bar');
-    if (bar) bar.style.display = hasFilter ? '' : 'none';
-    const filterCount = document.getElementById('filter-count');
-    const filterTotal = document.getElementById('filter-total');
-    if (filterCount) filterCount.textContent = visible;
-    if (filterTotal) filterTotal.textContent = total;
-  }
-
-  function dedupeSelect(sel) {
-    if (!sel) return;
-    const seen = new Set([sel.options[0]?.value ?? '']);
-    for (let i = sel.options.length - 1; i > 0; i--) {
-      if (seen.has(sel.options[i].value)) sel.remove(i);
-      else seen.add(sel.options[i].value);
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    dedupeSelect(document.getElementById('filter-college'));
-    dedupeSelect(document.getElementById('filter-officer'));
-    dedupeSelect(document.getElementById('filter-borrower-name'));
-
-    const searchInput = document.getElementById('transaction-search');
-    if (searchInput) {
-      searchInput.addEventListener('input', e => {
-        searchQuery = e.target.value.toLowerCase().trim();
-        applyFilters();
-      });
-    }
-    
-    const collegeFilter = document.getElementById('filter-college');
-    if (collegeFilter) {
-      collegeFilter.addEventListener('change', e => {
-        filterCollege = e.target.value;
-        applyFilters();
-      });
-    }
-    
-    const officerFilter = document.getElementById('filter-officer');
-    if (officerFilter) {
-      officerFilter.addEventListener('change', e => {
-        filterOfficer = e.target.value;
-        applyFilters();
-      });
-    }
-    
-    const borrowerNameFilter = document.getElementById('filter-borrower-name');
-    if (borrowerNameFilter) {
-      borrowerNameFilter.addEventListener('change', e => {
-        filterBorrowerName = e.target.value;
-        applyFilters();
-      });
-    }
-    
-    const borrowerTypeFilter = document.getElementById('filter-borrower-type');
-    if (borrowerTypeFilter) {
-      borrowerTypeFilter.addEventListener('change', e => {
-        filterBorrowerType = e.target.value;
-        applyFilters();
-      });
-    }
-    
-    const statusFilter = document.getElementById('filter-status');
-    if (statusFilter) {
-      statusFilter.addEventListener('change', e => {
-        filterStatus = e.target.value;
-        applyFilters();
-      });
-    }
-  });
-
-  window.clearFilters = function () {
-    searchQuery = filterCollege = filterOfficer =
-    filterBorrowerName = filterBorrowerType = filterStatus = '';
-    
-    const searchInput = document.getElementById('transaction-search');
-    if (searchInput) searchInput.value = '';
-    
-    ['filter-college','filter-officer','filter-borrower-name',
-     'filter-borrower-type','filter-status'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.selectedIndex = 0;
-    });
-    applyFilters();
-  };
-
-/* ══════════════════════════════════════════════════════════════════
-   REAL-TIME (WebSocket)
-══════════════════════════════════════════════════════════════════ */
-  function renderItems(items) {
-    const tbody = document.getElementById('items-tbody');
-    if (!tbody) return;
-    tbody.innerHTML = items.map((item, i) => {
-      const pct   = item.quantity ? Math.round((item.available_quantity / item.quantity) * 100) : 0;
-      const cls   = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
-      const badge = item.available_quantity === 0
-        ? '<span class="badge badge-red">Out of Stock</span>'
-        : '<span class="badge badge-green">In Stock</span>';
-      return `<tr>
-        <td style="text-align:center;color:var(--muted)">${i + 1}</td>
-        <td style="text-align:center;font-weight:600">${escapeHtml(item.name)}</td>
-        <td style="text-align:center;color:var(--muted);font-size:12px">${escapeHtml(item.serial || '—').replace(/\n/g,'<br>')}</td>
-        <td style="text-align:center;color:var(--muted)">${escapeHtml((item.description || '—').substring(0,40))}</td>
-        <td style="text-align:center">
-          <div class="qty-bar">
-            <div class="qty-track"><div class="qty-fill ${cls}" style="width:${pct}%"></div></div>
-            <span>${item.available_quantity}/${item.quantity}</span>
-          </div>
-        </td>
-        <td style="text-align:center">${badge}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  const knownTxIds = new Set(
-    [...document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]')]
-      .map(r => r.id.replace('tx-row-', ''))
-  );
-
-  function borrowerTypeBadge(type) {
-    if (type === 'student')  return '<span class="badge badge-green">Student</span>';
-    if (type === 'employee') return '<span class="badge badge-purple">Employee</span>';
-    return '<span style="color:var(--muted)">—</span>';
-  }
-
-  function statusCellHtml(tx) {
-    if (tx.fully_returned) {
-      return '<span class="badge badge-returned-full">✓ Returned</span>';
-    }
-    return `<button class="btn-return-action"
-                    data-tx-id="${tx.id}"
-                    data-borrower="${escapeHtml(tx.borrower_name)}"
-                    data-qty="${tx.qty_borrowed}"
-                    onclick="openReturnModal(this)">
-              ↩ Return
-            </button>`;
-  }
-
-  function renderTransactions(txs) {
-    const tbody = document.getElementById('transactions-tbody');
-    if (!tbody) return;
-
-    txs.forEach(tx => {
-      const existing = document.getElementById('tx-row-' + tx.id);
-      const isNew    = !knownTxIds.has(String(tx.id));
-      knownTxIds.add(String(tx.id));
-
-      if (existing) {
-        if (_returnTxId === String(tx.id)) return;
-
-        existing.dataset.college      = tx.office_college;
-        existing.dataset.officer      = tx.accountable_officer;
-        existing.dataset.borrowerName = tx.borrower_name;
-        existing.dataset.borrowerType = tx.borrower_type || '';
-        existing.dataset.status       = tx.fully_returned ? 'returned' : 'borrowed';
-
-        const qtyDisplay = existing.querySelector('.returned-qty-display');
-        if (qtyDisplay) qtyDisplay.textContent = tx.returned_qty;
-
-        const onCell = existing.querySelector('.returned-on-cell');
-        if (onCell) onCell.textContent = tx.returned_at || '—';
-
-        const statusCell = existing.querySelector('.status-cell');
-        if (statusCell) statusCell.innerHTML = statusCellHtml(tx);
-
-      } else {
-        const tr = document.createElement('tr');
-        tr.id = 'tx-row-' + tx.id;
-        tr.dataset.college      = tx.office_college;
-        tr.dataset.officer      = tx.accountable_officer;
-        tr.dataset.borrowerName = tx.borrower_name;
-        tr.dataset.borrowerType = tx.borrower_type || '';
-        tr.dataset.status       = tx.fully_returned ? 'returned' : 'borrowed';
-
-        tr.innerHTML = `
-          <td style="text-align:center"><span class="badge badge-blue">${escapeHtml(tx.tx_id)}</span></td>
-          <td style="text-align:center;font-weight:600">${escapeHtml(tx.borrower_name)}</td>
-          <td style="text-align:center">${borrowerTypeBadge(tx.borrower_type)}</td>
-          <td style="text-align:center;font-weight:600;color:var(--accent2)">${escapeHtml(tx.accountable_officer)}</td>
-          <td style="text-align:center">${escapeHtml(tx.office_college)}</td>
-          <td style="text-align:center">${escapeHtml(tx.item_name)}</td>
-          <td style="text-align:center">${tx.qty_borrowed}</td>
-          <td style="text-align:center">
-            <span class="returned-qty-display">${tx.returned_qty}</span>
-            <span style="color:var(--muted);font-size:11px"> / ${tx.qty_borrowed}</span>
-          </td>
-          <td style="text-align:center;color:var(--muted)">${escapeHtml(tx.borrowed_at)}</td>
-          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">${escapeHtml(tx.returned_at || '—')}</td>
-          <td class="status-cell" style="text-align:center">${statusCellHtml(tx)}</td>
-        `;
-
-        const emptyRow = document.getElementById('tx-empty-row');
-        if (emptyRow) emptyRow.remove();
-        tbody.prepend(tr);
-
-        if (isNew) {
-          tr.classList.add('row-new');
-          setTimeout(() => tr.classList.remove('row-new'), 1600);
-        }
-      }
-    });
-
-    applyFilters();
-  }
-
-  function handleMessage(data) {
-    if (data.type !== 'borrow_management.update') return;
-    renderItems(data.items);
-    renderTransactions(data.transactions);
-    window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
-  }
-
-  const indicator = document.getElementById('rt-indicator');
-  if (typeof InvSysRT !== 'undefined') {
-    InvSysRT.connect('/ws/borrow-management/', handleMessage, indicator);
-  }
-})();
-</script>
+<script src="{% static 'inventory/js/borrow_management.js' %}"></script>
 {% endblock %}

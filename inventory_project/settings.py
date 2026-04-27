@@ -168,3 +168,4 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF    = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+CSRF_TRUSTED_ORIGINS = ['http://localhost', 'http://127.0.0.1', 'https://your-app.onrender.com']

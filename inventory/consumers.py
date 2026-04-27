@@ -36,8 +36,6 @@ def _build_dashboard_payload():
     borrowed_qty = max(0, out_agg['total'] or 0)
 
     # Bar chart — one bulk query per status flag, grouped by office
-    from django.db.models import Count, Case, When, BooleanField
-
     monitors = DeviceMonitor.objects.all()
     offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
@@ -50,6 +48,20 @@ def _build_dashboard_payload():
         'incomplete':  [monitors.filter(office_college=o, incomplete=True).count()      for o in offices],
     }
 
+    # ── Graduation warning count (same logic as context processor) ──
+    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+    active_trans = Transaction.objects.filter(
+        status='borrowed',
+        borrow_request__borrower_type='student',
+    ).select_related('borrow_request')
+    grad_count = 0
+    for tx in active_trans:
+        br = tx.borrow_request
+        if br:
+            yl = (br.year_level or br.year_section or '').strip().lower()
+            if any(k in yl for k in graduating_keywords):
+                grad_count += 1
+
     return {
         'type':           'dashboard.update',
         'items_count':    items_count,
@@ -59,6 +71,7 @@ def _build_dashboard_payload():
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
         'bar':            bar,
+        'graduation_warning_count': grad_count,   # <── new field
     }
 
 
@@ -142,7 +155,6 @@ def _build_device_monitoring_payload():
     """
     from inventory.models import DeviceMonitor, Transaction, TransactionDevice
 
-    # ── Build serial → TransactionDevice lookup in ONE query ──────────────────
     active_tds = TransactionDevice.objects.filter(
         returned=False
     ).select_related('transaction', 'transaction__borrow_request').values(
@@ -154,14 +166,12 @@ def _build_device_monitoring_payload():
         'transaction__office_college',
     )
 
-    # Map serial → active td data
     active_serial_map = {}
     for td in active_tds:
         sn = td['serial_number']
         if sn and sn not in active_serial_map:
             active_serial_map[sn] = td
 
-    # Also build legacy serial → Transaction map (comma-separated serials)
     serial_to_tx = {}
     for tx in Transaction.objects.select_related('borrow_request').order_by('-borrowed_at'):
         if not tx.serial_number:

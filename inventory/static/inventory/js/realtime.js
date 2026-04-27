@@ -33,6 +33,20 @@
     el.textContent = labels[state] ?? state;
   }
 
+  /* ── Custom event dispatcher for live badge updates ───────────────────── */
+  function _dispatchEvents(data) {
+    if (data && data.pending_count !== undefined) {
+      window.dispatchEvent(new CustomEvent('invsys:pending_count', {
+        detail: data.pending_count
+      }));
+    }
+    if (data && data.graduation_warning_count !== undefined) {
+      window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', {
+        detail: data.graduation_warning_count
+      }));
+    }
+  }
+
   /* ── WebSocket transport ──────────────────────────────────────────────── */
 
   function _wsUrl(path) {
@@ -73,7 +87,10 @@
       if (!ajaxUrl) return;
       fetch(ajaxUrl, { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(data => onMessage(data))
+        .then(data => {
+          onMessage(data);
+          _dispatchEvents(data);
+        })
         .catch(err => console.warn('[InvSysRT] AJAX poll error:', err));
     }
 
@@ -95,7 +112,9 @@
 
       ws.onmessage = (event) => {
         try {
-          onMessage(JSON.parse(event.data));
+          const data = JSON.parse(event.data);
+          onMessage(data);
+          _dispatchEvents(data);
         } catch (e) {
           console.warn('[InvSysRT] Parse error:', e);
         }

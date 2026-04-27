@@ -503,48 +503,8 @@
   </div>
 </div>
 
-<script>
-  function toggleBorrowerForms() {
-    const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-    const studentForm  = document.getElementById('student-form');
-    const employeeForm = document.getElementById('employee-form');
-    if (!selectedRole) return;
-    const isStudent = selectedRole.value === 'student';
-    studentForm.style.display  = isStudent ? 'block' : 'none';
-    employeeForm.style.display = isStudent ? 'none'  : 'block';
-    ['student_last_name','student_first_name','student_middle_initial','year_level','section','student_id','college','academic_year'].forEach(f => {
-      const el = document.querySelector(`[name="${f}"]`);
-      if (el) el.disabled = !isStudent;
-    });
-    ['employee_last_name','employee_first_name','employee_middle_initial','employee_id','office'].forEach(f => {
-      const el = document.querySelector(`[name="${f}"]`);
-      if (el) el.disabled = isStudent;
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    const yearSelect = document.getElementById('year-level-select');
-    const warningEl  = document.getElementById('fourth-year-warning');
-    function checkYearWarning() {
-      if (!yearSelect || !warningEl) return;
-      const val = yearSelect.value.toLowerCase();
-      warningEl.style.display = (val.includes('4th') || val.includes('5th')) ? 'block' : 'none';
-    }
-    if (yearSelect) yearSelect.addEventListener('change', checkYearWarning);
-    checkYearWarning();
-    const selectedRole = document.querySelector('input[name="borrower_role"]:checked');
-    if (selectedRole) toggleBorrowerForms();
-  });
-
-  function closeSuccessModal() {
-    const modal = document.getElementById('successModal');
-    if (modal) modal.style.display = 'none';
-  }
-  document.addEventListener('click', function (e) {
-    const modal = document.getElementById('successModal');
-    if (modal && e.target === modal) closeSuccessModal();
-  });
-</script>
 <script src="{% static 'inventory/js/script.js' %}"></script>
+<script src="{% static 'inventory/js/welcome.js' %}"></script>
+
 </body>
 </html>

@@ -104,17 +104,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-/* Search filter */
-document.addEventListener('DOMContentLoaded', function () {
-  const input = document.getElementById('warn-search');
-  if (!input) return;
-  input.addEventListener('input', function () {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('#warn-tbody tr').forEach(row => {
-      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  });
-});
-</script>
+{% load static %}
+<script src="{% static 'inventory/js/graduation_warnings.js' %}"></script>
 {% endblock %}
