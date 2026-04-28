@@ -1,16 +1,17 @@
 /**
  * device_monitoring.js
  * Handles:
- *  - Checkbox mutual-exclusion logic (serviceable/non-serviceable etc.)
+ *  - Checkbox mutual‑exclusion logic
  *  - Filter dropdowns and search
- *  - Add-row / remove-row
- *  - Real-time WebSocket updates
+ *  - Add/delete rows (PTR + Assigned M.R. included)
+ *  - Excel import modal and file upload
+ *  - Real‑time WebSocket updates
  */
 
 (function () {
   'use strict';
 
-  /* ── Checkbox helpers ─────────────────────────────────────────────────── */
+  /* ==================== CHECKBOX HELPERS ==================== */
   window.syncCheck = function (cb) {
     cb.previousElementSibling.value = cb.checked ? 'on' : 'off';
   };
@@ -71,11 +72,13 @@
     applyDmFilters();
   };
 
-  /* ── Filter dropdown population ───────────────────────────────────────── */
+  /* ==================== FILTER DROPDOWNS ==================== */
   function populateFilterDropdowns() {
     const collegeSelect = document.getElementById('dm-filter-college');
     const personSelect  = document.getElementById('dm-filter-person');
     const officerSelect = document.getElementById('dm-filter-officer');
+
+    if (!collegeSelect || !personSelect || !officerSelect) return;
 
     while (collegeSelect.options.length > 1) collegeSelect.remove(1);
     while (personSelect.options.length  > 1) personSelect.remove(1);
@@ -100,7 +103,6 @@
     addOpts(officerSelect, officers);
   }
 
-  /* ── Filter application ───────────────────────────────────────────────── */
   function applyDmFilters() {
     const search       = document.getElementById('dm-search').value.toLowerCase().trim();
     const college      = document.getElementById('dm-filter-college').value;
@@ -154,7 +156,7 @@
     applyDmFilters();
   };
 
-  /* ── Add new row ──────────────────────────────────────────────────────── */
+  /* ==================== ADD ROW (includes PTR + Assigned M.R.) ==================== */
   window.addDmRow = function () {
     const tbody = document.getElementById('dm-tbody');
     const tr    = document.createElement('tr');
@@ -181,6 +183,7 @@
           <option value="employee">Employee</option>
         </select>
       </td>
+      <td style="text-align:center"><input type="text" name="assigned_mr" class="form-control dm-mr-input" placeholder="M.R. #" style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="accountable_officer" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="device" value="Tablet" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="serviceable" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
@@ -188,6 +191,7 @@
       <td style="text-align:center"><input type="hidden" name="sealed" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="missing" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="off"/><input type="checkbox" onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="ptr" class="form-control dm-ptr-input" placeholder="PTR #" style="width:100px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><span class="release-status-badge badge-none">—</span></td>
       <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">—</td>
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto"></textarea></td>
@@ -205,7 +209,78 @@
     applyDmFilters();
   };
 
-  /* ── WebSocket real-time updates ──────────────────────────────────────── */
+  /* ==================== IMPORT EXCEL MODAL ==================== */
+  window.openImportModal = function () {
+    const modal = document.getElementById('importModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    // reset state
+    const fileInput = document.getElementById('import-file-input');
+    if (fileInput) fileInput.value = '';
+    const preview = document.getElementById('import-preview');
+    const errorEl = document.getElementById('import-error');
+    const successEl = document.getElementById('import-success');
+    const confirmBtn = document.getElementById('import-confirm-btn');
+    if (preview) preview.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (successEl) successEl.style.display = 'none';
+    if (confirmBtn) confirmBtn.disabled = true;
+  };
+
+  window.closeImportModal = function (e) {
+    const modal = document.getElementById('importModal');
+    if (!modal) return;
+    if (e && e.target !== modal) return;
+    modal.style.display = 'none';
+  };
+
+  window.confirmImport = async function () {
+    const fileInput = document.getElementById('import-file-input');
+    const errEl     = document.getElementById('import-error');
+    const sucEl     = document.getElementById('import-success');
+    const btn       = document.getElementById('import-confirm-btn');
+
+    if (!errEl || !sucEl || !btn || !fileInput) return;
+
+    errEl.style.display = 'none';
+    sucEl.style.display = 'none';
+
+    if (!fileInput.files || !fileInput.files[0]) return;
+
+    const formData = new FormData();
+    formData.append('excel_file', fileInput.files[0]);
+    // retrieve CSRF token from cookie
+    const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+    formData.append('csrfmiddlewaretoken', csrfToken);
+
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.textContent = 'Importing…';
+
+    try {
+      const resp = await fetch('/device-monitoring/import/', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      });
+      const data = await resp.json();
+
+      if (!data.ok) throw new Error(data.error || 'Import failed');
+
+      sucEl.textContent = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+      sucEl.style.display = 'flex';
+
+      // reload table after short delay
+      setTimeout(() => { window.location.reload(); }, 1500);
+    } catch (err) {
+      errEl.textContent = 'Error: ' + err.message;
+      errEl.style.display = 'flex';
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  };
+
+  /* ==================== WEBSOCKET REAL‑TIME UPDATES ==================== */
   const dirtyRows = new Set();
 
   function releaseBadgeHtml(status) {
@@ -242,9 +317,11 @@
         setValue('office_college',      row.office_college);
         setValue('accountable_person',  row.accountable_person);
         setValue('borrower_type',       row.borrower_type);
+        setValue('assigned_mr',         row.assigned_mr);
         setValue('accountable_officer', row.accountable_officer);
         setValue('device',              row.device);
         setValue('serial_number',       row.serial_number);
+        setValue('ptr',                 row.ptr);
         setValue('remarks',             row.remarks);
         setValue('issue',               row.issue);
 
@@ -287,7 +364,6 @@
     populateFilterDropdowns();
     applyDmFilters();
 
-    // ── Live sidebar badge updates ─────────────────────────────────────────
     if (data.pending_count !== undefined) {
       window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
     }
@@ -296,11 +372,13 @@
     }
   }
 
-  /* ── DOMContentLoaded init ────────────────────────────────────────────── */
+  /* ==================== INITIALISATION ==================== */
   document.addEventListener('DOMContentLoaded', () => {
+    // Apply checkbox lock states to existing rows
     document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
     populateFilterDropdowns();
 
+    // Mark rows as dirty when user edits
     const dmForm = document.getElementById('dm-form');
     if (dmForm) {
       dmForm.addEventListener('input', e => {
@@ -311,7 +389,7 @@
       });
     }
 
-    // Live data attribute sync on text inputs
+    // Update dataset attributes on user input (for filtering)
     document.addEventListener('input', e => {
       const row = e.target.closest('tr[data-row-id]');
       if (!row) return;
@@ -322,18 +400,53 @@
       if (e.target.matches('.dm-officer-input'))        { row.dataset.officer      = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
       if (e.target.matches('.dm-device-input'))         { row.dataset.device       = e.target.value.toLowerCase(); applyDmFilters(); }
       if (e.target.matches('.dm-serial-input'))         { row.dataset.serial       = e.target.value.toLowerCase(); applyDmFilters(); }
+      // ptr and assigned_mr don't need dataset tracking (not filterable)
     });
 
-    document.getElementById('dm-search').addEventListener('input',               applyDmFilters);
-    document.getElementById('dm-filter-college').addEventListener('change',       applyDmFilters);
-    document.getElementById('dm-filter-person').addEventListener('change',        applyDmFilters);
-    document.getElementById('dm-filter-borrower-type').addEventListener('change', applyDmFilters);
-    document.getElementById('dm-filter-officer').addEventListener('change',       applyDmFilters);
-    document.getElementById('dm-filter-release').addEventListener('change',       applyDmFilters);
-    document.getElementById('dm-filter-status').addEventListener('change',        applyDmFilters);
+    // Attach filter event listeners
+    const searchInput = document.getElementById('dm-search');
+    if (searchInput) searchInput.addEventListener('input', applyDmFilters);
 
+    const filterIds = ['dm-filter-college', 'dm-filter-person', 'dm-filter-borrower-type',
+                       'dm-filter-officer', 'dm-filter-release', 'dm-filter-status'];
+    filterIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', applyDmFilters);
+    });
+
+    // Import modal: file input preview
+    const fileInput = document.getElementById('import-file-input');
+    if (fileInput) {
+      fileInput.addEventListener('change', function () {
+        const file = this.files[0];
+        const errEl = document.getElementById('import-error');
+        const prevEl = document.getElementById('import-preview');
+        const btn = document.getElementById('import-confirm-btn');
+        if (errEl) errEl.style.display = 'none';
+        if (prevEl) prevEl.style.display = 'none';
+        if (btn) btn.disabled = true;
+
+        if (!file) return;
+        if (!file.name.match(/\.(xlsx|xls)$/i)) {
+          if (errEl) {
+            errEl.textContent = 'Please select a valid .xlsx or .xls file.';
+            errEl.style.display = 'flex';
+          }
+          return;
+        }
+
+        const rowCountSpan = document.getElementById('import-row-count');
+        const previewText = document.getElementById('import-preview-text');
+        if (rowCountSpan) rowCountSpan.textContent = '—';
+        if (previewText) previewText.textContent = `File: ${file.name}\nSize: ${(file.size / 1024).toFixed(1)} KB\nReady to import.`;
+        if (prevEl) prevEl.style.display = 'block';
+        if (btn) btn.disabled = false;
+      });
+    }
+
+    // WebSocket connection (if global InvSysRT exists)
     const indicator = document.getElementById('rt-indicator');
-    if (typeof InvSysRT !== 'undefined') {
+    if (typeof InvSysRT !== 'undefined' && InvSysRT.connect) {
       InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
     }
   });

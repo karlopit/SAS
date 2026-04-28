@@ -2,6 +2,8 @@ import io
 import json
 import random
 import pytz
+import openpyxl
+import traceback
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -16,7 +18,9 @@ from .models import Item, Transaction, BorrowRequest, DeviceMonitor, Transaction
 from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRequestForm
 from .decorators import no_cache
 from django.contrib import messages
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.http import require_http_methods
+
 
 # Get Philippine timezone
 PH_TZ = pytz.timezone('Asia/Manila')
@@ -433,6 +437,7 @@ def device_monitoring_save(request):
     ids                  = request.POST.getlist('row_id')
     box_numbers          = request.POST.getlist('box_number')
     offices              = request.POST.getlist('office_college')
+    assigned_mr_list     = request.POST.getlist('assigned_mr')
     accountables         = request.POST.getlist('accountable_person')
     borrower_types       = request.POST.getlist('borrower_type')
     accountable_officers = request.POST.getlist('accountable_officer')
@@ -442,6 +447,7 @@ def device_monitoring_save(request):
     non_serviceables     = request.POST.getlist('non_serviceable')
     sealeds              = request.POST.getlist('sealed')
     missings             = request.POST.getlist('missing')
+    ptr_list             = request.POST.getlist('ptr')
     incompletes          = request.POST.getlist('incomplete')
     remarks_list         = request.POST.getlist('remarks')
     issue_list           = request.POST.getlist('issue')
@@ -453,6 +459,7 @@ def device_monitoring_save(request):
         fields = dict(
             box_number          = get(box_numbers),
             office_college      = get(offices),
+            assigned_mr         = get(assigned_mr_list),
             accountable_person  = get(accountables),
             borrower_type       = get(borrower_types),
             accountable_officer = get(accountable_officers),
@@ -463,6 +470,7 @@ def device_monitoring_save(request):
             sealed              = get(sealeds)          == 'on',
             missing             = get(missings)         == 'on',
             incomplete          = get(incompletes)      == 'on',
+            ptr                 = get(ptr_list),
             remarks             = get(remarks_list),
             issue               = get(issue_list),
         )
@@ -499,6 +507,161 @@ def device_monitoring_delete(request, row_id):
     return redirect('device_monitoring')
 
 
+@login_required
+@require_http_methods(["POST"])
+def device_monitoring_import(request):
+    if request.user.role != 'staff':
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    try:
+        excel_file = request.FILES.get('excel_file')
+        if not excel_file:
+            return JsonResponse({'error': 'No file provided'}, status=400)
+
+        if not excel_file.name.endswith(('.xlsx', '.xls')):
+            return JsonResponse({'error': 'Invalid file format. Use .xlsx or .xls'}, status=400)
+
+        wb = openpyxl.load_workbook(excel_file, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return JsonResponse({'error': f'Excel read error: {str(e)}'}, status=400)
+
+    # ── Find the header row (scan first 10 rows) ──────────────────────────────
+    SERIAL_ALIASES = {'serial no.', 'serial no', 's/n', 'serial number', 'serial'}
+    header_row_num = None
+    header_row     = []
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
+        cleaned = [str(cell or '').strip().lower() for cell in row]
+        if any(cell in SERIAL_ALIASES for cell in cleaned):
+            header_row_num = row_idx
+            header_row     = cleaned
+            break
+
+    if header_row_num is None:
+        return JsonResponse({
+            'error': 'Could not find a header row with a Serial Number column in the first 10 rows.'
+        }, status=400)
+
+    # ── Flexible header aliases ───────────────────────────────────────────────
+    HEADER_MAP = {
+        # box_number
+        'box no.': 'box_number', 'box no': 'box_number',
+        'box number': 'box_number', 'box #': 'box_number', 'box': 'box_number',
+        'box_number': 'box_number',
+        # serial_number
+        'serial no.': 'serial_number', 'serial no': 'serial_number',
+        'serial number': 'serial_number', 's/n': 'serial_number',
+        'serial': 'serial_number', 'serial_number': 'serial_number',
+        # office_college
+        'college/office': 'office_college', 'college / office': 'office_college',
+        'office': 'office_college', 'college': 'office_college',
+        'office_college': 'office_college',
+        # accountable_person
+        'name of student': 'accountable_person', 'name': 'accountable_person',
+        'student name': 'accountable_person', 'accountable person': 'accountable_person',
+        'accountable_person': 'accountable_person',
+        # borrower_type
+        'borrower type': 'borrower_type', 'type': 'borrower_type',
+        'borrower_type': 'borrower_type',
+        # accountable_officer
+        'accountable officer': 'accountable_officer', 'officer': 'accountable_officer',
+        'accountable_officer': 'accountable_officer',
+        # assigned_mr
+        'assigned m.r.': 'assigned_mr', 'assigned m.r': 'assigned_mr',
+        'assigned mr': 'assigned_mr', 'm.r.': 'assigned_mr',
+        'mr': 'assigned_mr', 'assigned_mr': 'assigned_mr',
+        # device
+        'device': 'device',
+        # ptr
+        'ptr': 'ptr',
+        # remarks
+        'remarks': 'remarks',
+        # issue
+        'issue': 'issue',
+        # status — intentionally ignored (checkboxes handled separately)
+        'status': None,
+    }
+
+    # ── Build col_index → field_name mapping ──────────────────────────────────
+    col_map = {}
+    for idx, header in enumerate(header_row):
+        field = HEADER_MAP.get(header)
+        if field:  # None (status) and unmapped headers are skipped
+            col_map[idx] = field
+
+    if 'serial_number' not in col_map.values():
+        return JsonResponse({
+            'error': f'Serial column found in header row {header_row_num} but could not be mapped. Headers: {header_row}'
+        }, status=400)
+
+    created = 0
+    updated = 0
+    errors  = []
+
+    for row_idx, row in enumerate(
+        ws.iter_rows(min_row=header_row_num + 1, values_only=True),
+        start=header_row_num + 1
+    ):
+        try:
+            if not row or all(cell is None for cell in row):
+                continue
+
+            data = {}
+            for col_idx, field_name in col_map.items():
+                if col_idx < len(row):
+                    val = row[col_idx]
+                    data[field_name] = str(val).strip() if val is not None else ''
+
+            serial_number = data.get('serial_number', '').strip()
+            if not serial_number:
+                continue
+
+            borrower_type_raw = data.get('borrower_type', '').lower()
+            borrower_type = (
+                'student'  if borrower_type_raw == 'student'  else
+                'employee' if borrower_type_raw == 'employee' else ''
+            )
+
+            obj, created_flag = DeviceMonitor.objects.update_or_create(
+                serial_number=serial_number,
+                defaults={
+                    'box_number':          data.get('box_number', ''),
+                    'office_college':      data.get('office_college', ''),
+                    'accountable_person':  data.get('accountable_person', ''),
+                    'borrower_type':       borrower_type,
+                    'accountable_officer': data.get('accountable_officer', ''),
+                    'assigned_mr':         data.get('assigned_mr', ''),
+                    'device':              data.get('device', '') or 'Tablet',
+                    'ptr':                 data.get('ptr', ''),
+                    'remarks':             data.get('remarks', ''),
+                    'issue':               data.get('issue', ''),
+                    'serviceable':         False,
+                    'non_serviceable':     False,
+                    'sealed':              False,
+                    'missing':             False,
+                    'incomplete':          False,
+                }
+            )
+            if created_flag:
+                created += 1
+            else:
+                updated += 1
+
+        except Exception as e:
+            errors.append(f'Row {row_idx}: {str(e)}')
+
+    b = _broadcasts()
+    b.broadcast_device_monitoring()
+
+    return JsonResponse({
+        'ok':      True,
+        'created': created,
+        'updated': updated,
+        'errors':  errors,
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Staff borrow confirmation / decline
 # ─────────────────────────────────────────────────────────────────────────────
@@ -531,6 +694,7 @@ def staff_confirm_borrow(request, request_id):
             borrow_req.save()
 
             accountable_officer = request.user.get_full_name() or request.user.username
+            assigned_mr = request.POST.get('assigned_mr', '').strip()
 
             device_monitors = []
             for i, serial in enumerate(serial_numbers):
@@ -557,6 +721,7 @@ def staff_confirm_borrow(request, request_id):
                     sealed=False,
                     missing=False,
                     incomplete=False,
+                    assigned_mr=assigned_mr,
                 ))
 
             DeviceMonitor.objects.bulk_create(device_monitors)

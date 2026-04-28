@@ -134,6 +134,8 @@ class DeviceMonitor(models.Model):
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
     transaction_id      = models.IntegerField(null=True, blank=True, db_index=True)
+    assigned_mr         = models.CharField(max_length=100, blank=True, verbose_name="Assigned M.R.")
+    ptr                 = models.CharField(max_length=100, blank=True, verbose_name="PTR")
 
     class Meta:
         ordering = ['id']

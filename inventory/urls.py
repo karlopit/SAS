@@ -42,6 +42,7 @@ urlpatterns = [
     path('device-monitoring/save/',                views.device_monitoring_save,   name='device_monitoring_save'),
     path('device-monitoring/<int:row_id>/delete/', views.device_monitoring_delete, name='device_monitoring_delete'),
     path('device-monitoring/export/',              views.export_device_monitoring, name='export_device_monitoring'),
+    path('device-monitoring/import/',              views.device_monitoring_import, name='device_monitoring_import'),
 
     # ── Graduation warnings ───────────────────────────────────────────────────
     path('graduation-warnings/', views.graduation_warnings, name='graduation_warnings'),

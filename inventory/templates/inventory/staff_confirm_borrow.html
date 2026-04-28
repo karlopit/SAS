@@ -21,7 +21,7 @@
           </span>
         </div>
       </div>
-      
+
       {% if borrow_req.borrower_type == 'student' %}
       <div>
         <div class="form-label" style="margin-bottom:4px">Student Name</div>
@@ -32,7 +32,7 @@
         <div>{{ borrow_req.student_id }}</div>
       </div>
       <div>
-        <div class="form-label" style="margin-bottom:4px">Year & Section</div>
+        <div class="form-label" style="margin-bottom:4px">Year &amp; Section</div>
         <div>{{ borrow_req.year_section }}</div>
       </div>
       <div>
@@ -57,7 +57,7 @@
         <div>{{ borrow_req.office }}</div>
       </div>
       {% endif %}
-      
+
       <div>
         <div class="form-label" style="margin-bottom:4px">College / Office (Location)</div>
         <div>{{ borrow_req.office_college }}</div>
@@ -114,6 +114,16 @@
       {% if form.quantity_borrowed.errors %}<span class="form-error">{{ form.quantity_borrowed.errors.0 }}</span>{% endif %}
     </div>
 
+    <!-- ── Assigned M.R. (new field) ── -->
+    <div class="form-group">
+      <label class="form-label" for="id_assigned_mr">Assigned M.R.</label>
+      <input type="text" id="id_assigned_mr" name="assigned_mr"
+        class="form-control"
+        placeholder="e.g. MR-2024-001"
+        value="{{ request.POST.assigned_mr|default:'' }}"/>
+      <span class="form-hint">Memorandum Receipt number assigned to this transaction.</span>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="{{ form.serial_numbers.id_for_label }}">Device Serial Numbers</label>
       <textarea id="{{ form.serial_numbers.id_for_label }}"
@@ -152,7 +162,7 @@
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
         </svg>
-        Confirm & Record
+        Confirm &amp; Record
       </button>
       <a href="{% url 'borrow_requests' %}" class="btn btn-secondary">Cancel</a>
     </div>
@@ -175,7 +185,6 @@
   font-size: 12px;
   font-weight: 500;
 }
-
 .badge-purple {
   background: rgba(156, 39, 176, 0.15);
   color: #ce93d8;
@@ -184,14 +193,6 @@
   font-size: 12px;
   font-weight: 500;
 }
-
-.form-hint {
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-#serial-count-hint, #box-count-hint {
-  font-weight: 500;
-  margin-top: 8px;
-}
+.form-hint { font-size: 12px; margin-top: 4px; }
+#serial-count-hint, #box-count-hint { font-weight: 500; margin-top: 8px; }
 </style>
