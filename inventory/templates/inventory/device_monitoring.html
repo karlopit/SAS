@@ -6,11 +6,10 @@
 {% block content %}
 
 <!-- ══════════════════════════════════════════════════════
-     IMPORT EXCEL MODAL
+     IMPORT EXCEL MODAL (inline onclick removed)
 ══════════════════════════════════════════════════════ -->
 <div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);
-     display:none;align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(2px)"
-     onclick="closeImportModal(event)">
+     align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(2px)">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;
               width:90%;max-width:480px;box-shadow:0 24px 64px rgba(0,0,0,0.5);
               animation:modalSlideIn 0.25s ease">
@@ -25,7 +24,7 @@
           Upload an .xlsx file to bulk-update the device table.
         </p>
       </div>
-      <button onclick="closeImportModal()" style="background:none;border:none;font-size:24px;
+      <button id="closeImportModalBtn" style="background:none;border:none;font-size:24px;
               cursor:pointer;color:var(--muted);line-height:1;padding:0">&times;</button>
     </div>
 
@@ -67,8 +66,8 @@
 
     <div style="display:flex;justify-content:flex-end;gap:10px;
                 padding:16px 24px;border-top:1px solid var(--border)">
-      <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
-      <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()" disabled>
+      <button id="cancelImportBtn" class="btn btn-secondary">Cancel</button>
+      <button id="import-confirm-btn" class="btn btn-primary" disabled>
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
         </svg>
@@ -95,7 +94,6 @@
         {% endif %}
       {% endfor %}
     </select>
-    <!-- REMOVED: All Students/Persons filter -->
     <select id="dm-filter-borrower-type" class="filter-select" style="max-width:160px">
       <option value="">All Borrower Types</option>
       <option value="student">Student</option>
@@ -109,7 +107,6 @@
         {% endif %}
       {% endfor %}
     </select>
-    <!-- NEW: Assigned M.R filter -->
     <select id="dm-filter-mr" class="filter-select" style="max-width:160px">
       <option value="">All Assigned M.R.</option>
       {% for row in rows %}
@@ -118,7 +115,6 @@
         {% endif %}
       {% endfor %}
     </select>
-    <!-- NEW: PTR filter -->
     <select id="dm-filter-ptr" class="filter-select" style="max-width:160px">
       <option value="">All PTR</option>
       {% for row in rows %}
@@ -140,7 +136,7 @@
       <option value="missing">Missing</option>
       <option value="incomplete">Incomplete</option>
     </select>
-    <button id="dm-clear-filters" onclick="clearDmFilters()" class="btn btn-secondary btn-sm" style="display:none">
+    <button id="dm-clear-filters" class="btn btn-secondary btn-sm" style="display:none">
       × Clear All Filters
     </button>
     <span id="dm-filter-status-label" style="font-size:12px;color:var(--muted);display:none;margin-left:4px">
@@ -157,7 +153,7 @@
     <div class="table-header">
       <span class="table-title">Device Records</span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button type="button" class="btn btn-secondary btn-sm" onclick="openImportModal()">
+        <button type="button" id="openImportModalBtn" class="btn btn-secondary btn-sm">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
           </svg>
@@ -169,6 +165,12 @@
           </svg>
           Export Excel
         </a>
+        <button type="button" id="saveAllBtn" class="btn btn-primary btn-sm">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          Save All
+        </button>
       </div>
     </div>
 
@@ -266,7 +268,7 @@
     </div>
 
     <div style="padding:16px;text-align:center">
-      <button type="button" class="btn btn-secondary" onclick="addDmRow()">
+      <button type="button" id="addDmRowBtn" class="btn btn-secondary">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" width="16" height="16">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
         </svg>
@@ -285,27 +287,83 @@
   padding: 6px 10px; color: var(--text); font-family: var(--font-mono); font-size: 12px;
   outline: none; cursor: pointer; transition: border-color 0.2s ease;
 }
+
 .filter-select:focus { border-color: var(--accent); }
-.filter-select option { background: var(--surface2); }
+.filter-select option { 
+  background: var(--surface2); 
+}
 
-.release-status-badge { display:inline-block; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
-.badge-released  { background:rgba(255,179,71,0.15);  color:#ffb347; border:1px solid rgba(255,179,71,0.3); }
-.badge-returned-dm { background:rgba(0,229,160,0.15); color:#00e5a0; border:1px solid rgba(0,229,160,0.3); }
-.badge-none      { background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+.release-status-badge { 
+  display:inline-block; 
+  padding:4px 10px; 
+  border-radius:20px; 
+  font-size:11px; 
+  font-weight:600; 
+  white-space:nowrap; 
+}
 
-@keyframes highlightNew { 0%{background:rgba(0,229,160,0.4)}50%{background:rgba(0,229,160,0.2)}100%{background:transparent} }
-tr.row-new { animation: highlightNew 2s ease-out; }
+.badge-released  { 
+  background:rgba(255,179,71,0.15);  color:#ffb347; border:1px solid rgba(255,179,71,0.3); 
+}
 
-@keyframes modalSlideIn { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
+.badge-returned-dm { 
+  background:rgba(0,229,160,0.15); color:#00e5a0; border:1px solid rgba(0,229,160,0.3); 
+}
 
-#dm-table td, #dm-table th { vertical-align:middle; padding:8px 6px; }
-.form-control { text-align:center; }
-input[type="checkbox"] { width:18px; height:18px; cursor:pointer; margin:0 auto; display:block; }
-textarea.form-control { text-align:left; resize:vertical; min-height:48px; line-height:1.4; }
-.table-container { overflow-x:auto; max-height:70vh; position:relative; }
-#dm-table thead th { position:sticky; top:0; background-color:var(--surface); z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+.badge-none { 
+  background:var(--surface2); color:var(--muted); border:1px solid var(--border); 
+}
+
+@keyframes highlightNew { 
+  0%{background:rgba(0,229,160,0.4)}50%{background:rgba(0,229,160,0.2)}100%{background:transparent} 
+}
+
+tr.row-new { 
+  animation: highlightNew 2s ease-out; 
+}
+
+@keyframes modalSlideIn { 
+  from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} 
+}
+
+#dm-table td, #dm-table th { 
+  vertical-align:middle; 
+  padding:8px 6px; 
+}
+
+.form-control { 
+  text-align:center; 
+}
+
+input[type="checkbox"] { 
+  width:18px; 
+  height:18px; 
+  cursor:pointer; 
+  margin:0 auto; 
+  display:block; 
+}
+
+textarea.form-control { 
+  text-align:left; 
+  resize:vertical; 
+  min-height:48px; 
+  line-height:1.4; 
+}
+
+.table-container { 
+  overflow-x:auto; 
+  max-height:70vh; 
+  position: relative; 
+}
+
+#dm-table thead th { 
+  position:sticky; 
+  top:0; 
+  background-color:var(--surface); 
+  z-index:10; 
+  box-shadow:0 2px 4px rgba(0,0,0,0.1); 
+}
 </style>
 
 <script src="{% static 'inventory/js/device_monitoring.js' %}"></script>
-
 {% endblock %}

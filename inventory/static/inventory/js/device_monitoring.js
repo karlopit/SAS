@@ -1,5 +1,38 @@
+/**
+ * device_monitoring.js
+ * - saveAllRows() now uses JSON (fixes TooManyFieldsSent)
+ * - Scroll button is sticky + centered
+ */
+
 (function () {
   'use strict';
+
+  /* ==================== TOAST ==================== */
+  function showToast(message, type) {
+    let el = document.getElementById('dm-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'dm-toast';
+      el.style.cssText = `
+        position:fixed;bottom:24px;right:24px;z-index:9999;
+        padding:12px 20px;border-radius:10px;font-family:var(--font-mono);
+        font-size:13px;font-weight:600;pointer-events:none;
+        opacity:0;transform:translateY(12px);
+        transition:opacity .25s ease,transform .25s ease;
+        box-shadow:0 8px 24px rgba(0,0,0,.4);`;
+      document.body.appendChild(el);
+    }
+    el.style.background = type === 'error' ? 'rgba(255,76,76,.95)' : 'rgba(0,229,160,.95)';
+    el.style.color      = type === 'error' ? '#fff' : '#000';
+    el.textContent = message;
+    el.style.opacity   = '1';
+    el.style.transform = 'translateY(0)';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => {
+      el.style.opacity   = '0';
+      el.style.transform = 'translateY(12px)';
+    }, 3200);
+  }
 
   /* ==================== CHECKBOX HELPERS ==================== */
   window.syncCheck = function (cb) {
@@ -16,25 +49,9 @@
     return result;
   }
 
-  function applyLockState(row) {
-    const c = getChecksInRow(row);
-    if (!c.serviceable.cb) return;
-    const exclusiveOn = c.non_serviceable.cb.checked || c.missing.cb.checked || c.incomplete.cb.checked;
-    const safeOn      = c.serviceable.cb.checked || c.sealed.cb.checked;
-    if (exclusiveOn) {
-      Object.values(c).forEach(x => { x.cb.disabled = !x.cb.checked; });
-    } else if (safeOn) {
-      ['non_serviceable', 'missing', 'incomplete'].forEach(k => { c[k].cb.disabled = true; });
-      c.serviceable.cb.disabled = false;
-      c.sealed.cb.disabled      = false;
-    } else {
-      Object.values(c).forEach(x => { x.cb.disabled = false; });
-    }
-  }
-
-  function handleDmCheck(cb, field) {
+  window.handleDmCheck = function (cb, field) {
     const row = cb.closest('tr');
-    const c = getChecksInRow(row);
+    const c   = getChecksInRow(row);
     if (cb.checked) {
       if (['non_serviceable', 'missing', 'incomplete'].includes(field)) {
         Object.keys(c).forEach(k => {
@@ -50,6 +67,22 @@
     applyLockState(row);
     updateRowDataAttrsFromRow(row);
     applyDmFilters();
+  };
+
+  function applyLockState(row) {
+    const c = getChecksInRow(row);
+    if (!c.serviceable.cb) return;
+    const exclusiveOn = c.non_serviceable.cb.checked || c.missing.cb.checked || c.incomplete.cb.checked;
+    const safeOn      = c.serviceable.cb.checked || c.sealed.cb.checked;
+    if (exclusiveOn) {
+      Object.values(c).forEach(x => { x.cb.disabled = !x.cb.checked; });
+    } else if (safeOn) {
+      ['non_serviceable', 'missing', 'incomplete'].forEach(k => { c[k].cb.disabled = true; });
+      c.serviceable.cb.disabled = false;
+      c.sealed.cb.disabled      = false;
+    } else {
+      Object.values(c).forEach(x => { x.cb.disabled = false; });
+    }
   }
 
   function updateRowDataAttrsFromRow(row) {
@@ -78,7 +111,7 @@
     rows.forEach(tr => tbody.appendChild(tr));
   }
 
-  /* ==================== FILTER DROPDOWNS (with proper case) ==================== */
+  /* ==================== FILTER DROPDOWNS ==================== */
   function toTitleCase(str) {
     if (!str) return '';
     return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
@@ -96,24 +129,21 @@
     const savedMr      = mrSelect.value;
     const savedPtr     = ptrSelect.value;
 
-    // Clear existing options (keep first "All" option)
     while (collegeSelect.options.length > 1) collegeSelect.remove(1);
     while (officerSelect.options.length > 1) officerSelect.remove(1);
-    while (mrSelect.options.length > 1) mrSelect.remove(1);
-    while (ptrSelect.options.length > 1) ptrSelect.remove(1);
+    while (mrSelect.options.length > 1)      mrSelect.remove(1);
+    while (ptrSelect.options.length > 1)     ptrSelect.remove(1);
 
-    // Use Maps to store raw values with their display text (original case)
-    const collegeMap = new Map(); // raw -> display (original case)
+    const collegeMap = new Map();
     const officerMap = new Map();
-    const mrMap      = new Map(); // raw -> display (Title Case)
+    const mrMap      = new Map();
     const ptrMap     = new Map();
 
     document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => {
       const collegeRaw = row.dataset.collegeRaw || '';
       const officerRaw = row.dataset.officerRaw || '';
-      const mrRaw      = row.dataset.mr      || '';
-      const ptrRaw     = row.dataset.ptr     || '';
-
+      const mrRaw      = row.dataset.mr          || '';
+      const ptrRaw     = row.dataset.ptr         || '';
       if (collegeRaw) collegeMap.set(collegeRaw, collegeRaw);
       if (officerRaw) officerMap.set(officerRaw, officerRaw);
       if (mrRaw)      mrMap.set(mrRaw, toTitleCase(mrRaw));
@@ -121,16 +151,13 @@
     });
 
     const addOptsFromMap = (sel, map, saved) => {
-      const sortedRaw = [...map.keys()].sort((a, b) => a.localeCompare(b));
-      sortedRaw.forEach(raw => {
+      [...map.keys()].sort((a, b) => a.localeCompare(b)).forEach(raw => {
         const o = document.createElement('option');
-        o.value = raw;
-        o.textContent = map.get(raw);
+        o.value = raw; o.textContent = map.get(raw);
         if (raw === saved) o.selected = true;
         sel.appendChild(o);
       });
     };
-
     addOptsFromMap(collegeSelect, collegeMap, savedCollege);
     addOptsFromMap(officerSelect, officerMap, savedOfficer);
     addOptsFromMap(mrSelect,      mrMap,      savedMr);
@@ -140,9 +167,10 @@
   /* ==================== SEARCH ==================== */
   function rowMatchesSearch(row, query) {
     if (!query) return true;
-    const box    = (row.dataset.box    || '').trim();
-    const serial = (row.dataset.serial || '').trim();
-    return box.includes(query) || serial.includes(query);
+    const tds = row.querySelectorAll('td');
+    let text = '';
+    tds.forEach(td => { text += ' ' + td.textContent; });
+    return text.toLowerCase().includes(query);
   }
 
   /* ==================== APPLY FILTERS ==================== */
@@ -170,11 +198,8 @@
       let matchStatus = true;
       if (status) {
         const attrMap = {
-          serviceable: 'serviceable',
-          non_serviceable: 'nonServiceable',
-          sealed: 'sealed',
-          missing: 'missing',
-          incomplete: 'incomplete',
+          serviceable: 'serviceable', non_serviceable: 'nonServiceable',
+          sealed: 'sealed', missing: 'missing', incomplete: 'incomplete',
         };
         const dsKey = attrMap[status];
         matchStatus = dsKey ? row.dataset[dsKey] === '1' : true;
@@ -218,8 +243,7 @@
       'data-row-id': newId, 'data-box': '', 'data-college': '', 'data-college-raw': '',
       'data-person': '', 'data-borrower-type': '', 'data-officer': '', 'data-officer-raw': '',
       'data-device': '', 'data-serial': '', 'data-release': '—',
-      'data-mr': '', 'data-mr-lower': '',
-      'data-ptr': '', 'data-ptr-lower': '',
+      'data-mr': '', 'data-mr-lower': '', 'data-ptr': '', 'data-ptr-lower': '',
       'data-serviceable': '0', 'data-non-serviceable': '0',
       'data-sealed': '0', 'data-missing': '0', 'data-incomplete': '0',
     };
@@ -263,20 +287,101 @@
     applyDmFilters();
   }
 
+  /* ==================== SAVE ALL ROWS (JSON) ==================== */
+  const dirtyRows = new Set();
+
+  async function saveAllRows() {
+    const form = document.getElementById('dm-form');
+    if (!form) return;
+
+    const btn = document.getElementById('saveAllBtn');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `
+        <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Saving…`;
+    }
+
+    // Build JSON payload
+    const rowsData = [];
+    const rows = document.querySelectorAll('#dm-tbody tr[data-row-id]');
+    for (const row of rows) {
+      const rowId = row.querySelector('input[name="row_id"]')?.value;
+      if (!rowId) continue;
+
+      const rowData = {
+        row_id: rowId,
+        box_number: row.querySelector('input[name="box_number"]')?.value || '',
+        serial_number: row.querySelector('input[name="serial_number"]')?.value || '',
+        office_college: row.querySelector('input[name="office_college"]')?.value || '',
+        accountable_person: row.querySelector('input[name="accountable_person"]')?.value || '',
+        borrower_type: row.querySelector('select[name="borrower_type"]')?.value || '',
+        assigned_mr: row.querySelector('input[name="assigned_mr"]')?.value || '',
+        accountable_officer: row.querySelector('input[name="accountable_officer"]')?.value || '',
+        device: row.querySelector('input[name="device"]')?.value || '',
+        serviceable: row.querySelector('input[name="serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        non_serviceable: row.querySelector('input[name="non_serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        sealed: row.querySelector('input[name="sealed"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        missing: row.querySelector('input[name="missing"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        incomplete: row.querySelector('input[name="incomplete"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        ptr: row.querySelector('input[name="ptr"]')?.value || '',
+        remarks: row.querySelector('textarea[name="remarks"]')?.value || '',
+        issue: row.querySelector('textarea[name="issue"]')?.value || '',
+      };
+      rowsData.push(rowData);
+    }
+
+    try {
+      const resp = await fetch(form.action, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ rows: rowsData, save_all: true }),
+        credentials: 'same-origin',
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const result = await resp.json();
+
+      if (result.ok) {
+        dirtyRows.clear();
+        showToast(`✓ All rows saved (${result.saved} record${result.saved !== 1 ? 's' : ''})`, 'success');
+      } else {
+        const msg = result.errors?.length
+          ? `Saved with errors: ${result.errors.slice(0, 2).join('; ')}`
+          : 'Save failed';
+        showToast(msg, 'error');
+      }
+    } catch (err) {
+      showToast('Network error: ' + err.message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    }
+  }
+
   /* ==================== DELETE ROW ==================== */
   function deleteRow(btn) {
-    const row = btn.closest('tr');
+    const row   = btn.closest('tr');
     const rowId = row.dataset.rowId;
     if (rowId && !rowId.startsWith('new_')) {
       if (!confirm('Delete this row?')) return;
       const form = document.createElement('form');
       form.method = 'post';
-      form.action = `/device-monitoring/delete/${rowId}/`;  // adjust URL if needed
-      const csrfInput = document.createElement('input');
-      csrfInput.type = 'hidden';
-      csrfInput.name = 'csrfmiddlewaretoken';
-      csrfInput.value = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-      form.appendChild(csrfInput);
+      form.action = `/device-monitoring/${rowId}/delete/`;
+      const csrf = document.createElement('input');
+      csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
+      csrf.value = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+      form.appendChild(csrf);
       document.body.appendChild(form);
       form.submit();
     } else {
@@ -297,8 +402,8 @@
     const successEl  = document.getElementById('import-success');
     const confirmBtn = document.getElementById('import-confirm-btn');
     if (fileInput)  fileInput.value = '';
-    if (preview)    preview.style.display  = 'none';
-    if (errorEl)    errorEl.style.display  = 'none';
+    if (preview)    preview.style.display   = 'none';
+    if (errorEl)    errorEl.style.display   = 'none';
     if (successEl)  successEl.style.display = 'none';
     if (confirmBtn) confirmBtn.disabled = true;
   }
@@ -335,9 +440,9 @@
       if (!data.ok) throw new Error(data.error || 'Import failed');
 
       let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
-      if (data.errors && data.errors.length) {
-        msg += ` ${data.errors.length} row(s) had errors (check console).`;
-        console.warn('Import row errors:', data.errors);
+      if (data.errors?.length) {
+        msg += ` ${data.errors.length} row(s) had errors.`;
+        console.warn('Import errors:', data.errors);
       }
       sucEl.textContent = msg;
       sucEl.style.display = 'flex';
@@ -351,8 +456,6 @@
   }
 
   /* ==================== WEBSOCKET REALTIME ==================== */
-  const dirtyRows = new Set();
-
   function releaseBadgeHtml(status) {
     if (status === 'Released') return '<span class="release-status-badge badge-released">Released</span>';
     if (status === 'Returned') return '<span class="release-status-badge badge-returned-dm">Returned</span>';
@@ -367,9 +470,7 @@
 
     tbody.querySelectorAll('tr[data-row-id]').forEach(tr => {
       const id = tr.dataset.rowId;
-      if (id && !id.startsWith('new_') && !incomingIds.has(id) && !dirtyRows.has(id)) {
-        tr.remove();
-      }
+      if (id && !id.startsWith('new_') && !incomingIds.has(id) && !dirtyRows.has(id)) tr.remove();
     });
 
     data.rows.forEach(row => {
@@ -393,7 +494,6 @@
       setValue('remarks',             row.remarks);
       setValue('issue',               row.issue);
 
-      // Update dataset: keep original case and lowercase version
       existing.dataset.box          = (row.box_number          || '').toLowerCase();
       existing.dataset.college      = (row.office_college      || '').toLowerCase();
       existing.dataset.collegeRaw   = row.office_college       || '';
@@ -439,258 +539,135 @@
     populateFilterDropdowns();
     applyDmFilters();
 
-    if (data.pending_count !== undefined) {
+    if (data.pending_count !== undefined)
       window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
-    }
-    if (data.graduation_warning_count !== undefined) {
+    if (data.graduation_warning_count !== undefined)
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
-    }
   }
 
   /* ==================== DRAG-TO-SCROLL ==================== */
   function initDragScroll(container) {
     if (!container) return;
-
-    let isDragging = false;
-    let startX     = 0;
-    let startY     = 0;
-    let scrollLeft = 0;
-    let scrollTop  = 0;
-    let hasDragged = false;
+    let isDragging = false, startX = 0, startY = 0,
+        scrollLeft = 0, scrollTop = 0, hasDragged = false;
     const DRAG_THRESHOLD = 5;
 
     container.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       const tag = e.target.tagName;
-      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'LABEL'].includes(tag)) return;
-
-      isDragging = true;
-      hasDragged = false;
-      startX     = e.pageX - container.offsetLeft;
-      startY     = e.pageY - container.offsetTop;
+      if (['INPUT','TEXTAREA','SELECT','BUTTON','A','LABEL'].includes(tag)) return;
+      isDragging = true; hasDragged = false;
+      startX = e.pageX - container.offsetLeft;
+      startY = e.pageY - container.offsetTop;
       scrollLeft = container.scrollLeft;
       scrollTop  = container.scrollTop;
       container.style.cursor = 'grabbing';
       e.preventDefault();
     });
-
     document.addEventListener('mousemove', e => {
       if (!isDragging) return;
-      const x     = e.pageX - container.offsetLeft;
-      const y     = e.pageY - container.offsetTop;
-      const walkX = x - startX;
-      const walkY = y - startY;
-
-      if (!hasDragged && (Math.abs(walkX) > DRAG_THRESHOLD || Math.abs(walkY) > DRAG_THRESHOLD)) {
+      const walkX = (e.pageX - container.offsetLeft) - startX;
+      const walkY = (e.pageY - container.offsetTop)  - startY;
+      if (!hasDragged && (Math.abs(walkX) > DRAG_THRESHOLD || Math.abs(walkY) > DRAG_THRESHOLD))
         hasDragged = true;
-      }
-
       container.scrollLeft = scrollLeft - walkX;
       container.scrollTop  = scrollTop  - walkY;
     });
-
     document.addEventListener('mouseup', () => {
       if (!isDragging) return;
       isDragging = false;
       container.style.cursor = '';
     });
-
     container.addEventListener('click', e => {
-      if (hasDragged) {
-        e.stopPropagation();
-        e.preventDefault();
-        hasDragged = false;
-      }
+      if (hasDragged) { e.stopPropagation(); e.preventDefault(); hasDragged = false; }
     }, true);
   }
 
-  async function saveAllRows() {
-    const form = document.getElementById('dm-form');
-    if (!form) return;
-
-    const saveBtn = document.getElementById('saveAllBtn');
-    const originalText = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = 'Saving...';
-
-    const formData = new FormData(form);
-    formData.append('save_all', 'true');
-
-      try {
-        const response = await fetch(form.action, {
-          method: 'POST',
-          body: formData,
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const result = await response.json();
-        if (result.ok) {
-          alert('All data saved successfully!');
-        } else {
-          alert('Save failed: ' + (result.error || 'Unknown error'));
-        }
-        } catch (err) {
-          alert('Network error: ' + err.message);
-        } finally {
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = originalText;
-        }
-    }
-
   /* ==================== EVENT LISTENERS ==================== */
   function attachEventListeners() {
-    // Checkbox change (delegation)
+    // Checkbox delegation
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
-      if (cb && cb.type === 'checkbox') {
+      if (cb?.type === 'checkbox') {
         const field = cb.getAttribute('data-field');
-        if (field) {
-          syncCheck(cb);
-          handleDmCheck(cb, field);
-        }
+        if (field) { syncCheck(cb); handleDmCheck(cb, field); }
       }
     });
 
-    // Input events for dataset sync
+    // Input → dataset sync + dirty tracking
     document.addEventListener('input', e => {
       const row = e.target.closest('tr[data-row-id]');
       if (!row) return;
+      if (row.dataset.rowId && !row.dataset.rowId.startsWith('new_'))
+        dirtyRows.add(row.dataset.rowId);
 
-      if (e.target.matches('.dm-box-input')) {
-        row.dataset.box = e.target.value.toLowerCase();
-        sortTableByBoxNumber();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-college-input')) {
-        row.dataset.college = e.target.value.toLowerCase();
-        row.dataset.collegeRaw = e.target.value;
-        populateFilterDropdowns();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-person-input')) {
-        row.dataset.person = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-borrower-type-select')) {
-        row.dataset.borrowerType = e.target.value.toLowerCase();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-officer-input')) {
-        row.dataset.officer = e.target.value.toLowerCase();
-        row.dataset.officerRaw = e.target.value;
-        populateFilterDropdowns();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-device-input')) {
-        row.dataset.device = e.target.value.toLowerCase();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-serial-input')) {
-        row.dataset.serial = e.target.value.toLowerCase();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-mr-input')) {
-        row.dataset.mr = e.target.value;
-        row.dataset.mrLower = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-ptr-input')) {
-        row.dataset.ptr = e.target.value;
-        row.dataset.ptrLower = e.target.value.toLowerCase();
-        populateFilterDropdowns();
-        applyDmFilters();
-      }
-      if (e.target.matches('.dm-remarks-input, .dm-issue-input')) {
-        applyDmFilters();
-      }
+      if (e.target.matches('.dm-box-input'))            { row.dataset.box = e.target.value.toLowerCase(); sortTableByBoxNumber(); applyDmFilters(); }
+      if (e.target.matches('.dm-college-input'))        { row.dataset.college = e.target.value.toLowerCase(); row.dataset.collegeRaw = e.target.value; populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-person-input'))         { row.dataset.person = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-borrower-type-select')) { row.dataset.borrowerType = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-officer-input'))        { row.dataset.officer = e.target.value.toLowerCase(); row.dataset.officerRaw = e.target.value; populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-device-input'))         { row.dataset.device = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-serial-input'))         { row.dataset.serial = e.target.value.toLowerCase(); applyDmFilters(); }
+      if (e.target.matches('.dm-mr-input'))             { row.dataset.mr = e.target.value; row.dataset.mrLower = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-ptr-input'))            { row.dataset.ptr = e.target.value; row.dataset.ptrLower = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
+      if (e.target.matches('.dm-remarks-input,.dm-issue-input')) applyDmFilters();
     });
-
-    // Mark rows dirty on edit
-    const dmForm = document.getElementById('dm-form');
-    if (dmForm) {
-      dmForm.addEventListener('input', e => {
-        const row = e.target.closest('tr[data-row-id]');
-        if (row && row.dataset.rowId && !row.dataset.rowId.startsWith('new_')) {
-          dirtyRows.add(row.dataset.rowId);
-        }
-      });
-    }
 
     // Filter controls
     const searchInput = document.getElementById('dm-search');
     if (searchInput) searchInput.addEventListener('input', applyDmFilters);
-
-    const filterIds = ['dm-filter-college', 'dm-filter-borrower-type',
-                       'dm-filter-officer', 'dm-filter-mr', 'dm-filter-ptr',
-                       'dm-filter-release', 'dm-filter-status'];
-    filterIds.forEach(id => {
+    ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
+     'dm-filter-mr','dm-filter-ptr','dm-filter-release','dm-filter-status'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', applyDmFilters);
     });
 
-    // Clear filters
     const clearBtn = document.getElementById('dm-clear-filters');
     if (clearBtn) clearBtn.addEventListener('click', clearDmFilters);
 
-    // Add row
     const addRowBtn = document.getElementById('addDmRowBtn');
     if (addRowBtn) addRowBtn.addEventListener('click', addDmRow);
 
-    // Save All button
     const saveAllBtn = document.getElementById('saveAllBtn');
     if (saveAllBtn) saveAllBtn.addEventListener('click', saveAllRows);
 
-    // Delete row (delegation)
     document.addEventListener('click', e => {
       const deleteBtn = e.target.closest('.dm-delete-row');
-      if (deleteBtn) {
-        e.preventDefault();
-        deleteRow(deleteBtn);
-      }
+      if (deleteBtn) { e.preventDefault(); deleteRow(deleteBtn); }
     });
 
-    // Import modal
-    const openModalBtn = document.getElementById('openImportModalBtn');
-    const closeModalBtn = document.getElementById('closeImportModalBtn');
+    const openModalBtn    = document.getElementById('openImportModalBtn');
+    const closeModalBtn   = document.getElementById('closeImportModalBtn');
     const cancelImportBtn = document.getElementById('cancelImportBtn');
     const confirmImportBtn = document.getElementById('import-confirm-btn');
-
-    if (openModalBtn) openModalBtn.addEventListener('click', openImportModal);
-    if (closeModalBtn) closeModalBtn.addEventListener('click', closeImportModal);
+    if (openModalBtn)    openModalBtn.addEventListener('click', openImportModal);
+    if (closeModalBtn)   closeModalBtn.addEventListener('click', closeImportModal);
     if (cancelImportBtn) cancelImportBtn.addEventListener('click', closeImportModal);
     if (confirmImportBtn) confirmImportBtn.addEventListener('click', confirmImport);
 
-    // File input preview
     const fileInput = document.getElementById('import-file-input');
     if (fileInput) {
       fileInput.addEventListener('change', function () {
-        const file = this.files[0];
-        const errEl = document.getElementById('import-error');
+        const file   = this.files[0];
+        const errEl  = document.getElementById('import-error');
         const prevEl = document.getElementById('import-preview');
-        const btn = document.getElementById('import-confirm-btn');
-        if (errEl) errEl.style.display = 'none';
+        const btn    = document.getElementById('import-confirm-btn');
+        if (errEl)  errEl.style.display  = 'none';
         if (prevEl) prevEl.style.display = 'none';
-        if (btn) btn.disabled = true;
+        if (btn)    btn.disabled = true;
         if (!file) return;
-
         if (!file.name.match(/\.(xlsx|xls)$/i)) {
-          if (errEl) {
-            errEl.textContent = 'Please select a valid .xlsx or .xls file.';
-            errEl.style.display = 'flex';
-          }
+          if (errEl) { errEl.textContent = 'Please select a valid .xlsx or .xls file.'; errEl.style.display = 'flex'; }
           return;
         }
         const previewText = document.getElementById('import-preview-text');
-        if (previewText) previewText.textContent = `File: ${file.name}\nSize: ${(file.size / 1024).toFixed(1)} KB\nReady to import.`;
+        if (previewText) previewText.textContent = `File: ${file.name}\nSize: ${(file.size/1024).toFixed(1)} KB\nReady to import.`;
         if (prevEl) prevEl.style.display = 'block';
-        if (btn) btn.disabled = false;
+        if (btn)    btn.disabled = false;
       });
     }
 
-    // Drag-to-scroll
-    const tableContainer = document.querySelector('.table-container');
-    initDragScroll(tableContainer);
+    initDragScroll(document.querySelector('.table-container'));
   }
 
   /* ==================== INITIALISATION ==================== */
@@ -702,8 +679,7 @@
     attachEventListeners();
 
     const indicator = document.getElementById('rt-indicator');
-    if (typeof InvSysRT !== 'undefined' && InvSysRT.connect) {
+    if (typeof InvSysRT !== 'undefined' && InvSysRT.connect)
       InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
-    }
   });
 })();
