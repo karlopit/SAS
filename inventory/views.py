@@ -4,6 +4,7 @@ import random
 import pytz
 import openpyxl
 import traceback
+import re
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -20,6 +21,7 @@ from .decorators import no_cache
 from django.contrib import messages
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.views.decorators.http import require_http_methods
+from datetime import datetime, date as _date
 
 
 # Get Philippine timezone
@@ -507,123 +509,220 @@ def device_monitoring_delete(request, row_id):
     return redirect('device_monitoring')
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helper: normalize a header string for fuzzy matching
+# ─────────────────────────────────────────────────────────────────────────────
+def _normalize_header(h):
+    """
+    'Assigned M.R. #' → 'assigned mr'
+    'P.T.R.'          → 'ptr'
+    'College / Office'→ 'college / office'   (spaces around / kept for the slash-variants)
+    Strip, lowercase, remove ALL dots and hashes, collapse whitespace.
+    """
+    h = str(h or '').strip().lower()
+    h = re.sub(r'\.', '', h)          # remove all full-stops
+    h = re.sub(r'#', '', h)           # remove hash signs
+    h = re.sub(r'\s+', ' ', h).strip()
+    return h
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helper: parse an Excel cell value into a PH-timezone-aware datetime
+# ─────────────────────────────────────────────────────────────────────────────
+def _parse_excel_date(raw):
+    """
+    Convert an openpyxl cell value to a timezone-aware datetime (Asia/Manila).
+    Returns None for blank / unparseable values.
+    """
+    if raw is None or str(raw).strip() in ('', '—', '-', 'N/A', 'None'):
+        return None
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else PH_TZ.localize(raw)
+    if isinstance(raw, _date):
+        return PH_TZ.localize(datetime(raw.year, raw.month, raw.day))
+    text = str(raw).strip()
+    for fmt in (
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d',
+        '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M', '%m/%d/%Y',
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y',
+        '%b %d, %Y %I:%M %p', '%b %d, %Y',
+        '%B %d, %Y %I:%M %p', '%B %d, %Y',
+    ):
+        try:
+            return PH_TZ.localize(datetime.strptime(text, fmt))
+        except ValueError:
+            continue
+    return None
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+#  The import view
+# ─────────────────────────────────────────────────────────────────────────────
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
-
+ 
     try:
         excel_file = request.FILES.get('excel_file')
         if not excel_file:
             return JsonResponse({'error': 'No file provided'}, status=400)
-
         if not excel_file.name.endswith(('.xlsx', '.xls')):
             return JsonResponse({'error': 'Invalid file format. Use .xlsx or .xls'}, status=400)
-
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
     except Exception as e:
         return JsonResponse({'error': f'Excel read error: {str(e)}'}, status=400)
-
-    # ── Find the header row (scan first 10 rows) ──────────────────────────────
-    SERIAL_ALIASES = {'serial no.', 'serial no', 's/n', 'serial number', 'serial'}
+ 
+    # ── Locate the header row ─────────────────────────────────────────────────
+    # We look for a row that contains a cell whose NORMALIZED text is one of
+    # the serial-number aliases.
+    SERIAL_NORM = {'serial no', 's/n', 'serial number', 'serial'}
     header_row_num = None
-    header_row     = []
-
+    header_row_raw = []   # original strings (for the debug response)
+    header_row_norm = []  # normalized strings (for mapping)
+ 
     for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
-        cleaned = [str(cell or '').strip().lower() for cell in row]
-        if any(cell in SERIAL_ALIASES for cell in cleaned):
-            header_row_num = row_idx
-            header_row     = cleaned
+        raw_cells  = [str(cell or '') for cell in row]
+        norm_cells = [_normalize_header(cell) for cell in raw_cells]
+        if any(nc in SERIAL_NORM for nc in norm_cells):
+            header_row_num  = row_idx
+            header_row_raw  = raw_cells
+            header_row_norm = norm_cells
             break
-
+ 
     if header_row_num is None:
         return JsonResponse({
             'error': 'Could not find a header row with a Serial Number column in the first 10 rows.'
         }, status=400)
-
-    # ── Flexible header aliases ───────────────────────────────────────────────
+ 
+    # ── HEADER MAP (keys are NORMALIZED strings) ──────────────────────────────
+    #
+    # After _normalize_header():
+    #   "Assigned M.R."   → "assigned mr"
+    #   "Assigned M.R. #" → "assigned mr"
+    #   "Assigned MR"     → "assigned mr"
+    #   "PTR"             → "ptr"
+    #   "PTR #"           → "ptr"
+    #   "P.T.R."          → "ptr"
+    #
     HEADER_MAP = {
         # box_number
-        'box no.': 'box_number', 'box no': 'box_number',
-        'box number': 'box_number', 'box #': 'box_number', 'box': 'box_number',
-        'box_number': 'box_number',
+        'box no':     'box_number',
+        'box number': 'box_number',
+        'box':        'box_number',
         # serial_number
-        'serial no.': 'serial_number', 'serial no': 'serial_number',
-        'serial number': 'serial_number', 's/n': 'serial_number',
-        'serial': 'serial_number', 'serial_number': 'serial_number',
+        'serial no':     'serial_number',
+        'serial number': 'serial_number',
+        's/n':           'serial_number',
+        'serial':        'serial_number',
         # office_college
-        'college/office': 'office_college', 'college / office': 'office_college',
-        'office': 'office_college', 'college': 'office_college',
-        'office_college': 'office_college',
+        'college/office':  'office_college',
+        'college / office':'office_college',
+        'office':          'office_college',
+        'college':         'office_college',
         # accountable_person
-        'name of student': 'accountable_person', 'name': 'accountable_person',
-        'student name': 'accountable_person', 'accountable person': 'accountable_person',
-        'accountable_person': 'accountable_person',
+        'name of student':  'accountable_person',
+        'name':             'accountable_person',
+        'student name':     'accountable_person',
+        'accountable person': 'accountable_person',
         # borrower_type
-        'borrower type': 'borrower_type', 'type': 'borrower_type',
-        'borrower_type': 'borrower_type',
+        'borrower type': 'borrower_type',
+        'type':          'borrower_type',
         # accountable_officer
-        'accountable officer': 'accountable_officer', 'officer': 'accountable_officer',
-        'accountable_officer': 'accountable_officer',
-        # assigned_mr
-        'assigned m.r.': 'assigned_mr', 'assigned m.r': 'assigned_mr',
-        'assigned mr': 'assigned_mr', 'm.r.': 'assigned_mr',
-        'mr': 'assigned_mr', 'assigned_mr': 'assigned_mr',
+        'accountable officer': 'accountable_officer',
+        'officer':             'accountable_officer',
+        # ── assigned_mr ───────────────────────────────────────────────────────
+        # After normalization all these collapse to 'assigned mr' or 'mr':
+        'assigned mr':   'assigned_mr',   # "Assigned M.R.", "Assigned M.R. #", "Assigned MR", etc.
+        'assigned m r':  'assigned_mr',   # in case of odd spacing
+        'mr':            'assigned_mr',   # standalone "M.R." or "MR"
+        # ── ptr ───────────────────────────────────────────────────────────────
+        # After normalization: "PTR", "PTR #", "P.T.R." all → 'ptr'
+        'ptr':           'ptr',
+        'property tag':  'ptr',
         # device
         'device': 'device',
-        # ptr
-        'ptr': 'ptr',
-        # remarks
+        # date_returned
+        'date returned': 'date_returned',
+        'return date':   'date_returned',
+        'returned date': 'date_returned',
+        'returned on':   'date_returned',
+        # release/return status
+        'release / return':  'release_status_import',
+        'release/return':    'release_status_import',
+        'release status':    'release_status_import',
+        'released/returned': 'release_status_import',
+        # remarks / issue
         'remarks': 'remarks',
-        # issue
-        'issue': 'issue',
-        # status — intentionally ignored (checkboxes handled separately)
-        'status': None,
+        'issue':   'issue',
+        # 'status' intentionally NOT mapped — we use date_returned +
+        # release_status_import instead of the checkbox-style status column.
     }
-
-    # ── Build col_index → field_name mapping ──────────────────────────────────
+ 
+    # ── Build column-index → field-name map ───────────────────────────────────
     col_map = {}
-    for idx, header in enumerate(header_row):
-        field = HEADER_MAP.get(header)
-        if field:  # None (status) and unmapped headers are skipped
+    for idx, norm in enumerate(header_row_norm):
+        field = HEADER_MAP.get(norm)
+        if field:
             col_map[idx] = field
-
+ 
     if 'serial_number' not in col_map.values():
         return JsonResponse({
-            'error': f'Serial column found in header row {header_row_num} but could not be mapped. Headers: {header_row}'
+            'error': (
+                'Serial column found but could not be mapped. '
+                f'Raw headers detected: {header_row_raw}'
+            )
         }, status=400)
-
+ 
+    has_date_col = 'date_returned' in col_map.values()
+ 
     created = 0
     updated = 0
     errors  = []
-
+ 
     for row_idx, row in enumerate(
         ws.iter_rows(min_row=header_row_num + 1, values_only=True),
-        start=header_row_num + 1
+        start=header_row_num + 1,
     ):
         try:
             if not row or all(cell is None for cell in row):
                 continue
-
-            data = {}
+ 
+            data     = {}   # string values
+            raw_data = {}   # raw values (needed for date parsing)
             for col_idx, field_name in col_map.items():
                 if col_idx < len(row):
-                    val = row[col_idx]
-                    data[field_name] = str(val).strip() if val is not None else ''
-
+                    raw = row[col_idx]
+                    raw_data[field_name] = raw
+                    data[field_name] = str(raw).strip() if raw is not None else ''
+ 
             serial_number = data.get('serial_number', '').strip()
             if not serial_number:
                 continue
-
-            borrower_type_raw = data.get('borrower_type', '').lower()
+ 
+            # ── borrower_type ─────────────────────────────────────────────────
+            bt_raw = data.get('borrower_type', '').lower()
             borrower_type = (
-                'student'  if borrower_type_raw == 'student'  else
-                'employee' if borrower_type_raw == 'employee' else ''
+                'student'  if bt_raw == 'student'  else
+                'employee' if bt_raw == 'employee' else ''
             )
-
-            obj, created_flag = DeviceMonitor.objects.update_or_create(
+ 
+            # ── date_returned ─────────────────────────────────────────────────
+            date_returned = _parse_excel_date(raw_data.get('date_returned'))
+ 
+            # ── release_status_import → informs date_returned ─────────────────
+            release_text = data.get('release_status_import', '').strip().lower()
+            if release_text == 'returned':
+                if date_returned is None:
+                    date_returned = get_ph_time()
+            elif release_text in ('released', '—', '-', ''):
+                if not has_date_col:
+                    date_returned = None
+ 
+            # ── upsert ────────────────────────────────────────────────────────
+            _obj, created_flag = DeviceMonitor.objects.update_or_create(
                 serial_number=serial_number,
                 defaults={
                     'box_number':          data.get('box_number', ''),
@@ -635,7 +734,9 @@ def device_monitoring_import(request):
                     'device':              data.get('device', '') or 'Tablet',
                     'ptr':                 data.get('ptr', ''),
                     'remarks':             data.get('remarks', ''),
-                    'issue':               data.get('issue', ''),
+                    'issue':              data.get('issue', ''),
+                    'date_returned':       date_returned,
+                    # Checkboxes always reset to unchecked on import
                     'serviceable':         False,
                     'non_serviceable':     False,
                     'sealed':              False,
@@ -647,18 +748,21 @@ def device_monitoring_import(request):
                 created += 1
             else:
                 updated += 1
-
+ 
         except Exception as e:
             errors.append(f'Row {row_idx}: {str(e)}')
-
+ 
     b = _broadcasts()
     b.broadcast_device_monitoring()
-
+ 
     return JsonResponse({
-        'ok':      True,
-        'created': created,
-        'updated': updated,
-        'errors':  errors,
+        'ok':               True,
+        'created':          created,
+        'updated':          updated,
+        'errors':           errors,
+        # Included so you can verify exact header strings detected from your Excel:
+        'headers_detected': header_row_raw,
+        'headers_mapped':   {str(k): v for k, v in col_map.items()},
     })
 
 
