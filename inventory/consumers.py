@@ -149,85 +149,44 @@ def _build_borrow_requests_payload():
 
 
 def _build_device_monitoring_payload():
-    """
-    Build device monitoring payload.
-    Uses a single bulk lookup instead of per-row DB queries.
-    """
-    from inventory.models import DeviceMonitor, Transaction, TransactionDevice
- 
-    active_tds = TransactionDevice.objects.filter(
-        returned=False
-    ).select_related('transaction', 'transaction__borrow_request').values(
-        'serial_number',
-        'transaction__returned_qty',
-        'transaction__quantity_borrowed',
-        'transaction__returned_at',
-        'transaction__borrow_request__borrower_name',
-        'transaction__office_college',
-    )
- 
-    active_serial_map = {}
-    for td in active_tds:
-        sn = td['serial_number']
-        if sn and sn not in active_serial_map:
-            active_serial_map[sn] = td
- 
-    serial_to_tx = {}
-    for tx in Transaction.objects.select_related('borrow_request').order_by('-borrowed_at'):
-        if not tx.serial_number:
-            continue
-        for sn in [s.strip() for s in tx.serial_number.split(',') if s.strip()]:
-            if sn not in serial_to_tx:
-                serial_to_tx[sn] = tx
- 
-    rows_qs = DeviceMonitor.objects.all().order_by('id')
+    from inventory.models import DeviceMonitor
+
+    rows_qs = DeviceMonitor.objects.all().order_by('box_number', 'id')
     rows = []
+
     for r in rows_qs:
-        sn = (r.serial_number or '').strip()
- 
         if r.date_returned:
-            release_status    = 'Returned'
+            release_status = 'Returned'
             date_returned_str = _fmt_ph(r.date_returned)
-        elif sn and sn in active_serial_map:
-            td_data     = active_serial_map[sn]
-            tx_borrower = td_data['transaction__borrow_request__borrower_name'] or ''
-            tx_office   = td_data['transaction__office_college'] or ''
- 
-            if tx_borrower == r.accountable_person and tx_office == r.office_college:
-                release_status = 'Released'
-            else:
-                release_status = '—'
+        elif r.is_released:
+            release_status = 'Released'
             date_returned_str = '—'
-        elif sn and sn in serial_to_tx:
-            tx = serial_to_tx[sn]
-            release_status    = 'Returned' if tx.returned_qty >= tx.quantity_borrowed else 'Released'
-            date_returned_str = _fmt_ph(tx.returned_at) if tx.returned_at else '—'
         else:
-            release_status    = '—'
+            release_status = '—'
             date_returned_str = '—'
- 
+
         rows.append({
-            'id':                  r.id,
-            'box_number':          r.box_number,
-            'office_college':      r.office_college,
-            'accountable_person':  r.accountable_person,
-            'borrower_type':       r.borrower_type,
+            'id': r.id,
+            'box_number': r.box_number,
+            'office_college': r.office_college,
+            'accountable_person': r.accountable_person,
+            'borrower_type': r.borrower_type,
             'accountable_officer': r.accountable_officer,
-            'assigned_mr':         r.assigned_mr,          # ← was missing
-            'device':              r.device,
-            'serial_number':       r.serial_number,
-            'ptr':                 r.ptr,                  # ← was missing
-            'serviceable':         r.serviceable,
-            'non_serviceable':     r.non_serviceable,
-            'sealed':              r.sealed,
-            'missing':             r.missing,
-            'incomplete':          r.incomplete,
-            'remarks':             r.remarks,
-            'issue':               r.issue,
-            'release_status':      release_status,
-            'date_returned':       date_returned_str,
+            'assigned_mr': r.assigned_mr,
+            'device': r.device,
+            'serial_number': r.serial_number,
+            'ptr': r.ptr,
+            'serviceable': r.serviceable,
+            'non_serviceable': r.non_serviceable,
+            'sealed': r.sealed,
+            'missing': r.missing,
+            'incomplete': r.incomplete,
+            'remarks': r.remarks,
+            'issue': r.issue,
+            'release_status': release_status,
+            'date_returned': date_returned_str,
         })
- 
+
     return {
         'type': 'device_monitoring.update',
         'rows': rows,

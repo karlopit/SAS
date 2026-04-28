@@ -318,52 +318,23 @@ def borrow_management(request):
 def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
- 
+
     rows = list(DeviceMonitor.objects.all())
- 
-    # ── Build lookup maps in ONE query each instead of per-row queries ────────
-    # Map serial_number → active TransactionDevice (unreturned)
-    active_tds = TransactionDevice.objects.filter(
-        returned=False
-    ).select_related('transaction', 'transaction__borrow_request')
- 
-    active_serial_map = {}
-    for td in active_tds:
-        sn = td.serial_number
-        if sn and sn not in active_serial_map:
-            active_serial_map[sn] = td
- 
-    # Annotate each row using the pre-built map — zero extra DB queries
+
     for row in rows:
-        sn = (row.serial_number or '').strip()
- 
         if row.date_returned:
-            row.release_status        = 'Returned'
+            row.release_status = 'Returned'
             row.date_returned_display = format_ph_time(row.date_returned)
-        elif sn and sn in active_serial_map:
-            td = active_serial_map[sn]
-            tx = td.transaction
-            tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else str(tx.borrower_id)
- 
-            # Normalise both sides for case‑insensitive and space‑insensitive comparison
-            tx_borrower_norm = (tx_borrower or '').strip().lower()
-            row_person_norm  = (row.accountable_person or '').strip().lower()
-            tx_college_norm  = (tx.office_college or '').strip().lower()
-            row_college_norm = (row.office_college or '').strip().lower()
- 
-            if tx_borrower_norm == row_person_norm and tx_college_norm == row_college_norm:
-                row.release_status = 'Released'
-            else:
-                row.release_status = '—'
+        elif row.is_released:
+            row.release_status = 'Released'
             row.date_returned_display = '—'
         else:
-            row.release_status        = '—'
+            row.release_status = '—'
             row.date_returned_display = '—'
- 
+
     pending_count = BorrowRequest.objects.filter(status='pending').count()
- 
     return render(request, 'inventory/device_monitoring.html', {
-        'rows':          rows,
+        'rows': rows,
         'pending_count': pending_count,
     })
  
@@ -643,112 +614,84 @@ def _parse_excel_date(raw):
 def device_monitoring_import(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
- 
+
     try:
         excel_file = request.FILES.get('excel_file')
         if not excel_file:
             return JsonResponse({'error': 'No file provided'}, status=400)
         if not excel_file.name.endswith(('.xlsx', '.xls')):
             return JsonResponse({'error': 'Invalid file format. Use .xlsx or .xls'}, status=400)
+
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
     except Exception as e:
         return JsonResponse({'error': f'Excel read error: {str(e)}'}, status=400)
- 
-    # Locate header row with Serial Number (same as before)
+
+    # Header detection (unchanged)
     SERIAL_NORM = {'serial no', 's/n', 'serial number', 'serial'}
     header_row_num = None
     header_row_raw = []
     header_row_norm = []
- 
+
     for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
-        raw_cells = [str(cell or '') for cell in row]
+        raw_cells = [str(cell or '').strip() for cell in row]
         norm_cells = [_normalize_header(cell) for cell in raw_cells]
         if any(nc in SERIAL_NORM for nc in norm_cells):
             header_row_num = row_idx
             header_row_raw = raw_cells
             header_row_norm = norm_cells
             break
- 
+
     if header_row_num is None:
-        return JsonResponse({'error': 'Could not find Serial Number column in first 10 rows'}, status=400)
- 
+        return JsonResponse({'error': 'Could not find Serial Number column'}, status=400)
+
     HEADER_MAP = {
         'box no': 'box_number', 'box number': 'box_number', 'box': 'box_number',
         'serial no': 'serial_number', 'serial number': 'serial_number', 's/n': 'serial_number', 'serial': 'serial_number',
-        'college/office': 'office_college', 'college / office': 'office_college', 'office': 'office_college', 'college': 'office_college',
-        'name of student': 'accountable_person', 'name': 'accountable_person', 'student name': 'accountable_person', 'accountable person': 'accountable_person',
+        'college/office': 'office_college', 'college / office': 'office_college',
+        'office': 'office_college', 'college': 'office_college',
+        'name of student': 'accountable_person', 'name': 'accountable_person',
+        'student name': 'accountable_person', 'accountable person': 'accountable_person',
         'borrower type': 'borrower_type', 'type': 'borrower_type',
         'accountable officer': 'accountable_officer', 'officer': 'accountable_officer',
         'assigned mr': 'assigned_mr', 'assigned m r': 'assigned_mr', 'mr': 'assigned_mr',
         'ptr': 'ptr', 'property tag': 'ptr',
         'device': 'device',
-        'date returned': 'date_returned', 'return date': 'date_returned', 'returned date': 'date_returned', 'returned on': 'date_returned',
-        'release / return': 'release_status_import', 'release/return': 'release_status_import', 'release status': 'release_status_import', 'released/returned': 'release_status_import',
+        'date returned': 'date_returned', 'return date': 'date_returned',
+        'returned date': 'date_returned', 'returned on': 'date_returned',
+        'release / return': 'release_status_import',
+        'release/return': 'release_status_import',
+        'released/return': 'release_status_import',          # ← NEW
+        'released / return': 'release_status_import',        # ← NEW
+        'release status': 'release_status_import',
+        'released/returned': 'release_status_import',
         'remarks': 'remarks', 'issue': 'issue',
     }
- 
+
     col_map = {}
     for idx, norm in enumerate(header_row_norm):
         field = HEADER_MAP.get(norm)
         if field:
             col_map[idx] = field
- 
+
     if 'serial_number' not in col_map.values():
-        return JsonResponse({'error': f'Serial column not mapped. Headers: {header_row_raw}'}, status=400)
- 
+        return JsonResponse({'error': f'Serial column not found. Headers: {header_row_raw}'}, status=400)
+
     created = 0
     updated = 0
     errors = []
- 
-    # Create or get a dummy item for transactions (required by Transaction model)
+
+    # Dummy item for transactions
     dummy_item, _ = Item.objects.get_or_create(
-        name='Tablet (Imported)',
+        name='Tablet (Import)',
         defaults={'quantity': 0, 'available_quantity': 0}
     )
- 
-    def get_or_create_release_transaction(borrower_name, college, accountable_officer, assigned_mr):
-        # Reuse existing open transaction for same borrower and college
-        existing_tx = Transaction.objects.filter(
-            office_college=college,
-            status='borrowed',
-            borrow_request__borrower_name=borrower_name
-        ).first()
-        if existing_tx:
-            return existing_tx
- 
-        # Create a minimal BorrowRequest (auto‑accepted)
-        borrow_req = BorrowRequest.objects.create(
-            borrower_name=borrower_name,
-            borrower_type='student',   # fallback; not critical for display
-            office_college=college,
-            item=None,
-            quantity=1,
-            status='accepted',
-            student_id='',
-            year_level='',
-            section='',
-            college=college,
-            academic_year='',
-        )
-        # Create Transaction linked to dummy item
-        tx = Transaction.objects.create(
-            borrow_request=borrow_req,
-            item=dummy_item,
-            borrower=request.user,
-            office_college=college,
-            quantity_borrowed=1,
-            returned_qty=0,
-            status='borrowed',
-            borrowed_at=timezone.now(),
-        )
-        return tx
- 
+
     for row_idx, row in enumerate(ws.iter_rows(min_row=header_row_num + 1, values_only=True), start=header_row_num + 1):
         try:
             if not row or all(cell is None for cell in row):
                 continue
- 
+
             data = {}
             raw_data = {}
             for col_idx, field_name in col_map.items():
@@ -756,35 +699,36 @@ def device_monitoring_import(request):
                     raw = row[col_idx]
                     raw_data[field_name] = raw
                     data[field_name] = str(raw).strip() if raw is not None else ''
- 
+
             serial_number = data.get('serial_number', '').strip()
             if not serial_number:
                 continue
- 
-            # Borrower type
-            bt_raw = data.get('borrower_type', '').lower()
+
+            accountable_person = (data.get('accountable_person', '') or '').strip()
+            office_college = (data.get('office_college', '') or '').strip()
+            if not office_college:
+                office_college = 'Unknown'
+
+            bt_raw = data.get('borrower_type', '').lower().strip()
             borrower_type = 'student' if bt_raw == 'student' else 'employee' if bt_raw == 'employee' else ''
- 
-            # Date returned
-            date_returned = _parse_excel_date(raw_data.get('date_returned'))
- 
-            # Release/Return status
+
             release_text = data.get('release_status_import', '').strip().lower()
             is_returned = release_text == 'returned'
             is_released = release_text == 'released'
- 
+
+            date_returned = _parse_excel_date(raw_data.get('date_returned'))
             if is_returned and date_returned is None:
                 date_returned = get_ph_time()
             if is_released:
-                date_returned = None  # released devices have no return date
- 
-            # Upsert DeviceMonitor
+                date_returned = None
+
+            # Update or create DeviceMonitor
             obj, created_flag = DeviceMonitor.objects.update_or_create(
                 serial_number=serial_number,
                 defaults={
                     'box_number': data.get('box_number', ''),
-                    'office_college': data.get('office_college', ''),
-                    'accountable_person': data.get('accountable_person', ''),
+                    'office_college': office_college,
+                    'accountable_person': accountable_person,
                     'borrower_type': borrower_type,
                     'accountable_officer': data.get('accountable_officer', ''),
                     'assigned_mr': data.get('assigned_mr', ''),
@@ -793,6 +737,7 @@ def device_monitoring_import(request):
                     'remarks': data.get('remarks', ''),
                     'issue': data.get('issue', ''),
                     'date_returned': date_returned,
+                    'is_released': is_released,
                     'serviceable': False,
                     'non_serviceable': False,
                     'sealed': False,
@@ -804,52 +749,63 @@ def device_monitoring_import(request):
                 created += 1
             else:
                 updated += 1
- 
-            # ── Handle TransactionDevice for released/returned ──────────────────
-            if is_released:
-                # Create active TransactionDevice only if none exists
-                existing_td = TransactionDevice.objects.filter(
+
+            # Handle TransactionDevice
+            if is_returned:
+                TransactionDevice.objects.filter(
                     serial_number=serial_number,
                     returned=False
-                ).first()
-                if not existing_td:
-                    tx = get_or_create_release_transaction(
-                        borrower_name=data.get('accountable_person', ''),
-                        college=data.get('office_college', ''),
-                        accountable_officer=data.get('accountable_officer', ''),
-                        assigned_mr=data.get('assigned_mr', '')
-                    )
-                    TransactionDevice.objects.create(
-                        transaction=tx,
-                        serial_number=serial_number,
-                        box_number=data.get('box_number', ''),
-                        returned=False,
-                        returned_at=None,
-                    )
-            elif is_returned:
-                # Mark any active TransactionDevice as returned
-                active_td = TransactionDevice.objects.filter(
+                ).update(returned=True, returned_at=date_returned or get_ph_time())
+            elif is_released:
+                # Close any existing active transaction
+                TransactionDevice.objects.filter(
                     serial_number=serial_number,
                     returned=False
-                ).first()
-                if active_td:
-                    active_td.returned = True
-                    active_td.returned_at = date_returned or get_ph_time()
-                    active_td.save()
- 
+                ).update(returned=True, returned_at=get_ph_time())
+
+                # Create new BorrowRequest and Transaction
+                borrow_req = BorrowRequest.objects.create(
+                    borrower_name=accountable_person,
+                    borrower_type=borrower_type or 'student',
+                    office_college=office_college,
+                    college=office_college,
+                    item=None,
+                    quantity=1,
+                    status='accepted',
+                    student_id='',
+                    year_level='',
+                    section='',
+                    academic_year='',
+                )
+                tx = Transaction.objects.create(
+                    borrow_request=borrow_req,
+                    item=dummy_item,
+                    borrower=request.user,
+                    office_college=office_college,
+                    quantity_borrowed=1,
+                    returned_qty=0,
+                    status='borrowed',
+                    borrowed_at=timezone.now(),
+                    serial_number=serial_number,
+                )
+                TransactionDevice.objects.create(
+                    transaction=tx,
+                    serial_number=serial_number,
+                    box_number=data.get('box_number', ''),
+                    returned=False,
+                    returned_at=None,
+                )
         except Exception as e:
             errors.append(f'Row {row_idx}: {str(e)}')
- 
+
     b = _broadcasts()
     b.broadcast_device_monitoring()
- 
+
     return JsonResponse({
         'ok': True,
         'created': created,
         'updated': updated,
         'errors': errors,
-        'headers_detected': header_row_raw,
-        'headers_mapped': {str(k): v for k, v in col_map.items()},
     })
 
 

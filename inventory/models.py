@@ -136,6 +136,7 @@ class DeviceMonitor(models.Model):
     transaction_id      = models.IntegerField(null=True, blank=True, db_index=True)
     assigned_mr         = models.CharField(max_length=100, blank=True, verbose_name="Assigned M.R.")
     ptr                 = models.CharField(max_length=100, blank=True, verbose_name="PTR")
+    is_released         = models.BooleanField(default=False, help_text="True if device is currently borrowed/released")
 
     class Meta:
         ordering = ['id']
