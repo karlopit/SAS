@@ -290,19 +290,15 @@ def borrow_management(request):
         raise PermissionDenied
 
     items = Item.objects.all()
+
+    # Show ALL transactions that are currently borrowed (not yet fully returned)
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
-    ).order_by('-borrowed_at')[:50]
+    ).filter(status='borrowed').order_by('-borrowed_at')   # ← no [ :50]
 
     for tx in transactions:
-        if tx.returned_at:
-            tx.returned_at_display = format_ph_time(tx.returned_at)
-        else:
-            tx.returned_at_display = '—'
-        if tx.borrowed_at:
-            tx.borrowed_at_display = format_ph_time(tx.borrowed_at)
-        else:
-            tx.borrowed_at_display = '—'
+        tx.returned_at_display = format_ph_time(tx.returned_at) if tx.returned_at else '—'
+        tx.borrowed_at_display = format_ph_time(tx.borrowed_at) if tx.borrowed_at else '—'
 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
 
