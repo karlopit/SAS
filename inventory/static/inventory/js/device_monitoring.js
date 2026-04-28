@@ -167,11 +167,13 @@
   /* ==================== SEARCH ==================== */
   function rowMatchesSearch(row, query) {
     if (!query) return true;
-    const tds = row.querySelectorAll('td');
-    let text = '';
-    tds.forEach(td => { text += ' ' + td.textContent; });
-    return text.toLowerCase().includes(query);
-  }
+    const serialInput = row.querySelector('input[name="serial_number"]');
+    const boxInput = row.querySelector('input[name="box_number"]');
+    const serial = serialInput ? serialInput.value.toLowerCase() : '';
+    const box = boxInput ? boxInput.value.toLowerCase() : '';
+    const combined = serial + ' ' + box;
+    return combined.includes(query);
+}
 
   /* ==================== APPLY FILTERS ==================== */
   function applyDmFilters() {
