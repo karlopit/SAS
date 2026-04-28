@@ -1649,7 +1649,7 @@ def export_device_monitoring(request):
     ws_details.sheet_properties.tabColor = 'FFFFFF'
 
     headers = [
-        'Box Number', 'College / Office', 'Accountable Person', 'Borrower Type',
+        'Box Number', 'College / Office', 'Student', 'Borrower Type',
         'Accountable Officer', 'Assigned M.R.', 'Device', 'Serial Number',
         'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete',
         'Release / Return', 'Date Returned', 'Remarks', 'Issue',

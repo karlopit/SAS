@@ -2,14 +2,17 @@
  * realtime.js — WebSocket client with AJAX-poll fallback
  *
  * Usage (in a page template):
- *   InvSysRT.connect('/ws/dashboard/', onMessage);
+ *   InvSysRT.connect('/ws/dashboard/', onMessage, indicatorElement);
  *
  * The module:
  *   1. Opens a WebSocket.
  *   2. On every message it calls onMessage(data).
  *   3. If the WS fails / is unavailable it falls back to polling the
  *      matching /ajax/… endpoint every POLL_INTERVAL ms.
+ *   4. Dispatches custom events for badge updates ONLY when the value
+ *      is a number (including 0). This prevents blank badges.
  */
+
 (function (global) {
   'use strict';
 
@@ -25,7 +28,6 @@
   };
 
   /* ── Status indicator helpers ─────────────────────────────────────────── */
-
   function _setIndicator(el, state) {
     if (!el) return;
     el.className = `rt-indicator rt-${state}`;
@@ -35,12 +37,13 @@
 
   /* ── Custom event dispatcher for live badge updates ───────────────────── */
   function _dispatchEvents(data) {
-    if (data && data.pending_count !== undefined) {
+    // Only fire if the value exists and is a number (including 0)
+    if (typeof data.pending_count === 'number') {
       window.dispatchEvent(new CustomEvent('invsys:pending_count', {
         detail: data.pending_count
       }));
     }
-    if (data && data.graduation_warning_count !== undefined) {
+    if (typeof data.graduation_warning_count === 'number') {
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', {
         detail: data.graduation_warning_count
       }));
@@ -48,14 +51,12 @@
   }
 
   /* ── WebSocket transport ──────────────────────────────────────────────── */
-
   function _wsUrl(path) {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     return `${proto}://${location.host}${path}`;
   }
 
   /* ── Main connect function ────────────────────────────────────────────── */
-
   /**
    * @param {string}   wsPath    e.g. '/ws/dashboard/'
    * @param {Function} onMessage called with parsed JSON data on every update

@@ -1,39 +1,40 @@
 """
 inventory/context_processors.py
 
-Injects `graduation_warning_count` into every template context.
-Counts active transactions of 4th/5th year students (same logic as the graduation_warnings view).
-No caching – ensures the badge is always correct on every request.
+Injects `pending_count` and `graduation_warning_count` into every template context.
+Runs only for authenticated staff users to avoid unnecessary DB queries.
 """
-from django.core.cache import cache
+from inventory.models import BorrowRequest, Transaction
 
 
 def graduation_warning_count(request):
-    if not request.user.is_authenticated:
-        return {'graduation_warning_count': 0}
+    """
+    Returns both pending borrow requests count and graduation warning count.
+    (Kept the original function name to stay compatible with existing settings.)
+    """
+    pending_count = 0
+    graduation_warning_count = 0
 
-    if not hasattr(request.user, 'role') or request.user.role != 'staff':
-        return {'graduation_warning_count': 0}
+    if request.user.is_authenticated and hasattr(request.user, 'role') and request.user.role == 'staff':
+        # Fast count of pending borrow requests
+        pending_count = BorrowRequest.objects.filter(status='pending').count()
 
-    # No caching – simply compute fresh count every time.
-    # The query is light (two filtered joins) and acceptable for a small office.
-    from inventory.models import Transaction, BorrowRequest
+        # Count active transactions from graduating students (same logic as views)
+        graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+        active_trans = Transaction.objects.filter(
+            status='borrowed',
+            borrow_request__borrower_type='student',
+        ).select_related('borrow_request')
 
-    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+        for tx in active_trans:
+            br = tx.borrow_request
+            if not br:
+                continue
+            year_level = (br.year_level or br.year_section or '').strip().lower()
+            if any(k in year_level for k in graduating_keywords):
+                graduation_warning_count += 1
 
-    # Get all active transactions (status='borrowed') that belong to a student borrow request
-    active_transactions = Transaction.objects.filter(
-        status='borrowed',
-        borrow_request__borrower_type='student',
-    ).select_related('borrow_request')
-
-    count = 0
-    for tx in active_transactions:
-        br = tx.borrow_request
-        if not br:
-            continue
-        year_level = (br.year_level or br.year_section or '').strip().lower()
-        if any(k in year_level for k in graduating_keywords):
-            count += 1
-
-    return {'graduation_warning_count': count}
+    return {
+        'pending_count': pending_count,
+        'graduation_warning_count': graduation_warning_count,
+    }

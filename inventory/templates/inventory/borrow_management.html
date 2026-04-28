@@ -86,53 +86,6 @@
   </div>
 </div>
 
-<!-- ── Inventory Items Table ── -->
-<div class="table-card">
-  <div class="table-header">
-    <span class="table-title">Inventory Items</span>
-    <div class="table-search">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/>
-      </svg>
-      <input type="text" id="item-search" placeholder="Search items…"/>
-    </div>
-  </div>
-  <div style="overflow-x:auto">
-    <table id="items-table" style="width:100%;margin:0 auto">
-      <thead>
-        <tr>
-          <th style="text-align:center;width:5%">#</th>
-          <th style="text-align:center;width:20%">Item Name</th>
-          <th style="text-align:center;width:15%">Serial Number</th>
-          <th style="text-align:center;width:30%">Description</th>
-          <th style="text-align:center;width:15%">Availability</th>
-          <th style="text-align:center;width:15%">Status</th>
-        </tr>
-      </thead>
-      <tbody id="items-tbody">
-        {% for item in items %}
-        <tr>
-          <td style="text-align:center;color:var(--muted)">{{ forloop.counter }}</td>
-          <td style="text-align:center;font-weight:600">{{ item.name }}</td>
-          <td style="text-align:center;color:var(--muted);font-size:12px">{{ item.serial|default:"—"|linebreaksbr }}</td>
-          <td style="text-align:center;color:var(--muted)">{{ item.description|truncatechars:40|default:"—" }}</td>
-          <td style="text-align:center"><div data-qty="{{ item.available_quantity }}" data-total="{{ item.quantity }}"></div></td>
-          <td style="text-align:center">
-            {% if item.available_quantity == 0 %}
-              <span class="badge badge-red">Out of Stock</span>
-            {% else %}
-              <span class="badge badge-green">In Stock</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No items found.职务</tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
 <!-- ── Transactions Table ── -->
 <div class="table-card" style="margin-top:24px">
   <div class="table-header" style="flex-wrap:wrap;gap:12px">
