@@ -1,12 +1,13 @@
 /**
  * dashboard.js
- * Handles the staff dashboard: stat card flashes, pie chart, bar chart,
- * and the WebSocket / AJAX-poll real-time connection.
+ * Handles the staff dashboard: stat card flashes,
+ * release bar chart (Released / Returned), device‑monitoring bar chart,
+ * and the WebSocket / AJAX‑poll real‑time connection.
  *
  * Expects a global DASHBOARD_INIT object injected by the Django template:
  *   const DASHBOARD_INIT = {
- *     available: <int>,
- *     borrowed:  <int>,
+ *     released: <int>,
+ *     returned: <int>,
  *     bar: { offices, serviceable, nonService, sealed, missing, incomplete }
  *   };
  */
@@ -25,67 +26,71 @@
     setTimeout(() => el.classList.remove('flash'), 300);
   }
 
-  /* ── Pie chart ────────────────────────────────────────────────────────── */
-  let pieChart = null;
+  /* ═══════════════════════════════════════════════════════════════════════
+     RELEASE BAR CHART  (replaces the old pie chart)
+  ═══════════════════════════════════════════════════════════════════════ */
+  let releaseBarChart = null;
 
-  function drawPie(available, borrowed) {
-    const canvas = document.getElementById('pieChart');
+  function drawReleaseBar(released, returned) {
+    const canvas = document.getElementById('releaseBarChart');
     if (!canvas) return;
-    if (pieChart) { pieChart.destroy(); pieChart = null; }
+    if (releaseBarChart) { releaseBarChart.destroy(); releaseBarChart = null; }
 
-    const total = available + borrowed;
+    const total = released + returned;
 
-    if (total === 0) {
-      pieChart = new Chart(canvas.getContext('2d'), {
-        type: 'pie',
-        data: {
-          labels: ['No Data'],
-          datasets: [{ data: [1], backgroundColor: ['#334155'], borderWidth: 2, borderColor: '#1e293b' }]
+    releaseBarChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ['Released', 'Returned'],
+        datasets: total === 0
+          ? [{ label: 'No Data', data: [0, 0], backgroundColor: '#334155' }]
+          : [{
+              label: 'Devices',
+              data: [released, returned],
+              backgroundColor: ['#f59e0b', '#22c55e'],
+              borderWidth: 0,
+              borderRadius: 6,
+              barPercentage: 0.6,
+            }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `  ${ctx.label}: ${ctx.raw} (${total ? Math.round(ctx.raw / total * 100) : 0}%)`
+            },
+            bodyColor: '#fff',
+            titleColor: '#fff',
+            backgroundColor: '#1e293b',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+          }
         },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: { label: () => ' No data' },
-              bodyColor: '#fff', titleColor: '#fff',
-              backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1
-            }
+        scales: {
+          x: {
+            ticks: { color: '#fff', font: { size: 13 } },
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#fff', stepSize: 1, precision: 0 },
+            grid: { color: 'rgba(255,255,255,0.08)' }
           }
         }
-      });
-    } else {
-      pieChart = new Chart(canvas.getContext('2d'), {
-        type: 'pie',
-        data: {
-          labels: ['Available', 'Borrowed'],
-          datasets: [{
-            data: [available, borrowed],
-            backgroundColor: ['#22c55e', '#f59e0b'],
-            borderWidth: 2, borderColor: '#1e293b'
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: { label: ctx => `  ${ctx.label}: ${ctx.parsed} of ${total}` },
-              bodyColor: '#fff', titleColor: '#fff',
-              backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1
-            }
-          }
-        }
-      });
-    }
+      }
+    });
 
-    const la = document.getElementById('legend-available');
-    const lb = document.getElementById('legend-borrowed');
-    if (la) la.textContent = available;
-    if (lb) lb.textContent = borrowed;
+    // Update legend numbers (the <strong> elements)
+    const lr = document.getElementById('legend-released');
+    const lt = document.getElementById('legend-returned');
+    if (lr) lr.textContent = released;
+    if (lt) lt.textContent = returned;
   }
 
-  /* ── Bar chart ────────────────────────────────────────────────────────── */
+  /* ── Bar chart (Device Monitoring by College / Office) ───────────────── */
   let barChart = null;
 
   function drawBar(bar) {
@@ -96,7 +101,9 @@
     const hasData     = bar.offices.length > 0;
     const LABEL_COLOR = '#ffffff';
     const GRID_COLOR  = 'rgba(255,255,255,0.08)';
-    canvas.style.height = hasData ? Math.max(200, bar.offices.length * 48) + 'px' : '120px';
+    canvas.style.height = hasData
+      ? Math.max(200, bar.offices.length * 48) + 'px'
+      : '120px';
 
     barChart = new Chart(canvas.getContext('2d'), {
       type: 'bar',
@@ -115,16 +122,30 @@
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { color: LABEL_COLOR, padding: 14, font: { size: 12 }, boxWidth: 12 }
+            labels: {
+              color: LABEL_COLOR, padding: 14,
+              font: { size: 12 }, boxWidth: 12
+            }
           },
           tooltip: {
             bodyColor: '#fff', titleColor: '#fff',
-            backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1
+            backgroundColor: '#1e293b',
+            borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1
           }
         },
         scales: {
-          x: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } },
-          y: { stacked: true, ticks: { color: LABEL_COLOR, font: { size: 12 } }, grid: { color: GRID_COLOR }, border: { color: GRID_COLOR } }
+          x: {
+            stacked: true,
+            ticks: { color: LABEL_COLOR, font: { size: 12 } },
+            grid:   { color: GRID_COLOR },
+            border: { color: GRID_COLOR }
+          },
+          y: {
+            stacked: true,
+            ticks: { color: LABEL_COLOR, font: { size: 12 } },
+            grid:   { color: GRID_COLOR },
+            border: { color: GRID_COLOR }
+          }
         }
       }
     });
@@ -139,17 +160,21 @@
     flashStat(document.getElementById('stat-returns'),  data.total_returns);
     flashStat(document.getElementById('stat-pending'),  data.pending_count);
 
-    window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+    window.dispatchEvent(new CustomEvent('invsys:pending_count',      { detail: data.pending_count }));
     window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
 
-    drawPie(data.available_qty, data.borrowed_qty);
+    // Update release bar chart (Released / Returned)
+    const released = typeof data.dm_released === 'number' ? data.dm_released : 0;
+    const returned = typeof data.dm_returned  === 'number' ? data.dm_returned  : 0;
+    drawReleaseBar(released, returned);
+
     if (data.bar) drawBar(data.bar);
   }
 
   /* ── Boot ─────────────────────────────────────────────────────────────── */
   function boot() {
     if (typeof DASHBOARD_INIT !== 'undefined') {
-      drawPie(DASHBOARD_INIT.available, DASHBOARD_INIT.borrowed);
+      drawReleaseBar(DASHBOARD_INIT.released, DASHBOARD_INIT.returned);
       drawBar(DASHBOARD_INIT.bar);
     }
     const indicator = document.getElementById('rt-indicator');

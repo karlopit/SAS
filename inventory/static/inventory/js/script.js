@@ -6,8 +6,8 @@ function showToast(message, type = 'success') {
   toast.innerHTML = `<span class="toast-dot"></span><span>${message}</span>`;
   container.appendChild(toast);
   setTimeout(() => {
-    toast.style.opacity   = '0';
-    toast.style.transform = 'translateX(16px)';
+    toast.style.opacity    = '0';
+    toast.style.transform  = 'translateX(16px)';
     toast.style.transition = '0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, 3000);
@@ -43,14 +43,14 @@ function initTableSearch(inputId, tableId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  initTableSearch('item-search', 'items-table');
+  initTableSearch('item-search',        'items-table');
   initTableSearch('transaction-search', 'transactions-table');
 });
 
 /* ── Quantity Bar Renderer ── */
 function renderQtyBars() {
   document.querySelectorAll('[data-qty]').forEach(el => {
-    const available = parseInt(el.dataset.qty, 10);
+    const available = parseInt(el.dataset.qty,   10);
     const total     = parseInt(el.dataset.total, 10);
     if (isNaN(available) || isNaN(total) || total === 0) return;
     const pct = Math.round((available / total) * 100);
@@ -96,38 +96,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   itemSelect.addEventListener('change', checkQty);
-  qtyInput.addEventListener('input', checkQty);
+  qtyInput.addEventListener('input',   checkQty);
   checkQty();
 });
 
-/* ── Badge Live Updates (from WebSocket / AJAX) ── */
-(function() {
-  // Pending requests badge
+/* ════════════════════════════════════════════════════════════════
+   Badge Live Updates
+   ────────────────────────────────────────────────────────────────
+   Rules:
+   1. NEVER hide a badge just because a page didn't send the count.
+      Only update when the incoming value is a valid, non-negative
+      integer.
+   2. Badge state is stored in module-level variables so that
+      navigating to a page that doesn't broadcast these counts
+      (e.g. Profile) leaves the last-known value intact.
+   3. grad_warning_count of 0 DOES hide the badge (it is a real
+      zero, not "unknown"). pending_count of 0 also hides it.
+   ════════════════════════════════════════════════════════════════ */
+(function () {
+  // Last known values — initialised from server-rendered DOM so the
+  // first paint is always correct even before any WS message arrives.
   const pendingBadge = document.getElementById('nav-pending-badge');
-  if (pendingBadge) {
-    window.addEventListener('invsys:pending_count', (e) => {
-      const count = e.detail;
-      // GUARD: skip if not a real number — undefined/null/NaN must never hide the badge
-      if (typeof count !== 'number' || isNaN(count)) return;
-      pendingBadge.textContent   = count > 0 ? count : '';
-      pendingBadge.style.display = count > 0 ? '' : 'none';
-    });
+  const gradBadge    = document.getElementById('nav-grad-badge');
+
+  function _applyPending(count) {
+    if (!pendingBadge) return;
+    pendingBadge.textContent   = count > 0 ? String(count) : '';
+    pendingBadge.style.display = count > 0 ? '' : 'none';
   }
 
-  // Graduation warning badge
-  const gradBadge = document.getElementById('nav-grad-badge');
-  if (gradBadge) {
-    window.addEventListener('invsys:grad_warning_count', (e) => {
-      const count = e.detail;
-      // GUARD: skip if not a real number — undefined/null/NaN must never hide the badge
-      if (typeof count !== 'number' || isNaN(count)) return;
-      gradBadge.textContent      = count >= 0 ? String(count) : '0';
-      gradBadge.style.display    = count > 0 ? '' : 'none';
-      if (count > 0) {
-        gradBadge.classList.add('grad-badge-pulse');
-      } else {
-        gradBadge.classList.remove('grad-badge-pulse');
-      }
-    });
+  function _applyGrad(count) {
+    if (!gradBadge) return;
+    gradBadge.textContent   = String(count);
+    gradBadge.style.display = count > 0 ? '' : 'none';
+    if (count > 0) gradBadge.classList.add('grad-badge-pulse');
+    else           gradBadge.classList.remove('grad-badge-pulse');
   }
+
+  // ── pending_count ─────────────────────────────────────────────
+  window.addEventListener('invsys:pending_count', (e) => {
+    const count = e.detail;
+    // Guard: must be a real non-negative integer
+    if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) return;
+    _applyPending(Math.round(count));
+  });
+
+  // ── grad_warning_count ────────────────────────────────────────
+  window.addEventListener('invsys:grad_warning_count', (e) => {
+    const count = e.detail;
+    // Guard: must be a real non-negative integer
+    if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) return;
+    _applyGrad(Math.round(count));
+  });
 })();

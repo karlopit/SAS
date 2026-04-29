@@ -112,6 +112,17 @@ def index(request):
     monitors = DeviceMonitor.objects.all()
     offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
+    # ── Released / Returned counts for pie chart ──────────────────────────
+    # Released = is_released True  AND  date_returned is None  (device is out)
+    # Returned = date_returned is not None  (device is physically back)
+    dm_released = 0
+    dm_returned = 0
+    for m in monitors:
+        if m.date_returned:
+            dm_returned += 1
+        elif getattr(m, 'is_released', False):
+            dm_released += 1
+
     return render(request, 'inventory/index.html', {
         'items':          items,
         'active_borrows': active_borrows,
@@ -119,6 +130,10 @@ def index(request):
         'pending_count':  pending_count,
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
+        # pie chart
+        'dm_released':    dm_released,
+        'dm_returned':    dm_returned,
+        # bar chart
         'dm_offices':     json.dumps(offices),
         'dm_serviceable': json.dumps([monitors.filter(office_college=o, serviceable=True).count()     for o in offices]),
         'dm_non_service': json.dumps([monitors.filter(office_college=o, non_serviceable=True).count() for o in offices]),
@@ -706,7 +721,7 @@ def device_monitoring_import(request):
                 office_college = 'Unknown'
 
             bt_raw = data.get('borrower_type', '').lower().strip()
-            borrower_type = 'student' if bt_raw == 'student' else 'employee' if bt_raw == 'employee' else ''
+            borrower_type = 'employee' if bt_raw == 'employee' else 'student'
 
             release_text = data.get('release_status_import', '').strip().lower()
             is_returned = release_text == 'returned'

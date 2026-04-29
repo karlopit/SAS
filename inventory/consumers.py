@@ -5,8 +5,8 @@ from channels.db import database_sync_to_async
 
 PH_TZ = pytz.timezone('Asia/Manila')
 
+
 def _fmt_ph(dt):
-    """Format a datetime to Philippine time — matches format_ph_time() in views.py."""
     if not dt:
         return '—'
     import django.utils.timezone as tz
@@ -16,7 +16,7 @@ def _fmt_ph(dt):
 
 
 def _get_grad_count():
-    """Shared helper — count active transactions from graduating students."""
+    """Count active transactions from graduating students (4th/5th year)."""
     from inventory.models import Transaction
     graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
     active_trans = Transaction.objects.filter(
@@ -33,13 +33,34 @@ def _get_grad_count():
     return count
 
 
+def _get_dm_release_counts():
+    """
+    Count Released and Returned devices from DeviceMonitor.
+
+    Released  = is_released is True  AND date_returned is NULL
+    Returned  = date_returned is NOT NULL  (device is physically back)
+    """
+    from inventory.models import DeviceMonitor
+    monitors = DeviceMonitor.objects.all()
+
+    released_count = 0
+    returned_count = 0
+
+    for m in monitors:
+        if m.date_returned:
+            returned_count += 1
+        elif getattr(m, 'is_released', False):
+            released_count += 1
+
+    return released_count, returned_count
+
+
 def _build_dashboard_payload():
     from django.db.models import Sum, F, ExpressionWrapper, IntegerField
     from inventory.models import Item, Transaction, BorrowRequest, DeviceMonitor
 
-    items_count   = Item.objects.count()
-    available_qty = Item.objects.aggregate(t=Sum('available_quantity'))['t'] or 0
-
+    items_count    = Item.objects.count()
+    available_qty  = Item.objects.aggregate(t=Sum('available_quantity'))['t'] or 0
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
     pending_count  = BorrowRequest.objects.filter(status='pending').count()
@@ -64,7 +85,8 @@ def _build_dashboard_payload():
         'incomplete':  [monitors.filter(office_college=o, incomplete=True).count()      for o in offices],
     }
 
-    grad_count = _get_grad_count()
+    grad_count               = _get_grad_count()
+    dm_released, dm_returned = _get_dm_release_counts()
 
     return {
         'type':                     'dashboard.update',
@@ -74,6 +96,8 @@ def _build_dashboard_payload():
         'pending_count':            pending_count,
         'available_qty':            available_qty,
         'borrowed_qty':             borrowed_qty,
+        'dm_released':              dm_released,   # ← new: devices currently released
+        'dm_returned':              dm_returned,   # ← new: devices physically returned
         'bar':                      bar,
         'graduation_warning_count': grad_count,
     }
@@ -119,13 +143,14 @@ def _build_borrow_management_payload():
     ))
 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
+    grad_count    = _get_grad_count()
 
     return {
         'type':                     'borrow_management.update',
         'transactions':             transactions_data,
         'items':                    items_data,
         'pending_count':            pending_count,
-        'graduation_warning_count': _get_grad_count(),  # ← was missing
+        'graduation_warning_count': grad_count,
     }
 
 
@@ -149,13 +174,14 @@ def _build_borrow_requests_payload():
         })
 
     pending_count = len(pending)
+    grad_count    = _get_grad_count()
 
     return {
         'type':                     'borrow_requests.update',
         'pending':                  pending,
         'count':                    pending_count,
-        'pending_count':            pending_count,           # ← explicit alias
-        'graduation_warning_count': _get_grad_count(),       # ← was missing
+        'pending_count':            pending_count,
+        'graduation_warning_count': grad_count,
     }
 
 
@@ -163,17 +189,17 @@ def _build_device_monitoring_payload():
     from inventory.models import DeviceMonitor, BorrowRequest
 
     rows_qs = DeviceMonitor.objects.all().order_by('box_number', 'id')
-    rows = []
+    rows    = []
 
     for r in rows_qs:
         if r.date_returned:
-            release_status = 'Returned'
+            release_status    = 'Returned'
             date_returned_str = _fmt_ph(r.date_returned)
-        elif r.is_released:
-            release_status = 'Released'
+        elif getattr(r, 'is_released', False):
+            release_status    = 'Released'
             date_returned_str = '—'
         else:
-            release_status = '—'
+            release_status    = '—'
             date_returned_str = '—'
 
         rows.append({
@@ -199,12 +225,13 @@ def _build_device_monitoring_payload():
         })
 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
+    grad_count    = _get_grad_count()
 
     return {
         'type':                     'device_monitoring.update',
         'rows':                     rows,
-        'pending_count':            pending_count,           # ← was missing
-        'graduation_warning_count': _get_grad_count(),       # ← was missing
+        'pending_count':            pending_count,
+        'graduation_warning_count': grad_count,
     }
 
 

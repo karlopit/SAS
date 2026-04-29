@@ -30,7 +30,7 @@
     .main    { overflow-x: auto !important; }
     .content { overflow-x: auto !important; }
 
-    /* Graduation warning badge — amber pulse */
+    /* Graduation warning badge */
     .grad-badge {
       background: var(--warning); color: #000;
       border-radius: 10px; padding: 1px 7px;
@@ -93,7 +93,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
         </svg>
         Borrow Requests
-        <span id="nav-pending-badge" class="pending-badge" style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">
+        <span id="nav-pending-badge"
+              class="pending-badge"
+              style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto;{% if not pending_count %}display:none{% endif %}">
           {{ pending_count|default:'' }}
         </span>
       </a>
@@ -113,18 +115,19 @@
         Device Monitoring
       </a>
 
-      <!-- ── Graduation Warnings (badge always visible, JS controls visibility) ── -->
       <a href="{% url 'graduation_warnings' %}"
          class="nav-item {% if request.resolver_match.url_name == 'graduation_warnings' %}active{% endif %}">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 14l9-5-9-5-9 5 9 5z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5z"/>
           <path stroke-linecap="round" stroke-linejoin="round"
                 d="M12 14l6.16-3.422A12.083 12.083 0 0121 13.5c0 3.038-2.686 5.5-6 5.5s-6-2.462-6-5.5c0-.538.072-1.059.208-1.556L12 14z"/>
         </svg>
         Graduation Warnings
+        {# Always render the badge element — JS controls visibility. #}
+        {# Server-render the correct count/visibility for the first paint. #}
         <span id="nav-grad-badge"
-              class="grad-badge {% if graduation_warning_count %}grad-badge-pulse{% endif %}">
+              class="grad-badge {% if graduation_warning_count and graduation_warning_count > 0 %}grad-badge-pulse{% endif %}"
+              style="{% if not graduation_warning_count or graduation_warning_count == 0 %}display:none{% endif %}">
           {{ graduation_warning_count|default:"0" }}
         </span>
       </a>

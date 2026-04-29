@@ -35,30 +35,32 @@
 {% if request.user.role == 'staff' %}
 <div style="display:grid;grid-template-columns:320px 1fr;gap:24px;margin-top:24px;align-items:start">
 
+  <!-- ── RELEASE BAR CHART (Released / Returned) ── -->
   <div class="table-card" style="padding:24px">
-    <div class="table-title" style="margin-bottom:4px;color:#fff">Tablet Availability</div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Live counts from inventory</p>
-    <div style="position:relative;width:100%;max-width:240px;margin:0 auto">
-      <canvas id="pieChart"></canvas>
+    <div class="table-title" style="margin-bottom:4px;color:#fff">Device Release Status</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Live counts from Device Monitoring</p>
+    <div style="position:relative;width:100%;height:220px;margin:0 auto">
+      <canvas id="releaseBarChart"></canvas>
     </div>
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#fff">
         <span style="display:flex;align-items:center;gap:8px">
-          <span style="width:12px;height:12px;border-radius:50%;background:#22c55e;flex-shrink:0"></span>
-          Available
+          <span style="width:12px;height:12px;border-radius:4px;background:#f59e0b;flex-shrink:0"></span>
+          Released
         </span>
-        <strong id="legend-available">{{ available_qty }}</strong>
+        <strong id="legend-released">{{ dm_released|default:0 }}</strong>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#fff">
         <span style="display:flex;align-items:center;gap:8px">
-          <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>
-          Borrowed
+          <span style="width:12px;height:12px;border-radius:4px;background:#22c55e;flex-shrink:0"></span>
+          Returned
         </span>
-        <strong id="legend-borrowed">{{ borrowed_qty }}</strong>
+        <strong id="legend-returned">{{ dm_returned|default:0 }}</strong>
       </div>
     </div>
   </div>
 
+  <!-- ── BAR CHART: Device Monitoring by College / Office ── -->
   <div class="table-card" style="padding:24px">
     <div class="table-title" style="margin-bottom:4px;color:#fff">Device Monitoring by College / Office</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Live counts from Device Monitoring table</p>
@@ -152,11 +154,11 @@
 {% block extra_js %}
 {% load static %}
 {% if request.user.role == 'staff' %}
-{# Seed data for dashboard.js — no logic here, just a data object #}
+{# Seed data for dashboard.js — Released/Returned counts from DeviceMonitor #}
 <script>
 const DASHBOARD_INIT = {
-  available: {{ available_qty|default:0 }},
-  borrowed:  {{ borrowed_qty|default:0 }},
+  released: {{ dm_released|default:0 }},
+  returned: {{ dm_returned|default:0 }},
   bar: {
     offices:     {{ dm_offices|safe }},
     serviceable: {{ dm_serviceable|safe }},
