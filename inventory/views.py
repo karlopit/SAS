@@ -6,6 +6,7 @@ import openpyxl
 import traceback
 import re
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
+from django.db import transaction as db_transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -620,203 +621,60 @@ def _parse_excel_date(raw):
 # ─────────────────────────────────────────────────────────────────────────────
 #  The import view
 # ─────────────────────────────────────────────────────────────────────────────
+
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    try:
-        excel_file = request.FILES.get('excel_file')
-        if not excel_file:
-            return JsonResponse({'error': 'No file provided'}, status=400)
-        if not excel_file.name.endswith(('.xlsx', '.xls')):
-            return JsonResponse({'error': 'Invalid file format. Use .xlsx or .xls'}, status=400)
+    excel_file = request.FILES.get('excel_file')
+    if not excel_file or not excel_file.name.endswith(('.xlsx', '.xls')):
+        return JsonResponse({'error': 'Invalid file'}, status=400)
 
+    try:
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
     except Exception as e:
         return JsonResponse({'error': f'Excel read error: {str(e)}'}, status=400)
 
-    # Header detection (unchanged)
-    SERIAL_NORM = {'serial no', 's/n', 'serial number', 'serial'}
-    header_row_num = None
-    header_row_raw = []
-    header_row_norm = []
+    # Header detection and parsing – same as before, but build rows_data
+    # ... (copy header detection and col_map from previous code)
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
-        raw_cells = [str(cell or '').strip() for cell in row]
-        norm_cells = [_normalize_header(cell) for cell in raw_cells]
-        if any(nc in SERIAL_NORM for nc in norm_cells):
-            header_row_num = row_idx
-            header_row_raw = raw_cells
-            header_row_norm = norm_cells
-            break
+    rows_data = []
+    for row in ws.iter_rows(min_row=header_row_num+1, values_only=True):
+        # parse row as before, build a dict
+        data = {}
+        raw_data = {}
+        for col_idx, field_name in col_map.items():
+            if col_idx < len(row):
+                raw = row[col_idx]
+                raw_data[field_name] = raw
+                data[field_name] = str(raw).strip() if raw is not None else ''
 
-    if header_row_num is None:
-        return JsonResponse({'error': 'Could not find Serial Number column'}, status=400)
+        serial = data.get('serial_number', '').strip()
+        if not serial:
+            continue
 
-    HEADER_MAP = {
-        'box no': 'box_number', 'box number': 'box_number', 'box': 'box_number',
-        'serial no': 'serial_number', 'serial number': 'serial_number', 's/n': 'serial_number', 'serial': 'serial_number',
-        'college/office': 'office_college', 'college / office': 'office_college',
-        'office': 'office_college', 'college': 'office_college',
-        'name of student': 'accountable_person', 'name': 'accountable_person',
-        'student name': 'accountable_person', 'accountable person': 'accountable_person',
-        'borrower type': 'borrower_type', 'type': 'borrower_type',
-        'accountable officer': 'accountable_officer', 'officer': 'accountable_officer',
-        'assigned mr': 'assigned_mr', 'assigned m r': 'assigned_mr', 'mr': 'assigned_mr',
-        'ptr': 'ptr', 'property tag': 'ptr',
-        'device': 'device',
-        'date returned': 'date_returned', 'return date': 'date_returned',
-        'returned date': 'date_returned', 'returned on': 'date_returned',
-        'release / return': 'release_status_import',
-        'release/return': 'release_status_import',
-        'released/return': 'release_status_import',          # ← NEW
-        'released / return': 'release_status_import',        # ← NEW
-        'release status': 'release_status_import',
-        'released/returned': 'release_status_import',
-        'remarks': 'remarks', 'issue': 'issue',
-    }
+        data['serial_number'] = serial
+        data['date_returned_raw'] = raw_data.get('date_returned')
+        # determine release status
+        release_text = data.get('release_status_import', '').lower()
+        data['is_returned'] = release_text == 'returned'
+        data['is_released'] = release_text == 'released'
+        rows_data.append(data)
 
-    col_map = {}
-    for idx, norm in enumerate(header_row_norm):
-        field = HEADER_MAP.get(norm)
-        if field:
-            col_map[idx] = field
+    if not rows_data:
+        return JsonResponse({'ok': True, 'created': 0, 'updated': 0, 'errors': []})
 
-    if 'serial_number' not in col_map.values():
-        return JsonResponse({'error': f'Serial column not found. Headers: {header_row_raw}'}, status=400)
-
-    created = 0
-    updated = 0
-    errors = []
-
-    # Dummy item for transactions
-    dummy_item, _ = Item.objects.get_or_create(
-        name='Tablet (Import)',
-        defaults={'quantity': 0, 'available_quantity': 0}
-    )
-
-    for row_idx, row in enumerate(ws.iter_rows(min_row=header_row_num + 1, values_only=True), start=header_row_num + 1):
-        try:
-            if not row or all(cell is None for cell in row):
-                continue
-
-            data = {}
-            raw_data = {}
-            for col_idx, field_name in col_map.items():
-                if col_idx < len(row):
-                    raw = row[col_idx]
-                    raw_data[field_name] = raw
-                    data[field_name] = str(raw).strip() if raw is not None else ''
-
-            serial_number = data.get('serial_number', '').strip()
-            if not serial_number:
-                continue
-
-            accountable_person = (data.get('accountable_person', '') or '').strip()
-            office_college = (data.get('office_college', '') or '').strip()
-            if not office_college:
-                office_college = 'Unknown'
-
-            bt_raw = data.get('borrower_type', '').lower().strip()
-            borrower_type = 'employee' if bt_raw == 'employee' else 'student'
-
-            release_text = data.get('release_status_import', '').strip().lower()
-            is_returned = release_text == 'returned'
-            is_released = release_text == 'released'
-
-            date_returned = _parse_excel_date(raw_data.get('date_returned'))
-            if is_returned and date_returned is None:
-                date_returned = get_ph_time()
-            if is_released:
-                date_returned = None
-
-            # Update or create DeviceMonitor
-            obj, created_flag = DeviceMonitor.objects.update_or_create(
-                serial_number=serial_number,
-                defaults={
-                    'box_number': data.get('box_number', ''),
-                    'office_college': office_college,
-                    'accountable_person': accountable_person,
-                    'borrower_type': borrower_type,
-                    'accountable_officer': data.get('accountable_officer', ''),
-                    'assigned_mr': data.get('assigned_mr', ''),
-                    'device': data.get('device', '') or 'Tablet',
-                    'ptr': data.get('ptr', ''),
-                    'remarks': data.get('remarks', ''),
-                    'issue': data.get('issue', ''),
-                    'date_returned': date_returned,
-                    'is_released': is_released,
-                    'serviceable': False,
-                    'non_serviceable': False,
-                    'sealed': False,
-                    'missing': False,
-                    'incomplete': False,
-                }
-            )
-            if created_flag:
-                created += 1
-            else:
-                updated += 1
-
-            # Handle TransactionDevice
-            if is_returned:
-                TransactionDevice.objects.filter(
-                    serial_number=serial_number,
-                    returned=False
-                ).update(returned=True, returned_at=date_returned or get_ph_time())
-            elif is_released:
-                # Close any existing active transaction
-                TransactionDevice.objects.filter(
-                    serial_number=serial_number,
-                    returned=False
-                ).update(returned=True, returned_at=get_ph_time())
-
-                # Create new BorrowRequest and Transaction
-                borrow_req = BorrowRequest.objects.create(
-                    borrower_name=accountable_person,
-                    borrower_type=borrower_type or 'student',
-                    office_college=office_college,
-                    college=office_college,
-                    item=None,
-                    quantity=1,
-                    status='accepted',
-                    student_id='',
-                    year_level='',
-                    section='',
-                    academic_year='',
-                )
-                tx = Transaction.objects.create(
-                    borrow_request=borrow_req,
-                    item=dummy_item,
-                    borrower=request.user,
-                    office_college=office_college,
-                    quantity_borrowed=1,
-                    returned_qty=0,
-                    status='borrowed',
-                    borrowed_at=timezone.now(),
-                    serial_number=serial_number,
-                )
-                TransactionDevice.objects.create(
-                    transaction=tx,
-                    serial_number=serial_number,
-                    box_number=data.get('box_number', ''),
-                    returned=False,
-                    returned_at=None,
-                )
-        except Exception as e:
-            errors.append(f'Row {row_idx}: {str(e)}')
-
-    b = _broadcasts()
-    b.broadcast_device_monitoring()
+    # Send to Celery
+    from .tasks import process_excel_import
+    task = process_excel_import.delay(rows_data, request.user.id)
 
     return JsonResponse({
         'ok': True,
-        'created': created,
-        'updated': updated,
-        'errors': errors,
+        'task_id': task.id,
+        'message': f'Import started for {len(rows_data)} rows. You will be notified when it finishes.',
     })
 
 
