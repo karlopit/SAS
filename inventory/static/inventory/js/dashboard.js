@@ -1,40 +1,41 @@
 /**
- * dashboard.js
- * Handles the staff dashboard: stat card flashes,
- * release bar chart (Released / Returned), device‑monitoring bar chart,
- * and the WebSocket / AJAX‑poll real‑time connection.
- *
- * Expects a global DASHBOARD_INIT object injected by the Django template:
- *   const DASHBOARD_INIT = {
- *     released: <int>,
- *     returned: <int>,
- *     bar: { offices, serviceable, nonService, sealed, missing, incomplete }
- *   };
+ * dashboard.js – staff dashboard: stat flashes, release bar chart,
+ * device‑monitoring bar chart, WebSocket real‑time.
  */
-
 (function () {
   'use strict';
 
-  /* ── Stat card flash ──────────────────────────────────────────────────── */
+  console.log('[Dashboard] Script loaded.');
+
+  /* ── Stat flash ─────────────────────────────────────────────────────── */
   function flashStat(el, newValue) {
     if (!el) return;
     if (el.textContent.trim() === String(newValue)) return;
     el.textContent = newValue;
     el.classList.remove('flash');
-    void el.offsetWidth; // reflow
+    void el.offsetWidth;
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 300);
   }
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RELEASE BAR CHART  (replaces the old pie chart)
-  ═══════════════════════════════════════════════════════════════════════ */
+  /* ════════════════════════════════════════════════════════════════════
+     RELEASE BAR CHART  (Released vs Returned)
+  ════════════════════════════════════════════════════════════════════ */
   let releaseBarChart = null;
 
   function drawReleaseBar(released, returned) {
+    console.log('[Dashboard] drawReleaseBar called with', released, returned);
     const canvas = document.getElementById('releaseBarChart');
-    if (!canvas) return;
-    if (releaseBarChart) { releaseBarChart.destroy(); releaseBarChart = null; }
+    if (!canvas) {
+      console.warn('[Dashboard] Canvas #releaseBarChart NOT FOUND – check HTML');
+      return;
+    }
+    console.log('[Dashboard] Canvas found, dimensions:', canvas.offsetWidth, 'x', canvas.offsetHeight);
+
+    if (releaseBarChart) {
+      releaseBarChart.destroy();
+      releaseBarChart = null;
+    }
 
     const total = released + returned;
 
@@ -82,15 +83,16 @@
         }
       }
     });
+    console.log('[Dashboard] Release bar chart created.');
 
-    // Update legend numbers (the <strong> elements)
+    // legend text
     const lr = document.getElementById('legend-released');
     const lt = document.getElementById('legend-returned');
     if (lr) lr.textContent = released;
     if (lt) lt.textContent = returned;
   }
 
-  /* ── Bar chart (Device Monitoring by College / Office) ───────────────── */
+  /* ── Bar chart (Device Monitoring by College) ────────────────────────── */
   let barChart = null;
 
   function drawBar(bar) {
@@ -151,7 +153,7 @@
     });
   }
 
-  /* ── WebSocket message handler ────────────────────────────────────────── */
+  /* ── WebSocket ──────────────────────────────────────────────────────── */
   function handleDashboardMessage(data) {
     if (data.type !== 'dashboard.update') return;
 
@@ -163,7 +165,6 @@
     window.dispatchEvent(new CustomEvent('invsys:pending_count',      { detail: data.pending_count }));
     window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
 
-    // Update release bar chart (Released / Returned)
     const released = typeof data.dm_released === 'number' ? data.dm_released : 0;
     const returned = typeof data.dm_returned  === 'number' ? data.dm_returned  : 0;
     drawReleaseBar(released, returned);
@@ -171,11 +172,15 @@
     if (data.bar) drawBar(data.bar);
   }
 
-  /* ── Boot ─────────────────────────────────────────────────────────────── */
+  /* ── Boot ───────────────────────────────────────────────────────────── */
   function boot() {
+    console.log('[Dashboard] Booting…');
     if (typeof DASHBOARD_INIT !== 'undefined') {
+      console.log('[Dashboard] DASHBOARD_INIT:', DASHBOARD_INIT);
       drawReleaseBar(DASHBOARD_INIT.released, DASHBOARD_INIT.returned);
       drawBar(DASHBOARD_INIT.bar);
+    } else {
+      console.warn('[Dashboard] DASHBOARD_INIT not defined – maybe not staff?');
     }
     const indicator = document.getElementById('rt-indicator');
     if (typeof InvSysRT !== 'undefined') {
@@ -184,10 +189,18 @@
   }
 
   function loadChartJs(cb) {
-    if (window.Chart) { cb(); return; }
+    if (window.Chart) {
+      console.log('[Dashboard] Chart.js already loaded.');
+      cb();
+      return;
+    }
+    console.log('[Dashboard] Loading Chart.js from CDN…');
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-    s.onload = cb;
+    s.onload = () => {
+      console.log('[Dashboard] Chart.js loaded.');
+      cb();
+    };
     document.head.appendChild(s);
   }
 

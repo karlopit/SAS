@@ -35,7 +35,7 @@
 {% if request.user.role == 'staff' %}
 <div style="display:grid;grid-template-columns:320px 1fr;gap:24px;margin-top:24px;align-items:start">
 
-  <!-- ── RELEASE BAR CHART (Released / Returned) ── -->
+  <!-- ── RELEASE BAR CHART ── -->
   <div class="table-card" style="padding:24px">
     <div class="table-title" style="margin-bottom:4px;color:#fff">Device Release Status</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Live counts from Device Monitoring</p>
@@ -60,7 +60,7 @@
     </div>
   </div>
 
-  <!-- ── BAR CHART: Device Monitoring by College / Office ── -->
+  <!-- ── College/Office bar chart ── -->
   <div class="table-card" style="padding:24px">
     <div class="table-title" style="margin-bottom:4px;color:#fff">Device Monitoring by College / Office</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Live counts from Device Monitoring table</p>
@@ -169,7 +169,7 @@ const DASHBOARD_INIT = {
   }
 };
 </script>
-<script src="{% static 'inventory/js/dashboard.js' %}"></script>
+<script src="{% static 'inventory/js/dashboard.js' %}?v=2"></script>
 {% endif %}
 
 {% if request.user.role == 'admin' %}

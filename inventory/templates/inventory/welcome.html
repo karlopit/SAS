@@ -74,27 +74,34 @@
       .auth-image-2     { width: 45px; height: 45px; }
     }
 
-    /* ========== ORANGE JUSTICE DANCING TABLET – FULL EMOTE ========== */
-    .dance-tablet {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 999999;
-      pointer-events: none;
-      width: 120px;
-      height: 200px;
-    }
+    /* ========== DRAGGABLE DANCING TABLET ========== */
+.dance-tablet {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  width: 120px;
+  height: 200px;
+  cursor: grab;
+  user-select: none;
+  pointer-events: auto !important;
+  touch-action: none;
+}
+
+.dance-tablet.dragging {
+  cursor: grabbing;
+}
 
     /* The whole character bounces + sways side‑to‑side */
-    .dt-char {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 100px;
-      animation: ojBodyMove 1s infinite linear;
-      transform-origin: center bottom;
-    }
+  .dt-char {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    animation: ojBodyMove 1s infinite linear;
+    transform-origin: center bottom;
+  }
 
     /* Arms – long, with cross‑over motion */
     .dt-arm-l,
