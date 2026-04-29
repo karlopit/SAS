@@ -107,18 +107,22 @@ document.addEventListener('DOMContentLoaded', () => {
   if (pendingBadge) {
     window.addEventListener('invsys:pending_count', (e) => {
       const count = e.detail;
-      pendingBadge.textContent = count > 0 ? count : '';
+      // GUARD: skip if not a real number — undefined/null/NaN must never hide the badge
+      if (typeof count !== 'number' || isNaN(count)) return;
+      pendingBadge.textContent   = count > 0 ? count : '';
       pendingBadge.style.display = count > 0 ? '' : 'none';
     });
   }
 
-  // Graduation warning badge (always visible in DOM, JS controls visibility)
+  // Graduation warning badge
   const gradBadge = document.getElementById('nav-grad-badge');
   if (gradBadge) {
     window.addEventListener('invsys:grad_warning_count', (e) => {
       const count = e.detail;
-      gradBadge.textContent = count >= 0 ? count : '0';
-      gradBadge.style.display = count > 0 ? '' : 'none';
+      // GUARD: skip if not a real number — undefined/null/NaN must never hide the badge
+      if (typeof count !== 'number' || isNaN(count)) return;
+      gradBadge.textContent      = count >= 0 ? String(count) : '0';
+      gradBadge.style.display    = count > 0 ? '' : 'none';
       if (count > 0) {
         gradBadge.classList.add('grad-badge-pulse');
       } else {

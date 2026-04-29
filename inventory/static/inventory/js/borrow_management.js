@@ -423,12 +423,16 @@
   }
 
   function handleMessage(data) {
-  if (data.type !== 'borrow_management.update') return;
-  renderItems(data.items);
-  renderTransactions(data.transactions);
-  window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
-  window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
-}
+    if (data.type !== 'borrow_management.update') return;
+    renderItems(data.items);
+    renderTransactions(data.transactions);
+    if (typeof data.pending_count === 'number') {
+      window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+    }
+    if (typeof data.graduation_warning_count === 'number') {
+      window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
+    }
+  }
 
   /* ── DOMContentLoaded init ────────────────────────────────────────────── */
   document.addEventListener('DOMContentLoaded', () => {

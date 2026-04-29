@@ -541,10 +541,13 @@
     populateFilterDropdowns();
     applyDmFilters();
 
-    if (data.pending_count !== undefined)
+    // Only dispatch badge events when the payload actually contains these fields
+    if (typeof data.pending_count === 'number') {
       window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
-    if (data.graduation_warning_count !== undefined)
+    }
+    if (typeof data.graduation_warning_count === 'number') {
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
+    }
   }
 
   /* ==================== DRAG-TO-SCROLL ==================== */

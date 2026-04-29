@@ -15,6 +15,24 @@ def _fmt_ph(dt):
     return dt.astimezone(PH_TZ).strftime('%b %d, %Y %I:%M %p')
 
 
+def _get_grad_count():
+    """Shared helper — count active transactions from graduating students."""
+    from inventory.models import Transaction
+    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+    active_trans = Transaction.objects.filter(
+        status='borrowed',
+        borrow_request__borrower_type='student',
+    ).select_related('borrow_request')
+    count = 0
+    for tx in active_trans:
+        br = tx.borrow_request
+        if br:
+            yl = (br.year_level or br.year_section or '').strip().lower()
+            if any(k in yl for k in graduating_keywords):
+                count += 1
+    return count
+
+
 def _build_dashboard_payload():
     from django.db.models import Sum, F, ExpressionWrapper, IntegerField
     from inventory.models import Item, Transaction, BorrowRequest, DeviceMonitor
@@ -22,7 +40,6 @@ def _build_dashboard_payload():
     items_count   = Item.objects.count()
     available_qty = Item.objects.aggregate(t=Sum('available_quantity'))['t'] or 0
 
-    # Two fast index-scan counts — no broken boolean aggregate
     active_borrows = Transaction.objects.filter(status='borrowed').count()
     total_returns  = Transaction.objects.filter(status='returned').count()
     pending_count  = BorrowRequest.objects.filter(status='pending').count()
@@ -35,7 +52,6 @@ def _build_dashboard_payload():
     ).aggregate(total=Sum('still_out'))
     borrowed_qty = max(0, out_agg['total'] or 0)
 
-    # Bar chart — one bulk query per status flag, grouped by office
     monitors = DeviceMonitor.objects.all()
     offices  = sorted(set(monitors.values_list('office_college', flat=True)))
 
@@ -48,30 +64,18 @@ def _build_dashboard_payload():
         'incomplete':  [monitors.filter(office_college=o, incomplete=True).count()      for o in offices],
     }
 
-    # ── Graduation warning count (same logic as context processor) ──
-    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
-    active_trans = Transaction.objects.filter(
-        status='borrowed',
-        borrow_request__borrower_type='student',
-    ).select_related('borrow_request')
-    grad_count = 0
-    for tx in active_trans:
-        br = tx.borrow_request
-        if br:
-            yl = (br.year_level or br.year_section or '').strip().lower()
-            if any(k in yl for k in graduating_keywords):
-                grad_count += 1
+    grad_count = _get_grad_count()
 
     return {
-        'type':           'dashboard.update',
-        'items_count':    items_count,
-        'active_borrows': active_borrows,
-        'total_returns':  total_returns,
-        'pending_count':  pending_count,
-        'available_qty':  available_qty,
-        'borrowed_qty':   borrowed_qty,
-        'bar':            bar,
-        'graduation_warning_count': grad_count,   # <── new field
+        'type':                     'dashboard.update',
+        'items_count':              items_count,
+        'active_borrows':           active_borrows,
+        'total_returns':            total_returns,
+        'pending_count':            pending_count,
+        'available_qty':            available_qty,
+        'borrowed_qty':             borrowed_qty,
+        'bar':                      bar,
+        'graduation_warning_count': grad_count,
     }
 
 
@@ -114,11 +118,14 @@ def _build_borrow_management_payload():
         'id', 'name', 'serial', 'description', 'quantity', 'available_quantity'
     ))
 
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
+
     return {
-        'type':          'borrow_management.update',
-        'transactions':  transactions_data,
-        'items':         items_data,
-        'pending_count': BorrowRequest.objects.filter(status='pending').count(),
+        'type':                     'borrow_management.update',
+        'transactions':             transactions_data,
+        'items':                    items_data,
+        'pending_count':            pending_count,
+        'graduation_warning_count': _get_grad_count(),  # ← was missing
     }
 
 
@@ -141,15 +148,19 @@ def _build_borrow_requests_payload():
             'created_at':     r.created_at.strftime('%b %d, %Y — %H:%M'),
         })
 
+    pending_count = len(pending)
+
     return {
-        'type':    'borrow_requests.update',
-        'pending': pending,
-        'count':   len(pending),
+        'type':                     'borrow_requests.update',
+        'pending':                  pending,
+        'count':                    pending_count,
+        'pending_count':            pending_count,           # ← explicit alias
+        'graduation_warning_count': _get_grad_count(),       # ← was missing
     }
 
 
 def _build_device_monitoring_payload():
-    from inventory.models import DeviceMonitor
+    from inventory.models import DeviceMonitor, BorrowRequest
 
     rows_qs = DeviceMonitor.objects.all().order_by('box_number', 'id')
     rows = []
@@ -166,30 +177,34 @@ def _build_device_monitoring_payload():
             date_returned_str = '—'
 
         rows.append({
-            'id': r.id,
-            'box_number': r.box_number,
-            'office_college': r.office_college,
-            'accountable_person': r.accountable_person,
-            'borrower_type': r.borrower_type,
+            'id':                  r.id,
+            'box_number':          r.box_number,
+            'office_college':      r.office_college,
+            'accountable_person':  r.accountable_person,
+            'borrower_type':       r.borrower_type,
             'accountable_officer': r.accountable_officer,
-            'assigned_mr': r.assigned_mr,
-            'device': r.device,
-            'serial_number': r.serial_number,
-            'ptr': r.ptr,
-            'serviceable': r.serviceable,
-            'non_serviceable': r.non_serviceable,
-            'sealed': r.sealed,
-            'missing': r.missing,
-            'incomplete': r.incomplete,
-            'remarks': r.remarks,
-            'issue': r.issue,
-            'release_status': release_status,
-            'date_returned': date_returned_str,
+            'assigned_mr':         r.assigned_mr,
+            'device':              r.device,
+            'serial_number':       r.serial_number,
+            'ptr':                 r.ptr,
+            'serviceable':         r.serviceable,
+            'non_serviceable':     r.non_serviceable,
+            'sealed':              r.sealed,
+            'missing':             r.missing,
+            'incomplete':          r.incomplete,
+            'remarks':             r.remarks,
+            'issue':               r.issue,
+            'release_status':      release_status,
+            'date_returned':       date_returned_str,
         })
 
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
+
     return {
-        'type': 'device_monitoring.update',
-        'rows': rows,
+        'type':                     'device_monitoring.update',
+        'rows':                     rows,
+        'pending_count':            pending_count,           # ← was missing
+        'graduation_warning_count': _get_grad_count(),       # ← was missing
     }
 
 

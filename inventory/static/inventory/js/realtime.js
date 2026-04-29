@@ -1,25 +1,17 @@
 /**
  * realtime.js — WebSocket client with AJAX-poll fallback
  *
- * Usage (in a page template):
- *   InvSysRT.connect('/ws/dashboard/', onMessage, indicatorElement);
- *
- * The module:
- *   1. Opens a WebSocket.
- *   2. On every message it calls onMessage(data).
- *   3. If the WS fails / is unavailable it falls back to polling the
- *      matching /ajax/… endpoint every POLL_INTERVAL ms.
- *   4. Dispatches custom events for badge updates ONLY when the value
- *      is a number (including 0). This prevents blank badges.
+ * IMPORTANT: This module intentionally does NOT dispatch badge update events.
+ * Each page's own handleMessage function dispatches invsys:pending_count and
+ * invsys:grad_warning_count after receiving the full payload — this avoids
+ * race conditions where partial/missing fields could wipe the badges.
  */
-
 (function (global) {
   'use strict';
 
-  const POLL_INTERVAL = 5000;   // ms between AJAX polls
-  const WS_RETRY_MS   = 3000;   // ms before attempting WS reconnect
+  const POLL_INTERVAL = 5000;
+  const WS_RETRY_MS   = 3000;
 
-  /** Map WS path → AJAX fallback URL */
   const WS_TO_AJAX = {
     '/ws/dashboard/':          '/ajax/dashboard/',
     '/ws/borrow-management/':  '/ajax/borrow-management/',
@@ -35,39 +27,18 @@
     el.textContent = labels[state] ?? state;
   }
 
-  /* ── Custom event dispatcher for live badge updates ───────────────────── */
-  function _dispatchEvents(data) {
-    // Only fire if the value exists and is a number (including 0)
-    if (typeof data.pending_count === 'number') {
-      window.dispatchEvent(new CustomEvent('invsys:pending_count', {
-        detail: data.pending_count
-      }));
-    }
-    if (typeof data.graduation_warning_count === 'number') {
-      window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', {
-        detail: data.graduation_warning_count
-      }));
-    }
-  }
-
-  /* ── WebSocket transport ──────────────────────────────────────────────── */
+  /* ── WebSocket URL builder ────────────────────────────────────────────── */
   function _wsUrl(path) {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     return `${proto}://${location.host}${path}`;
   }
 
   /* ── Main connect function ────────────────────────────────────────────── */
-  /**
-   * @param {string}   wsPath    e.g. '/ws/dashboard/'
-   * @param {Function} onMessage called with parsed JSON data on every update
-   * @param {Element}  [indicator] optional DOM element showing connection state
-   * @returns {{ close: Function }} handle
-   */
   function connect(wsPath, onMessage, indicator) {
-    let ws          = null;
-    let pollTimer   = null;
-    let retryTimer  = null;
-    let closed      = false;
+    let ws         = null;
+    let pollTimer  = null;
+    let retryTimer = null;
+    let closed     = false;
 
     const ajaxUrl = WS_TO_AJAX[wsPath];
 
@@ -89,8 +60,8 @@
       fetch(ajaxUrl, { credentials: 'same-origin' })
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
         .then(data => {
+          // Let the page's own handler do everything, including badge dispatch
           onMessage(data);
-          _dispatchEvents(data);
         })
         .catch(err => console.warn('[InvSysRT] AJAX poll error:', err));
     }
@@ -114,21 +85,19 @@
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          // Let the page's own handler do everything, including badge dispatch
           onMessage(data);
-          _dispatchEvents(data);
         } catch (e) {
           console.warn('[InvSysRT] Parse error:', e);
         }
       };
 
-      ws.onerror = () => {
-        /* intentionally silent — onclose will handle fallback */
-      };
+      ws.onerror = () => { /* silent — onclose handles fallback */ };
 
-      ws.onclose = (ev) => {
+      ws.onclose = () => {
         if (closed) return;
         _setIndicator(indicator, 'disconnected');
-        startPolling();          // start polling while we wait to reconnect
+        startPolling();
         retryTimer = setTimeout(() => {
           stopPolling();
           openWS();
