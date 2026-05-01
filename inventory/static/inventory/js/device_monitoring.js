@@ -1,7 +1,8 @@
 /**
  * device_monitoring.js
+ * - Rows rendered from DM_ROWS JSON (not server-rendered HTML) for fast page load
  * - saveAllRows() uses JSON (fixes TooManyFieldsSent)
- * - Import now fires async via Celery and polls for task status
+ * - Import fires async via Celery and polls for task status
  */
 
 (function () {
@@ -93,6 +94,106 @@
     row.dataset.sealed         = c.sealed.cb?.checked          ? '1' : '0';
     row.dataset.missing        = c.missing.cb?.checked         ? '1' : '0';
     row.dataset.incomplete     = c.incomplete.cb?.checked      ? '1' : '0';
+  }
+
+  /* ==================== RENDER ALL ROWS FROM JSON ==================== */
+  function _escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function renderAllRows(rowsData) {
+    const tbody = document.getElementById('dm-tbody');
+    if (!tbody) return;
+
+    // Remove loading indicator if present
+    const loading = document.getElementById('dm-loading');
+    if (loading) loading.remove();
+
+    tbody.innerHTML = '';
+
+    const fragment = document.createDocumentFragment();
+
+    rowsData.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.dataset.rowId        = row.id;
+      tr.dataset.box          = (row.box_number          || '').toLowerCase();
+      tr.dataset.college      = (row.office_college      || '').toLowerCase();
+      tr.dataset.collegeRaw   =  row.office_college      || '';
+      tr.dataset.person       = (row.accountable_person  || '').toLowerCase();
+      tr.dataset.borrowerType = (row.borrower_type       || '').toLowerCase();
+      tr.dataset.officer      = (row.accountable_officer || '').toLowerCase();
+      tr.dataset.officerRaw   =  row.accountable_officer || '';
+      tr.dataset.device       = (row.device              || '').toLowerCase();
+      tr.dataset.serial       = (row.serial_number       || '').toLowerCase();
+      tr.dataset.release      =  row.release_status      || '—';
+      tr.dataset.mr           =  row.assigned_mr         || '';
+      tr.dataset.mrLower      = (row.assigned_mr         || '').toLowerCase();
+      tr.dataset.ptr          =  row.ptr                 || '';
+      tr.dataset.ptrLower     = (row.ptr                 || '').toLowerCase();
+      tr.dataset.serviceable    = row.serviceable     ? '1' : '0';
+      tr.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
+      tr.dataset.sealed         = row.sealed          ? '1' : '0';
+      tr.dataset.missing        = row.missing         ? '1' : '0';
+      tr.dataset.incomplete     = row.incomplete      ? '1' : '0';
+
+      const releaseClass = row.release_status === 'Released' ? 'badge-released'
+                         : row.release_status === 'Returned' ? 'badge-returned-dm'
+                         : 'badge-none';
+
+      const svcVal  = row.serviceable     ? 'on' : 'off';
+      const nsvcVal = row.non_serviceable ? 'on' : 'off';
+      const sealVal = row.sealed          ? 'on' : 'off';
+      const misVal  = row.missing         ? 'on' : 'off';
+      const incVal  = row.incomplete      ? 'on' : 'off';
+
+      const btStudent  = row.borrower_type === 'student'  ? 'selected' : '';
+      const btEmployee = row.borrower_type === 'employee' ? 'selected' : '';
+
+      tr.innerHTML = `
+        <input type="hidden" name="row_id" value="${row.id}"/>
+        <td style="text-align:center"><input type="text" name="box_number" value="${_escHtml(row.box_number)}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="serial_number" value="${_escHtml(row.serial_number)}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="office_college" value="${_escHtml(row.office_college)}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="accountable_person" value="${_escHtml(row.accountable_person)}" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center">
+          <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
+            <option value="">— Select —</option>
+            <option value="student"  ${btStudent}>Student</option>
+            <option value="employee" ${btEmployee}>Employee</option>
+          </select>
+        </td>
+        <td style="text-align:center"><input type="text" name="assigned_mr" value="${_escHtml(row.assigned_mr)}" class="form-control dm-mr-input" placeholder="M.R. #" style="width:110px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="accountable_officer" value="${_escHtml(row.accountable_officer)}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="device" value="${_escHtml(row.device)}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><input type="hidden" name="serviceable"     value="${svcVal}"/><input type="checkbox" class="dm-checkbox" data-field="serviceable"     ${row.serviceable     ? 'checked' : ''} style="margin:0 auto"/></td>
+        <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${nsvcVal}"/><input type="checkbox" class="dm-checkbox" data-field="non_serviceable" ${row.non_serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
+        <td style="text-align:center"><input type="hidden" name="sealed"          value="${sealVal}"/><input type="checkbox" class="dm-checkbox" data-field="sealed"          ${row.sealed          ? 'checked' : ''} style="margin:0 auto"/></td>
+        <td style="text-align:center"><input type="hidden" name="missing"         value="${misVal}"/><input type="checkbox" class="dm-checkbox" data-field="missing"         ${row.missing         ? 'checked' : ''} style="margin:0 auto"/></td>
+        <td style="text-align:center"><input type="hidden" name="incomplete"      value="${incVal}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete"      ${row.incomplete      ? 'checked' : ''} style="margin:0 auto"/></td>
+        <td style="text-align:center"><input type="text" name="ptr" value="${_escHtml(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR #" style="width:100px;text-align:center;margin:0 auto"/></td>
+        <td style="text-align:center"><span class="release-status-badge ${releaseClass}">${_escHtml(row.release_status)}</span></td>
+        <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${_escHtml(row.date_returned_display)}</td>
+        <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_escHtml(row.remarks)}</textarea></td>
+        <td style="text-align:center"><textarea name="issue"   class="form-control dm-issue-input"   rows="2" placeholder="Issue…"   style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_escHtml(row.issue)}</textarea></td>
+        <td style="text-align:center;white-space:nowrap">
+          <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
+          <button type="button" class="btn btn-danger btn-sm dm-delete-row" style="margin-left:4px">✕</button>
+        </td>
+      `;
+
+      applyLockState(tr);
+      fragment.appendChild(tr);
+    });
+
+    tbody.appendChild(fragment);
+
+    sortTableByBoxNumber();
+    populateFilterDropdowns();
+    applyDmFilters();
   }
 
   /* ==================== BOX NUMBER SORT ==================== */
@@ -315,25 +416,24 @@
     for (const row of rows) {
       const rowId = row.querySelector('input[name="row_id"]')?.value;
       if (!rowId) continue;
-
       rowsData.push({
         row_id:              rowId,
-        box_number:          row.querySelector('input[name="box_number"]')?.value || '',
-        serial_number:       row.querySelector('input[name="serial_number"]')?.value || '',
-        office_college:      row.querySelector('input[name="office_college"]')?.value || '',
-        accountable_person:  row.querySelector('input[name="accountable_person"]')?.value || '',
-        borrower_type:       row.querySelector('select[name="borrower_type"]')?.value || '',
-        assigned_mr:         row.querySelector('input[name="assigned_mr"]')?.value || '',
+        box_number:          row.querySelector('input[name="box_number"]')?.value          || '',
+        serial_number:       row.querySelector('input[name="serial_number"]')?.value       || '',
+        office_college:      row.querySelector('input[name="office_college"]')?.value      || '',
+        accountable_person:  row.querySelector('input[name="accountable_person"]')?.value  || '',
+        borrower_type:       row.querySelector('select[name="borrower_type"]')?.value      || '',
+        assigned_mr:         row.querySelector('input[name="assigned_mr"]')?.value         || '',
         accountable_officer: row.querySelector('input[name="accountable_officer"]')?.value || '',
-        device:              row.querySelector('input[name="device"]')?.value || '',
-        serviceable:         row.querySelector('input[name="serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        device:              row.querySelector('input[name="device"]')?.value              || '',
+        serviceable:         row.querySelector('input[name="serviceable"]')?.nextElementSibling?.checked     ? 'on' : 'off',
         non_serviceable:     row.querySelector('input[name="non_serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        sealed:              row.querySelector('input[name="sealed"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        missing:             row.querySelector('input[name="missing"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        incomplete:          row.querySelector('input[name="incomplete"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        ptr:                 row.querySelector('input[name="ptr"]')?.value || '',
-        remarks:             row.querySelector('textarea[name="remarks"]')?.value || '',
-        issue:               row.querySelector('textarea[name="issue"]')?.value || '',
+        sealed:              row.querySelector('input[name="sealed"]')?.nextElementSibling?.checked          ? 'on' : 'off',
+        missing:             row.querySelector('input[name="missing"]')?.nextElementSibling?.checked         ? 'on' : 'off',
+        incomplete:          row.querySelector('input[name="incomplete"]')?.nextElementSibling?.checked      ? 'on' : 'off',
+        ptr:                 row.querySelector('input[name="ptr"]')?.value                 || '',
+        remarks:             row.querySelector('textarea[name="remarks"]')?.value          || '',
+        issue:               row.querySelector('textarea[name="issue"]')?.value            || '',
       });
     }
 
@@ -348,10 +448,8 @@
         body:        JSON.stringify({ rows: rowsData, save_all: true }),
         credentials: 'same-origin',
       });
-
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
-
       if (result.ok) {
         dirtyRows.clear();
         showToast(`✓ All rows saved (${result.saved} record${result.saved !== 1 ? 's' : ''})`, 'success');
@@ -391,7 +489,6 @@
   }
 
   /* ==================== IMPORT MODAL ==================== */
-
   function _getCsrf() {
     return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
   }
@@ -442,196 +539,158 @@
     if (lbl)  lbl.textContent = label;
   }
 
-  async function _pollTaskStatus(taskId, totalRows) {
-  try {
-    const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, {
-      credentials: 'same-origin',
-    });
-
-    // Read text first — so a 404/500 HTML page gives a useful error instead of silent crash
-    const rawText = await resp.text();
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      // Non-JSON response (404, server error page) — show it and stop polling
-      _stopPolling();
-      const errEl = document.getElementById('import-error');
-      if (errEl) {
-        errEl.textContent = `Server error (HTTP ${resp.status}). Check that the import status URL is registered in urls.py.`;
-        errEl.style.display = 'flex';
-      }
-      const confirmBtn = document.getElementById('import-confirm-btn');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-      showToast('Import polling failed — server returned non-JSON', 'error');
-      return;
-    }
-
-    if (!resp.ok) {
-      _stopPolling();
-      const errEl = document.getElementById('import-error');
-      if (errEl) {
-        errEl.textContent = 'Error: ' + (data.error || `HTTP ${resp.status}`);
-        errEl.style.display = 'flex';
-      }
-      const confirmBtn = document.getElementById('import-confirm-btn');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-      return;
-    }
-
-    if (data.state === 'SUCCESS') {
-      _stopPolling();
-      _setImportProgress(100, 'Done!');
-      const sucEl = document.getElementById('import-success');
-      if (sucEl) {
-        let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
-        if (data.errors?.length) msg += ` ${data.errors.length} row(s) had errors.`;
-        sucEl.textContent = msg;
-        sucEl.style.display = 'flex';
-      }
-      const confirmBtn = document.getElementById('import-confirm-btn');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-      showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
-      setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
-      return;
-    }
-
-    if (data.state === 'FAILURE') {
-      _stopPolling();
-      const errEl = document.getElementById('import-error');
-      if (errEl) {
-        errEl.textContent = 'Import failed: ' + (data.error || 'Unknown error');
-        errEl.style.display = 'flex';
-      }
-      const confirmBtn = document.getElementById('import-confirm-btn');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-      _setImportProgress(0, '');
-      showToast('Import failed', 'error');
-      return;
-    }
-
-    // PENDING / STARTED / RETRY — keep polling, show progress
-    const progress = data.progress || 0;
-    const pct = progress > 0 ? Math.min(95, progress) : _indeterminatePct();
-    _setImportProgress(pct, data.message || `Processing ${totalRows} row(s)…`);
-
-  } catch (err) {
-    // True network failure (offline, CORS, etc.) — show error and stop
-    _stopPolling();
-    const errEl = document.getElementById('import-error');
-    if (errEl) {
-      errEl.textContent = 'Network error while checking import status: ' + err.message;
-      errEl.style.display = 'flex';
-    }
-    const confirmBtn = document.getElementById('import-confirm-btn');
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-    showToast('Network error: ' + err.message, 'error');
-  }
-}
-
-  // Indeterminate animation: oscillates 10 → 90
   let _indeterminateTick = 0;
   function _indeterminatePct() {
     _indeterminateTick = (_indeterminateTick + 3) % 180;
     return 10 + Math.abs(Math.sin(_indeterminateTick * Math.PI / 180)) * 80;
   }
 
-  async function confirmImport() {
-  const fileInput = document.getElementById('import-file-input');
-  const errEl     = document.getElementById('import-error');
-  const sucEl     = document.getElementById('import-success');
-  const btn       = document.getElementById('import-confirm-btn');
-  if (!errEl || !sucEl || !btn || !fileInput) return;
-
-  errEl.style.display = 'none';
-  sucEl.style.display = 'none';
-  if (!fileInput.files || !fileInput.files[0]) return;
-
-  const formData = new FormData();
-  formData.append('excel_file', fileInput.files[0]);
-  formData.append('csrfmiddlewaretoken', _getCsrf());
-
-  btn.disabled = true;
-  btn.innerHTML = `
-    <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-    </svg>
-    Uploading…`;
-  _setImportProgress(5, 'Uploading file…');
-
-  try {
-    const resp = await fetch('/device-monitoring/import/', {
-      method: 'POST', body: formData, credentials: 'same-origin',
-    });
-
-    // Read as text first — catches HTML error pages (CSRF failure, 500, redirect)
-    const rawText = await resp.text();
-    let data;
+  async function _pollTaskStatus(taskId, totalRows) {
     try {
-      data = JSON.parse(rawText);
-    } catch {
-      throw new Error(
-        `Server returned a non-JSON response (HTTP ${resp.status}). ` +
-        `This usually means a CSRF error or server crash. ` +
-        `First 200 chars: ${rawText.slice(0, 200)}`
-      );
+      const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, {
+        credentials: 'same-origin',
+      });
+      const rawText = await resp.text();
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        _stopPolling();
+        const errEl = document.getElementById('import-error');
+        if (errEl) { errEl.textContent = `Server error (HTTP ${resp.status}). Check import status URL in urls.py.`; errEl.style.display = 'flex'; }
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+        showToast('Import polling failed — server returned non-JSON', 'error');
+        return;
+      }
+
+      if (!resp.ok) {
+        _stopPolling();
+        const errEl = document.getElementById('import-error');
+        if (errEl) { errEl.textContent = 'Error: ' + (data.error || `HTTP ${resp.status}`); errEl.style.display = 'flex'; }
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+        return;
+      }
+
+      if (data.state === 'SUCCESS') {
+        _stopPolling();
+        _setImportProgress(100, 'Done!');
+        const sucEl = document.getElementById('import-success');
+        if (sucEl) {
+          let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+          if (data.errors?.length) msg += ` ${data.errors.length} row(s) had errors.`;
+          sucEl.textContent = msg;
+          sucEl.style.display = 'flex';
+        }
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+        showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
+        setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
+        return;
+      }
+
+      if (data.state === 'FAILURE') {
+        _stopPolling();
+        const errEl = document.getElementById('import-error');
+        if (errEl) { errEl.textContent = 'Import failed: ' + (data.error || 'Unknown error'); errEl.style.display = 'flex'; }
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+        _setImportProgress(0, '');
+        showToast('Import failed', 'error');
+        return;
+      }
+
+      const progress = data.progress || 0;
+      const pct = progress > 0 ? Math.min(95, progress) : _indeterminatePct();
+      _setImportProgress(pct, data.message || `Processing ${totalRows} row(s)…`);
+
+    } catch (err) {
+      _stopPolling();
+      const errEl = document.getElementById('import-error');
+      if (errEl) { errEl.textContent = 'Network error: ' + err.message; errEl.style.display = 'flex'; }
+      const confirmBtn = document.getElementById('import-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+      showToast('Network error: ' + err.message, 'error');
     }
+  }
 
-    if (!resp.ok) {
-      throw new Error(data.error || `HTTP ${resp.status}`);
-    }
+  async function confirmImport() {
+    const fileInput = document.getElementById('import-file-input');
+    const errEl     = document.getElementById('import-error');
+    const sucEl     = document.getElementById('import-success');
+    const btn       = document.getElementById('import-confirm-btn');
+    if (!errEl || !sucEl || !btn || !fileInput) return;
 
-    if (!data.ok) {
-      throw new Error(data.error || 'Import failed');
-    }
+    errEl.style.display = 'none';
+    sucEl.style.display = 'none';
+    if (!fileInput.files || !fileInput.files[0]) return;
 
-    // ── Synchronous fallback: Celery was unavailable, task ran inline ────────
-    if (data.done === true) {
-      _setImportProgress(100, 'Done!');
-      sucEl.textContent = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
-      sucEl.style.display = 'flex';
-      btn.disabled = false;
-      btn.textContent = 'Import';
-      showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
-      setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
-      return;
-    }
+    const formData = new FormData();
+    formData.append('excel_file', fileInput.files[0]);
+    formData.append('csrfmiddlewaretoken', _getCsrf());
 
-    // ── Async path: Celery task queued, start polling ────────────────────────
-    const taskId    = data.task_id;
-    const totalRows = data.total || 0;
-
-    if (!taskId) {
-      // No task_id and not done — file had no rows
-      _setImportProgress(100, 'Done!');
-      sucEl.textContent = data.message || 'No data rows found in the file.';
-      sucEl.style.display = 'flex';
-      btn.disabled = false;
-      btn.textContent = 'Import';
-      return;
-    }
-
-    _currentTask = taskId;
-    _setImportProgress(15, `Queued ${totalRows} row(s) for processing…`);
+    btn.disabled = true;
     btn.innerHTML = `
       <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
-      Processing…`;
+      Uploading…`;
+    _setImportProgress(5, 'Uploading file…');
 
-    // Fire immediately, then poll every 2 seconds
-    _pollTaskStatus(taskId, totalRows);
-    _pollTimer = setInterval(() => _pollTaskStatus(taskId, totalRows), 2000);
+    try {
+      const resp = await fetch('/device-monitoring/import/', {
+        method: 'POST', body: formData, credentials: 'same-origin',
+      });
+      const rawText = await resp.text();
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Server returned non-JSON (HTTP ${resp.status}). First 200 chars: ${rawText.slice(0, 200)}`);
+      }
+      if (!resp.ok)  throw new Error(data.error || `HTTP ${resp.status}`);
+      if (!data.ok)  throw new Error(data.error || 'Import failed');
 
-  } catch (err) {
-    errEl.textContent = 'Error: ' + err.message;
-    errEl.style.display = 'flex';
-    btn.disabled = false;
-    btn.textContent = 'Import';
-    _setImportProgress(0, '');
-    showToast('Upload error: ' + err.message, 'error');
+      if (data.done === true) {
+        _setImportProgress(100, 'Done!');
+        sucEl.textContent = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+        sucEl.style.display = 'flex';
+        btn.disabled = false; btn.textContent = 'Import';
+        showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
+        setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
+        return;
+      }
+
+      const taskId    = data.task_id;
+      const totalRows = data.total || 0;
+
+      if (!taskId) {
+        _setImportProgress(100, 'Done!');
+        sucEl.textContent = data.message || 'No data rows found in the file.';
+        sucEl.style.display = 'flex';
+        btn.disabled = false; btn.textContent = 'Import';
+        return;
+      }
+
+      _currentTask = taskId;
+      _setImportProgress(15, `Queued ${totalRows} row(s) for processing…`);
+      btn.innerHTML = `
+        <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Processing…`;
+      _pollTaskStatus(taskId, totalRows);
+      _pollTimer = setInterval(() => _pollTaskStatus(taskId, totalRows), 2000);
+
+    } catch (err) {
+      errEl.textContent = 'Error: ' + err.message;
+      errEl.style.display = 'flex';
+      btn.disabled = false; btn.textContent = 'Import';
+      _setImportProgress(0, '');
+      showToast('Upload error: ' + err.message, 'error');
+    }
   }
-}
 
   /* ==================== WEBSOCKET REALTIME ==================== */
   function releaseBadgeHtml(status) {
@@ -674,18 +733,18 @@
 
       existing.dataset.box          = (row.box_number          || '').toLowerCase();
       existing.dataset.college      = (row.office_college      || '').toLowerCase();
-      existing.dataset.collegeRaw   = row.office_college       || '';
+      existing.dataset.collegeRaw   =  row.office_college      || '';
       existing.dataset.person       = (row.accountable_person  || '').toLowerCase();
       existing.dataset.borrowerType = (row.borrower_type       || '').toLowerCase();
       existing.dataset.officer      = (row.accountable_officer || '').toLowerCase();
-      existing.dataset.officerRaw   = row.accountable_officer  || '';
+      existing.dataset.officerRaw   =  row.accountable_officer || '';
       existing.dataset.device       = (row.device              || '').toLowerCase();
       existing.dataset.serial       = (row.serial_number       || '').toLowerCase();
-      existing.dataset.release      = row.release_status || '—';
-      existing.dataset.mr           = row.assigned_mr || '';
-      existing.dataset.mrLower      = (row.assigned_mr || '').toLowerCase();
-      existing.dataset.ptr          = row.ptr || '';
-      existing.dataset.ptrLower     = (row.ptr || '').toLowerCase();
+      existing.dataset.release      =  row.release_status      || '—';
+      existing.dataset.mr           =  row.assigned_mr         || '';
+      existing.dataset.mrLower      = (row.assigned_mr         || '').toLowerCase();
+      existing.dataset.ptr          =  row.ptr                 || '';
+      existing.dataset.ptrLower     = (row.ptr                 || '').toLowerCase();
       existing.dataset.serviceable    = row.serviceable     ? '1' : '0';
       existing.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
       existing.dataset.sealed         = row.sealed          ? '1' : '0';
@@ -717,12 +776,10 @@
     populateFilterDropdowns();
     applyDmFilters();
 
-    if (typeof data.pending_count === 'number') {
+    if (typeof data.pending_count === 'number')
       window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
-    }
-    if (typeof data.graduation_warning_count === 'number') {
+    if (typeof data.graduation_warning_count === 'number')
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
-    }
   }
 
   /* ==================== DRAG-TO-SCROLL ==================== */
@@ -731,7 +788,6 @@
     let isDragging = false, startX = 0, startY = 0,
         scrollLeft = 0, scrollTop = 0, hasDragged = false;
     const DRAG_THRESHOLD = 5;
-
     container.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       const tag = e.target.tagName;
@@ -765,7 +821,6 @@
 
   /* ==================== EVENT LISTENERS ==================== */
   function attachEventListeners() {
-    // Checkbox delegation
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
       if (cb?.type === 'checkbox') {
@@ -774,13 +829,11 @@
       }
     });
 
-    // Input → dataset sync + dirty tracking
     document.addEventListener('input', e => {
       const row = e.target.closest('tr[data-row-id]');
       if (!row) return;
       if (row.dataset.rowId && !row.dataset.rowId.startsWith('new_'))
         dirtyRows.add(row.dataset.rowId);
-
       if (e.target.matches('.dm-box-input'))            { row.dataset.box = e.target.value.toLowerCase(); sortTableByBoxNumber(); applyDmFilters(); }
       if (e.target.matches('.dm-college-input'))        { row.dataset.college = e.target.value.toLowerCase(); row.dataset.collegeRaw = e.target.value; populateFilterDropdowns(); applyDmFilters(); }
       if (e.target.matches('.dm-person-input'))         { row.dataset.person = e.target.value.toLowerCase(); populateFilterDropdowns(); applyDmFilters(); }
@@ -793,7 +846,6 @@
       if (e.target.matches('.dm-remarks-input,.dm-issue-input')) applyDmFilters();
     });
 
-    // Filter controls
     const searchInput = document.getElementById('dm-search');
     if (searchInput) searchInput.addEventListener('input', applyDmFilters);
     ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
@@ -816,13 +868,11 @@
       if (deleteBtn) { e.preventDefault(); deleteRow(deleteBtn); }
     });
 
-    // Import modal wiring
     document.getElementById('openImportModalBtn')?.addEventListener('click', openImportModal);
     document.getElementById('closeImportModalBtn')?.addEventListener('click', closeImportModal);
     document.getElementById('cancelImportBtn')?.addEventListener('click', closeImportModal);
     document.getElementById('import-confirm-btn')?.addEventListener('click', confirmImport);
 
-    // File picker
     const fileInput = document.getElementById('import-file-input');
     if (fileInput) {
       fileInput.addEventListener('change', function () {
@@ -852,10 +902,15 @@
 
   /* ==================== INITIALISATION ==================== */
   document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('#dm-tbody tr[data-row-id]').forEach(row => applyLockState(row));
-    sortTableByBoxNumber();
-    populateFilterDropdowns();
-    applyDmFilters();
+    // Render rows from JSON — much faster than server-rendered HTML for 1000+ rows
+    if (typeof DM_ROWS !== 'undefined' && DM_ROWS.length) {
+      renderAllRows(DM_ROWS);
+    } else {
+      // No rows — still run setup so filters/buttons work
+      populateFilterDropdowns();
+      applyDmFilters();
+    }
+
     attachEventListeners();
 
     const indicator = document.getElementById('rt-indicator');
@@ -863,75 +918,4 @@
       InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
   });
 
-  // ==================== VIRTUAL RENDER ====================
-function renderAllRows(rowsData) {
-  const tbody = document.getElementById('dm-tbody');
-  tbody.innerHTML = '';
-
-  rowsData.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.dataset.rowId    = row.id;
-    tr.dataset.box      = (row.box_number || '').toLowerCase();
-    tr.dataset.college  = (row.office_college || '').toLowerCase();
-    tr.dataset.collegeRaw = row.office_college || '';
-    tr.dataset.person   = (row.accountable_person || '').toLowerCase();
-    tr.dataset.borrowerType = (row.borrower_type || '').toLowerCase();
-    tr.dataset.officer  = (row.accountable_officer || '').toLowerCase();
-    tr.dataset.officerRaw = row.accountable_officer || '';
-    tr.dataset.device   = (row.device || '').toLowerCase();
-    tr.dataset.serial   = (row.serial_number || '').toLowerCase();
-    tr.dataset.release  = row.release_status || '—';
-    tr.dataset.mr       = row.assigned_mr || '';
-    tr.dataset.mrLower  = (row.assigned_mr || '').toLowerCase();
-    tr.dataset.ptr      = row.ptr || '';
-    tr.dataset.ptrLower = (row.ptr || '').toLowerCase();
-    tr.dataset.serviceable    = row.serviceable    ? '1' : '0';
-    tr.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
-    tr.dataset.sealed         = row.sealed         ? '1' : '0';
-    tr.dataset.missing        = row.missing        ? '1' : '0';
-    tr.dataset.incomplete     = row.incomplete     ? '1' : '0';
-
-    const releaseClass = row.release_status === 'Released' ? 'badge-released'
-                       : row.release_status === 'Returned' ? 'badge-returned-dm'
-                       : 'badge-none';
-
-    tr.innerHTML = `
-      <input type="hidden" name="row_id" value="${row.id}"/>
-      <td style="text-align:center"><input type="text" name="box_number" value="${row.box_number}" class="form-control dm-box-input" style="width:80px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="serial_number" value="${row.serial_number}" class="form-control dm-serial-input" style="width:110px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="office_college" value="${row.office_college}" class="form-control dm-college-input" style="width:110px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="accountable_person" value="${row.accountable_person}" class="form-control dm-person-input" style="width:130px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center">
-        <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
-          <option value="">— Select —</option>
-          <option value="student" ${row.borrower_type === 'student' ? 'selected' : ''}>Student</option>
-          <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
-        </select>
-      </td>
-      <td style="text-align:center"><input type="text" name="assigned_mr" value="${row.assigned_mr}" class="form-control dm-mr-input" style="width:110px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="accountable_officer" value="${row.accountable_officer}" class="form-control dm-officer-input" style="width:130px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="device" value="${row.device}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="serviceable" ${row.serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="non_serviceable" ${row.non_serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="sealed" ${row.sealed ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="ptr" value="${row.ptr}" class="form-control dm-ptr-input" style="width:100px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><span class="release-status-badge ${releaseClass}">${row.release_status}</span></td>
-      <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${row.date_returned_display}</td>
-      <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.remarks}</textarea></td>
-      <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.issue}</textarea></td>
-      <td style="text-align:center;white-space:nowrap">
-        <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
-        <button type="button" class="btn btn-danger btn-sm dm-delete-row" style="margin-left:4px">✕</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-    applyLockState(tr);
-  });
-
-  sortTableByBoxNumber();
-  populateFilterDropdowns();
-  applyDmFilters();
-  }
 })();
