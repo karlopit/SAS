@@ -579,12 +579,11 @@ def _normalize_header(h):
     """
     'Assigned M.R. #' → 'assigned mr'
     'P.T.R.'          → 'ptr'
-    'College / Office'→ 'college / office'   (spaces around / kept for the slash-variants)
-    Strip, lowercase, remove ALL dots and hashes, collapse whitespace.
+    Strip, lowercase, remove dots/hashes, collapse whitespace.
     """
     h = str(h or '').strip().lower()
-    h = re.sub(r'\.', '', h)          # remove all full-stops
-    h = re.sub(r'#', '', h)           # remove hash signs
+    h = re.sub(r'\.', '', h)
+    h = re.sub(r'#', '', h)
     h = re.sub(r'\s+', ' ', h).strip()
     return h
  
@@ -622,59 +621,246 @@ def _parse_excel_date(raw):
 #  The import view
 # ─────────────────────────────────────────────────────────────────────────────
 
+"""
+STEP 1 — Add this URL to inventory/urls.py inside urlpatterns:
+
+    path('device-monitoring/import/status/<str:task_id>/', views.import_task_status, name='import_task_status'),
+
+STEP 2 — Replace device_monitoring_import() and import_task_status() in inventory/views.py
+         with the two functions below.
+
+No other files need changing.
+"""
+
+
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):
+    """
+    Accepts an Excel file, parses it synchronously (fast — just reading cells),
+    then hands the parsed row-dicts to a Celery task for the slow DB work.
+    Returns JSON immediately with a task_id the frontend can poll.
+    """
     if request.user.role != 'staff':
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+        return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
 
     excel_file = request.FILES.get('excel_file')
-    if not excel_file or not excel_file.name.endswith(('.xlsx', '.xls')):
-        return JsonResponse({'error': 'Invalid file'}, status=400)
+    if not excel_file:
+        return JsonResponse({'ok': False, 'error': 'No file uploaded.'}, status=400)
+    if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
+        return JsonResponse({'ok': False, 'error': 'Invalid file. Please upload .xlsx or .xls.'}, status=400)
 
+    # ── Read workbook ────────────────────────────────────────────────────────
     try:
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
-    except Exception as e:
-        return JsonResponse({'error': f'Excel read error: {str(e)}'}, status=400)
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': f'Could not read Excel file: {exc}'}, status=400)
 
-    # Header detection and parsing – same as before, but build rows_data
-    # ... (copy header detection and col_map from previous code)
+    # ── Detect header row (first row with ≥ 3 non-empty cells) ───────────────
+    header_row_num = None
+    all_rows = list(ws.iter_rows(min_row=1, max_row=15, values_only=True))
+    for row_idx, row in enumerate(all_rows, start=1):
+        non_empty = [c for c in row if c is not None and str(c).strip()]
+        if len(non_empty) >= 3:
+            header_row_num = row_idx
+            break
 
+    if header_row_num is None:
+        return JsonResponse({'ok': False, 'error': 'Could not find a header row (need ≥ 3 filled cells).'}, status=400)
+
+    header_row = all_rows[header_row_num - 1]
+
+    # ── Map normalized header text → field name ──────────────────────────────
+    ALIASES = {
+        'box number':          'box_number',
+        'box no':              'box_number',
+        'box':                 'box_number',
+        'serial number':       'serial_number',
+        'serial no':           'serial_number',
+        'serial':              'serial_number',
+        'sn':                  'serial_number',
+        'college / office':    'office_college',
+        'college/office':      'office_college',
+        'college':             'office_college',
+        'office':              'office_college',
+        'name of student':     'accountable_person',
+        'student name':        'accountable_person',
+        'name':                'accountable_person',
+        'accountable person':  'accountable_person',
+        'borrower type':       'borrower_type',
+        'type':                'borrower_type',
+        'accountable officer': 'accountable_officer',
+        'officer':             'accountable_officer',
+        'assigned mr':         'assigned_mr',
+        'assigned mr ':        'assigned_mr',
+        'mr':                  'assigned_mr',
+        'device':              'device',
+        'ptr':                 'ptr',
+        'status':              'release_status_import',
+        'release / return':    'release_status_import',
+        'release/return':      'release_status_import',
+        'release status':      'release_status_import',
+        'date returned':       'date_returned',
+        'date released':       'date_returned',
+        'remarks':             'remarks',
+        'issue':               'issue',
+    }
+
+    def _norm(h):
+        """Lowercase, strip dots/hashes/extra spaces."""
+        import re as _re
+        h = str(h or '').strip().lower()
+        h = _re.sub(r'[.#]', '', h)
+        h = _re.sub(r'\s+', ' ', h).strip()
+        return h
+
+    col_map = {}   # 0-based col index → field name
+    for col_idx, cell_val in enumerate(header_row):
+        norm = _norm(cell_val)
+        field = ALIASES.get(norm)
+        if field and field not in col_map.values():
+            col_map[col_idx] = field
+
+    if 'serial_number' not in col_map.values():
+        return JsonResponse({
+            'ok': False,
+            'error': (
+                'Could not find a "Serial Number" column. '
+                f'Headers detected: {[str(h) for h in header_row if h]}'
+            )
+        }, status=400)
+
+    # ── Parse data rows into plain dicts (no DB calls here) ─────────────────
     rows_data = []
-    for row in ws.iter_rows(min_row=header_row_num+1, values_only=True):
-        # parse row as before, build a dict
-        data = {}
+    data_rows = list(ws.iter_rows(min_row=header_row_num + 1, values_only=True))
+    for row in data_rows:
+        if all(c is None or str(c).strip() == '' for c in row):
+            continue
+
+        str_data = {}
         raw_data = {}
         for col_idx, field_name in col_map.items():
-            if col_idx < len(row):
-                raw = row[col_idx]
-                raw_data[field_name] = raw
-                data[field_name] = str(raw).strip() if raw is not None else ''
+            raw = row[col_idx] if col_idx < len(row) else None
+            raw_data[field_name] = raw
+            str_data[field_name] = str(raw).strip() if raw is not None else ''
 
-        serial = data.get('serial_number', '').strip()
+        serial = str_data.get('serial_number', '').strip()
         if not serial:
             continue
 
-        data['serial_number'] = serial
-        data['date_returned_raw'] = raw_data.get('date_returned')
-        # determine release status
-        release_text = data.get('release_status_import', '').lower()
-        data['is_returned'] = release_text == 'returned'
-        data['is_released'] = release_text == 'released'
-        rows_data.append(data)
+        release_text = str_data.get('release_status_import', '').strip().lower()
+        is_returned  = release_text in ('returned', 'return')
+        is_released  = release_text in ('released', 'release', 'borrowed', 'out')
+
+        bt = str_data.get('borrower_type', '').strip().lower()
+        borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
+
+        # Serialize the raw date as string so Celery can receive it via JSON
+        raw_date = raw_data.get('date_returned')
+        if raw_date is not None and not isinstance(raw_date, str):
+            raw_date = str(raw_date)
+
+        rows_data.append({
+            'serial_number':       serial,
+            'box_number':          str_data.get('box_number', ''),
+            'office_college':      str_data.get('office_college', ''),
+            'accountable_person':  str_data.get('accountable_person', ''),
+            'borrower_type':       borrower_type,
+            'accountable_officer': str_data.get('accountable_officer', ''),
+            'assigned_mr':         str_data.get('assigned_mr', ''),
+            'device':              str_data.get('device', '') or 'Tablet',
+            'ptr':                 str_data.get('ptr', ''),
+            'remarks':             str_data.get('remarks', ''),
+            'issue':               str_data.get('issue', ''),
+            'date_returned_raw':   raw_date or '',
+            'is_returned':         is_returned,
+            'is_released':         is_released,
+        })
 
     if not rows_data:
-        return JsonResponse({'ok': True, 'created': 0, 'updated': 0, 'errors': []})
+        return JsonResponse({
+            'ok': True, 'task_id': None,
+            'total': 0, 'created': 0, 'updated': 0,
+            'message': 'No data rows found in the file.',
+        })
 
-    # Send to Celery
-    from .tasks import process_excel_import
-    task = process_excel_import.delay(rows_data, request.user.id)
+    # ── Dispatch to Celery ───────────────────────────────────────────────────
+    try:
+        from inventory.tasks import process_excel_import
+        task = process_excel_import.delay(rows_data, request.user.id)
+        task_id = task.id
+    except Exception as exc:
+        # Celery unavailable — fall back to running synchronously
+        import traceback as _tb
+        try:
+            from inventory.tasks import process_excel_import
+            result = process_excel_import(rows_data, request.user.id)
+            return JsonResponse({
+                'ok':      True,
+                'task_id': None,   # no task — ran inline
+                'total':   len(rows_data),
+                'created': result.get('created', 0),
+                'updated': result.get('updated', 0),
+                'errors':  result.get('errors', []),
+                'message': 'Import complete (ran synchronously — Celery unavailable).',
+                'done':    True,   # tell the frontend it's already finished
+            })
+        except Exception as exc2:
+            return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
 
     return JsonResponse({
-        'ok': True,
-        'task_id': task.id,
-        'message': f'Import started for {len(rows_data)} rows. You will be notified when it finishes.',
+        'ok':      True,
+        'task_id': task_id,
+        'total':   len(rows_data),
+        'message': f'Import started for {len(rows_data)} row(s).',
+    })
+
+
+@login_required
+def import_task_status(request, task_id):
+    """
+    Polling endpoint.  Always returns JSON — never raises an unhandled exception.
+    URL: /device-monitoring/import/status/<task_id>/
+    """
+    if request.user.role != 'staff':
+        return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
+
+    try:
+        from celery.result import AsyncResult
+        result = AsyncResult(task_id)
+        state  = result.state   # PENDING | STARTED | SUCCESS | FAILURE | RETRY | REVOKED
+    except Exception as exc:
+        return JsonResponse({'state': 'FAILURE', 'error': str(exc)})
+
+    if state == 'SUCCESS':
+        info = result.result or {}
+        if not isinstance(info, dict):
+            info = {}
+        return JsonResponse({
+            'state':   'SUCCESS',
+            'ok':      info.get('ok', True),
+            'created': info.get('created', 0),
+            'updated': info.get('updated', 0),
+            'errors':  info.get('errors', []),
+        })
+
+    if state == 'FAILURE':
+        error_msg = str(result.result) if result.result else 'Unknown error'
+        return JsonResponse({'state': 'FAILURE', 'error': error_msg})
+
+    # PENDING / STARTED / RETRY
+    meta = {}
+    try:
+        if isinstance(result.info, dict):
+            meta = result.info
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'state':    state,
+        'progress': meta.get('progress', 0),
+        'message':  meta.get('message', 'Processing…'),
     })
 
 

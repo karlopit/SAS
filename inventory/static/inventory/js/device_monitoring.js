@@ -1,7 +1,7 @@
 /**
  * device_monitoring.js
- * - saveAllRows() now uses JSON (fixes TooManyFieldsSent)
- * - Scroll button is sticky + centered
+ * - saveAllRows() uses JSON (fixes TooManyFieldsSent)
+ * - Import now fires async via Celery and polls for task status
  */
 
 (function () {
@@ -31,7 +31,7 @@
     el._timer = setTimeout(() => {
       el.style.opacity   = '0';
       el.style.transform = 'translateY(12px)';
-    }, 3200);
+    }, 4000);
   }
 
   /* ==================== CHECKBOX HELPERS ==================== */
@@ -168,12 +168,11 @@
   function rowMatchesSearch(row, query) {
     if (!query) return true;
     const serialInput = row.querySelector('input[name="serial_number"]');
-    const boxInput = row.querySelector('input[name="box_number"]');
+    const boxInput    = row.querySelector('input[name="box_number"]');
     const serial = serialInput ? serialInput.value.toLowerCase() : '';
-    const box = boxInput ? boxInput.value.toLowerCase() : '';
-    const combined = serial + ' ' + box;
-    return combined.includes(query);
-}
+    const box    = boxInput    ? boxInput.value.toLowerCase()    : '';
+    return (serial + ' ' + box).includes(query);
+  }
 
   /* ==================== APPLY FILTERS ==================== */
   function applyDmFilters() {
@@ -200,15 +199,19 @@
       let matchStatus = true;
       if (status) {
         const attrMap = {
-          serviceable: 'serviceable', non_serviceable: 'nonServiceable',
-          sealed: 'sealed', missing: 'missing', incomplete: 'incomplete',
+          serviceable:     'serviceable',
+          non_serviceable: 'nonServiceable',
+          sealed:          'sealed',
+          missing:         'missing',
+          incomplete:      'incomplete',
         };
         const dsKey = attrMap[status];
         matchStatus = dsKey ? row.dataset[dsKey] === '1' : true;
       }
 
-      const matchSearch = rowMatchesSearch(row, search);
-      const show = matchSearch && matchCollege && matchBT && matchOfficer && matchMr && matchPtr && matchRelease && matchStatus;
+      const show = rowMatchesSearch(row, search) &&
+                   matchCollege && matchBT && matchOfficer &&
+                   matchMr && matchPtr && matchRelease && matchStatus;
       row.style.display = show ? '' : 'none';
       if (show) visible++;
     });
@@ -307,49 +310,46 @@
         Saving…`;
     }
 
-    // Build JSON payload
     const rowsData = [];
     const rows = document.querySelectorAll('#dm-tbody tr[data-row-id]');
     for (const row of rows) {
       const rowId = row.querySelector('input[name="row_id"]')?.value;
       if (!rowId) continue;
 
-      const rowData = {
-        row_id: rowId,
-        box_number: row.querySelector('input[name="box_number"]')?.value || '',
-        serial_number: row.querySelector('input[name="serial_number"]')?.value || '',
-        office_college: row.querySelector('input[name="office_college"]')?.value || '',
-        accountable_person: row.querySelector('input[name="accountable_person"]')?.value || '',
-        borrower_type: row.querySelector('select[name="borrower_type"]')?.value || '',
-        assigned_mr: row.querySelector('input[name="assigned_mr"]')?.value || '',
+      rowsData.push({
+        row_id:              rowId,
+        box_number:          row.querySelector('input[name="box_number"]')?.value || '',
+        serial_number:       row.querySelector('input[name="serial_number"]')?.value || '',
+        office_college:      row.querySelector('input[name="office_college"]')?.value || '',
+        accountable_person:  row.querySelector('input[name="accountable_person"]')?.value || '',
+        borrower_type:       row.querySelector('select[name="borrower_type"]')?.value || '',
+        assigned_mr:         row.querySelector('input[name="assigned_mr"]')?.value || '',
         accountable_officer: row.querySelector('input[name="accountable_officer"]')?.value || '',
-        device: row.querySelector('input[name="device"]')?.value || '',
-        serviceable: row.querySelector('input[name="serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        non_serviceable: row.querySelector('input[name="non_serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        sealed: row.querySelector('input[name="sealed"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        missing: row.querySelector('input[name="missing"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        incomplete: row.querySelector('input[name="incomplete"]')?.nextElementSibling?.checked ? 'on' : 'off',
-        ptr: row.querySelector('input[name="ptr"]')?.value || '',
-        remarks: row.querySelector('textarea[name="remarks"]')?.value || '',
-        issue: row.querySelector('textarea[name="issue"]')?.value || '',
-      };
-      rowsData.push(rowData);
+        device:              row.querySelector('input[name="device"]')?.value || '',
+        serviceable:         row.querySelector('input[name="serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        non_serviceable:     row.querySelector('input[name="non_serviceable"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        sealed:              row.querySelector('input[name="sealed"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        missing:             row.querySelector('input[name="missing"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        incomplete:          row.querySelector('input[name="incomplete"]')?.nextElementSibling?.checked ? 'on' : 'off',
+        ptr:                 row.querySelector('input[name="ptr"]')?.value || '',
+        remarks:             row.querySelector('textarea[name="remarks"]')?.value || '',
+        issue:               row.querySelector('textarea[name="issue"]')?.value || '',
+      });
     }
 
     try {
       const resp = await fetch(form.action, {
-        method: 'POST',
+        method:  'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+          'Content-Type':     'application/json',
+          'X-CSRFToken':      document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
           'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ rows: rowsData, save_all: true }),
+        body:        JSON.stringify({ rows: rowsData, save_all: true }),
         credentials: 'same-origin',
       });
 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
       const result = await resp.json();
 
       if (result.ok) {
@@ -364,10 +364,7 @@
     } catch (err) {
       showToast('Network error: ' + err.message, 'error');
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-      }
+      if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
     }
   }
 
@@ -377,10 +374,10 @@
     const rowId = row.dataset.rowId;
     if (rowId && !rowId.startsWith('new_')) {
       if (!confirm('Delete this row?')) return;
-      const form = document.createElement('form');
+      const form  = document.createElement('form');
       form.method = 'post';
       form.action = `/device-monitoring/${rowId}/delete/`;
-      const csrf = document.createElement('input');
+      const csrf  = document.createElement('input');
       csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
       csrf.value = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
       form.appendChild(csrf);
@@ -394,25 +391,119 @@
   }
 
   /* ==================== IMPORT MODAL ==================== */
+
+  function _getCsrf() {
+    return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  }
+
   function openImportModal() {
     const modal = document.getElementById('importModal');
     if (!modal) return;
     modal.style.display = 'flex';
+    _resetImportModal();
+  }
+
+  function _resetImportModal() {
     const fileInput  = document.getElementById('import-file-input');
     const preview    = document.getElementById('import-preview');
     const errorEl    = document.getElementById('import-error');
     const successEl  = document.getElementById('import-success');
     const confirmBtn = document.getElementById('import-confirm-btn');
+    const progress   = document.getElementById('import-progress-wrap');
     if (fileInput)  fileInput.value = '';
     if (preview)    preview.style.display   = 'none';
     if (errorEl)    errorEl.style.display   = 'none';
     if (successEl)  successEl.style.display = 'none';
-    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Import'; }
+    if (progress)   progress.style.display  = 'none';
   }
 
   function closeImportModal() {
     const modal = document.getElementById('importModal');
     if (modal) modal.style.display = 'none';
+    _stopPolling();
+  }
+
+  /* ── Async import with Celery task polling ── */
+  let _pollTimer   = null;
+  let _currentTask = null;
+
+  function _stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    _currentTask = null;
+  }
+
+  function _setImportProgress(pct, label) {
+    const wrap = document.getElementById('import-progress-wrap');
+    const bar  = document.getElementById('import-progress-bar');
+    const lbl  = document.getElementById('import-progress-label');
+    if (wrap) wrap.style.display = 'block';
+    if (bar)  bar.style.width = pct + '%';
+    if (lbl)  lbl.textContent = label;
+  }
+
+  async function _pollTaskStatus(taskId, totalRows) {
+    try {
+      const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, {
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      if (data.state === 'SUCCESS') {
+        _stopPolling();
+        _setImportProgress(100, 'Done!');
+
+        const sucEl = document.getElementById('import-success');
+        if (sucEl) {
+          let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+          if (data.errors?.length) msg += ` ${data.errors.length} row(s) had errors.`;
+          sucEl.textContent = msg;
+          sucEl.style.display = 'flex';
+        }
+
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+
+        showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
+
+        // Reload the table after a short delay
+        setTimeout(() => {
+          closeImportModal();
+          window.location.reload();
+        }, 1800);
+        return;
+      }
+
+      if (data.state === 'FAILURE') {
+        _stopPolling();
+        const errEl = document.getElementById('import-error');
+        if (errEl) {
+          errEl.textContent = 'Import failed: ' + (data.error || 'Unknown error');
+          errEl.style.display = 'flex';
+        }
+        const confirmBtn = document.getElementById('import-confirm-btn');
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+        _setImportProgress(0, '');
+        showToast('Import failed', 'error');
+        return;
+      }
+
+      // PENDING / STARTED / RETRY — show indeterminate progress
+      const progress = data.progress || 0;
+      const pct = progress > 0 ? Math.min(95, progress) : _indeterminatePct();
+      _setImportProgress(pct, data.message || `Processing ${totalRows} row(s)…`);
+
+    } catch (err) {
+      // Network blip — keep polling
+    }
+  }
+
+  // Indeterminate animation: oscillates 10 → 90
+  let _indeterminateTick = 0;
+  function _indeterminatePct() {
+    _indeterminateTick = (_indeterminateTick + 3) % 180;
+    return 10 + Math.abs(Math.sin(_indeterminateTick * Math.PI / 180)) * 80;
   }
 
   async function confirmImport() {
@@ -421,39 +512,55 @@
     const sucEl     = document.getElementById('import-success');
     const btn       = document.getElementById('import-confirm-btn');
     if (!errEl || !sucEl || !btn || !fileInput) return;
+
     errEl.style.display = 'none';
     sucEl.style.display = 'none';
     if (!fileInput.files || !fileInput.files[0]) return;
 
     const formData = new FormData();
     formData.append('excel_file', fileInput.files[0]);
-    const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
-    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('csrfmiddlewaretoken', _getCsrf());
 
     btn.disabled = true;
-    const originalText = btn.innerHTML;
-    btn.textContent = 'Importing…';
+    btn.innerHTML = `
+      <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      Uploading…`;
+    _setImportProgress(5, 'Uploading file…');
 
     try {
       const resp = await fetch('/device-monitoring/import/', {
         method: 'POST', body: formData, credentials: 'same-origin',
       });
       const data = await resp.json();
+
       if (!data.ok) throw new Error(data.error || 'Import failed');
 
-      let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
-      if (data.errors?.length) {
-        msg += ` ${data.errors.length} row(s) had errors.`;
-        console.warn('Import errors:', data.errors);
-      }
-      sucEl.textContent = msg;
-      sucEl.style.display = 'flex';
-      setTimeout(() => { window.location.reload(); }, 1800);
+      // File uploaded & parsed — now poll for Celery task
+      const taskId    = data.task_id;
+      const totalRows = data.total || 0;
+      _currentTask = taskId;
+
+      _setImportProgress(15, `Queued ${totalRows} row(s) for processing…`);
+      btn.innerHTML = `
+        <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Processing…`;
+
+      // Start polling every 2 seconds
+      _pollTimer = setInterval(() => _pollTaskStatus(taskId, totalRows), 2000);
+      // Also fire immediately
+      _pollTaskStatus(taskId, totalRows);
+
     } catch (err) {
       errEl.textContent = 'Error: ' + err.message;
       errEl.style.display = 'flex';
       btn.disabled = false;
-      btn.innerHTML = originalText;
+      btn.textContent = 'Import';
+      _setImportProgress(0, '');
+      showToast('Upload error: ' + err.message, 'error');
     }
   }
 
@@ -541,7 +648,6 @@
     populateFilterDropdowns();
     applyDmFilters();
 
-    // Only dispatch badge events when the payload actually contains these fields
     if (typeof data.pending_count === 'number') {
       window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
     }
@@ -641,15 +747,13 @@
       if (deleteBtn) { e.preventDefault(); deleteRow(deleteBtn); }
     });
 
-    const openModalBtn    = document.getElementById('openImportModalBtn');
-    const closeModalBtn   = document.getElementById('closeImportModalBtn');
-    const cancelImportBtn = document.getElementById('cancelImportBtn');
-    const confirmImportBtn = document.getElementById('import-confirm-btn');
-    if (openModalBtn)    openModalBtn.addEventListener('click', openImportModal);
-    if (closeModalBtn)   closeModalBtn.addEventListener('click', closeImportModal);
-    if (cancelImportBtn) cancelImportBtn.addEventListener('click', closeImportModal);
-    if (confirmImportBtn) confirmImportBtn.addEventListener('click', confirmImport);
+    // Import modal wiring
+    document.getElementById('openImportModalBtn')?.addEventListener('click', openImportModal);
+    document.getElementById('closeImportModalBtn')?.addEventListener('click', closeImportModal);
+    document.getElementById('cancelImportBtn')?.addEventListener('click', closeImportModal);
+    document.getElementById('import-confirm-btn')?.addEventListener('click', confirmImport);
 
+    // File picker
     const fileInput = document.getElementById('import-file-input');
     if (fileInput) {
       fileInput.addEventListener('change', function () {
@@ -660,6 +764,8 @@
         if (errEl)  errEl.style.display  = 'none';
         if (prevEl) prevEl.style.display = 'none';
         if (btn)    btn.disabled = true;
+        const progressWrap = document.getElementById('import-progress-wrap');
+        if (progressWrap) progressWrap.style.display = 'none';
         if (!file) return;
         if (!file.name.match(/\.(xlsx|xls)$/i)) {
           if (errEl) { errEl.textContent = 'Please select a valid .xlsx or .xls file.'; errEl.style.display = 'flex'; }
