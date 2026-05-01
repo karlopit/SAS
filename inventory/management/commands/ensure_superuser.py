@@ -30,6 +30,7 @@ class Command(BaseCommand):
         # Set superuser flags
         user.is_staff = True
         user.is_superuser = True
+        user.role = 'admin'
 
         # Use the full name string as first_name so get_full_name() displays it
         if fullname:
