@@ -1934,3 +1934,14 @@ def export_device_monitoring(request):
     current_row += 2
 
     return _xl_response(wb, 'device_monitoring')
+
+@csrf_exempt
+def db_keepalive(request):
+    """Lightweight endpoint for cron to keep Neon DB awake."""
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+        return JsonResponse({'ok': True})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)

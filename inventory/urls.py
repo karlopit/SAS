@@ -48,4 +48,5 @@ urlpatterns = [
     path('graduation-warnings/', views.graduation_warnings, name='graduation_warnings'),
 
     path('device-monitoring/import/status/<str:task_id>/', views.import_task_status, name='import_task_status'),
-]
+    path('keepalive/', views.db_keepalive, name='db_keepalive'),
+]   
