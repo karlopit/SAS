@@ -4,6 +4,9 @@ inventory/tasks.py
 Celery task for async Excel import of DeviceMonitor records.
 Handles create/update per serial number, marks returned/released devices,
 and broadcasts live updates when done.
+
+Bulk operations are chunked at CHUNK_SIZE rows to prevent Neon Postgres
+from timing out on large imports (4k+ rows).
 """
 import random
 import pytz
@@ -13,7 +16,8 @@ from celery import shared_task
 from django.utils import timezone
 
 
-PH_TZ = pytz.timezone('Asia/Manila')
+PH_TZ      = pytz.timezone('Asia/Manila')
+CHUNK_SIZE = 500   # rows per bulk_create / bulk_update call
 
 
 def _get_ph_time():
@@ -46,7 +50,27 @@ def _parse_excel_date(raw):
     return None
 
 
-@shared_task(bind=True)
+def _chunked_bulk_create(model, objects, chunk_size=CHUNK_SIZE, ignore_conflicts=False):
+    """bulk_create in chunks to avoid Neon query size / timeout limits."""
+    created = 0
+    for i in range(0, len(objects), chunk_size):
+        chunk = objects[i:i + chunk_size]
+        model.objects.bulk_create(chunk, ignore_conflicts=ignore_conflicts)
+        created += len(chunk)
+    return created
+
+
+def _chunked_bulk_update(model, objects, fields, chunk_size=CHUNK_SIZE):
+    """bulk_update in chunks to avoid Neon query size / timeout limits."""
+    updated = 0
+    for i in range(0, len(objects), chunk_size):
+        chunk = objects[i:i + chunk_size]
+        model.objects.bulk_update(chunk, fields)
+        updated += len(chunk)
+    return updated
+
+
+@shared_task(bind=True, soft_time_limit=300, time_limit=360)
 def process_excel_import(self, rows_data, user_id):
     """
     rows_data : list of dicts already parsed from the Excel file by the view.
@@ -71,6 +95,13 @@ def process_excel_import(self, rows_data, user_id):
     except User.DoesNotExist:
         return {'ok': False, 'error': f'User {user_id} not found'}
 
+    # ── Wake up Neon free tier before heavy queries ──────────────────────────
+    try:
+        from django.db import connection
+        connection.ensure_connection()
+    except Exception:
+        pass
+
     now_ph = _get_ph_time()
 
     # Ensure a dummy item exists for "released via import" transactions
@@ -86,19 +117,19 @@ def process_excel_import(self, rows_data, user_id):
         for dm in DeviceMonitor.objects.filter(serial_number__in=serials)
     }
 
-    to_create = []
-    to_update = []
+    to_create        = []
+    to_update        = []
     returned_serials = []
-    released_rows = []
-    errors = []
+    released_rows    = []
+    errors           = []
 
     for d in rows_data:
         serial = (d.get('serial_number') or '').strip()
         if not serial:
             continue
 
-        is_returned = bool(d.get('is_returned'))
-        is_released = bool(d.get('is_released'))
+        is_returned   = bool(d.get('is_returned'))
+        is_released   = bool(d.get('is_released'))
         date_returned = _parse_excel_date(d.get('date_returned_raw'))
 
         # If flagged returned but no date, use now
@@ -109,19 +140,19 @@ def process_excel_import(self, rows_data, user_id):
             date_returned = None
 
         defaults = {
-            'box_number':          (d.get('box_number') or '').strip(),
-            'office_college':      (d.get('office_college') or 'Unknown').strip(),
-            'accountable_person':  (d.get('accountable_person') or '').strip(),
-            'borrower_type':       (d.get('borrower_type') or '').strip().lower(),
+            'box_number':          (d.get('box_number')          or '').strip(),
+            'office_college':      (d.get('office_college')      or 'Unknown').strip(),
+            'accountable_person':  (d.get('accountable_person')  or '').strip(),
+            'borrower_type':       (d.get('borrower_type')       or '').strip().lower(),
             'accountable_officer': (d.get('accountable_officer') or '').strip(),
-            'assigned_mr':         (d.get('assigned_mr') or '').strip(),
-            'device':              (d.get('device') or 'Tablet').strip(),
-            'ptr':                 (d.get('ptr') or '').strip(),
-            'remarks':             (d.get('remarks') or '').strip(),
-            'issue':               (d.get('issue') or '').strip(),
+            'assigned_mr':         (d.get('assigned_mr')         or '').strip(),
+            'device':              (d.get('device')              or 'Tablet').strip(),
+            'ptr':                 (d.get('ptr')                 or '').strip(),
+            'remarks':             (d.get('remarks')             or '').strip(),
+            'issue':               (d.get('issue')               or '').strip(),
             'date_returned':       date_returned,
             'is_released':         is_released and not is_returned,
-            # Checkboxes: always cleared on import (per spec)
+            # Checkboxes always cleared on import
             'serviceable':     False,
             'non_serviceable': False,
             'sealed':          False,
@@ -142,39 +173,45 @@ def process_excel_import(self, rows_data, user_id):
         elif is_released:
             released_rows.append(d)
 
-    # ── Bulk DB writes ───────────────────────────────────────────────────────
+    # ── Chunked bulk DB writes ───────────────────────────────────────────────
+    update_fields = [
+        'box_number', 'office_college', 'accountable_person', 'borrower_type',
+        'accountable_officer', 'assigned_mr', 'device', 'ptr',
+        'remarks', 'issue', 'date_returned', 'is_released',
+        'serviceable', 'non_serviceable', 'sealed', 'missing', 'incomplete',
+    ]
+
     try:
         if to_create:
-            DeviceMonitor.objects.bulk_create(to_create, ignore_conflicts=False)
+            _chunked_bulk_create(DeviceMonitor, to_create)
         if to_update:
-            update_fields = [
-                'box_number', 'office_college', 'accountable_person', 'borrower_type',
-                'accountable_officer', 'assigned_mr', 'device', 'ptr',
-                'remarks', 'issue', 'date_returned', 'is_released',
-                'serviceable', 'non_serviceable', 'sealed', 'missing', 'incomplete',
-            ]
-            DeviceMonitor.objects.bulk_update(to_update, update_fields)
+            _chunked_bulk_update(DeviceMonitor, to_update, update_fields)
     except Exception as exc:
         errors.append(f'Bulk write error: {exc}')
 
     # ── Mark returned devices in TransactionDevice ───────────────────────────
+    # Process in chunks to avoid huge IN clauses
     if returned_serials:
-        TransactionDevice.objects.filter(
-            serial_number__in=returned_serials,
-            returned=False,
-        ).update(returned=True, returned_at=now_ph)
+        for i in range(0, len(returned_serials), CHUNK_SIZE):
+            chunk = returned_serials[i:i + CHUNK_SIZE]
+            TransactionDevice.objects.filter(
+                serial_number__in=chunk,
+                returned=False,
+            ).update(returned=True, returned_at=now_ph)
 
     # ── Create BorrowRequest + Transaction rows for Released devices ─────────
     if released_rows:
         released_serials_list = [d['serial_number'] for d in released_rows]
 
-        # Mark any existing TransactionDevice rows as returned (they were re-released)
-        TransactionDevice.objects.filter(
-            serial_number__in=released_serials_list,
-            returned=False,
-        ).update(returned=True, returned_at=now_ph)
+        # Mark any existing TransactionDevice rows as returned in chunks
+        for i in range(0, len(released_serials_list), CHUNK_SIZE):
+            chunk = released_serials_list[i:i + CHUNK_SIZE]
+            TransactionDevice.objects.filter(
+                serial_number__in=chunk,
+                returned=False,
+            ).update(returned=True, returned_at=now_ph)
 
-        # Generate unique 5-digit transaction IDs
+        # Generate unique 5-digit transaction IDs in one DB call
         existing_ids = set(BorrowRequest.objects.values_list('transaction_id', flat=True))
         new_ids = []
         for _ in released_rows:
@@ -185,48 +222,64 @@ def process_excel_import(self, rows_data, user_id):
                     new_ids.append(tx_id)
                     break
 
-        borrow_reqs = BorrowRequest.objects.bulk_create([
-            BorrowRequest(
-                transaction_id=new_ids[i],
-                borrower_name=d.get('accountable_person', '').strip(),
-                borrower_type=(d.get('borrower_type') or 'student').strip().lower(),
-                office_college=(d.get('office_college') or 'Unknown').strip(),
-                college=(d.get('office_college') or 'Unknown').strip(),
-                item=None,
-                quantity=1,
-                status='accepted',
-                student_id='',
-                year_level='',
-                section='',
-                academic_year='',
-            )
-            for i, d in enumerate(released_rows)
-        ])
+        # Chunk BorrowRequest creation
+        borrow_reqs = []
+        for i in range(0, len(released_rows), CHUNK_SIZE):
+            chunk_rows = released_rows[i:i + CHUNK_SIZE]
+            chunk_ids  = new_ids[i:i + CHUNK_SIZE]
+            created = BorrowRequest.objects.bulk_create([
+                BorrowRequest(
+                    transaction_id=chunk_ids[j],
+                    borrower_name=(chunk_rows[j].get('accountable_person') or '').strip(),
+                    borrower_type=(chunk_rows[j].get('borrower_type') or 'student').strip().lower(),
+                    office_college=(chunk_rows[j].get('office_college') or 'Unknown').strip(),
+                    college=(chunk_rows[j].get('office_college') or 'Unknown').strip(),
+                    item=None,
+                    quantity=1,
+                    status='accepted',
+                    student_id='',
+                    year_level='',
+                    section='',
+                    academic_year='',
+                )
+                for j in range(len(chunk_rows))
+            ])
+            borrow_reqs.extend(created)
 
-        txs = Transaction.objects.bulk_create([
-            Transaction(
-                borrow_request=borrow_reqs[i],
-                item=dummy_item,
-                borrower=user,
-                office_college=(d.get('office_college') or 'Unknown').strip(),
-                quantity_borrowed=1,
-                returned_qty=0,
-                status='borrowed',
-                borrowed_at=now_ph,
-                serial_number=d['serial_number'],
-            )
-            for i, d in enumerate(released_rows)
-        ])
+        # Chunk Transaction creation
+        txs = []
+        for i in range(0, len(released_rows), CHUNK_SIZE):
+            chunk_rows = released_rows[i:i + CHUNK_SIZE]
+            chunk_brs  = borrow_reqs[i:i + CHUNK_SIZE]
+            created = Transaction.objects.bulk_create([
+                Transaction(
+                    borrow_request=chunk_brs[j],
+                    item=dummy_item,
+                    borrower=user,
+                    office_college=(chunk_rows[j].get('office_college') or 'Unknown').strip(),
+                    quantity_borrowed=1,
+                    returned_qty=0,
+                    status='borrowed',
+                    borrowed_at=now_ph,
+                    serial_number=chunk_rows[j]['serial_number'],
+                )
+                for j in range(len(chunk_rows))
+            ])
+            txs.extend(created)
 
-        TransactionDevice.objects.bulk_create([
-            TransactionDevice(
-                transaction=txs[i],
-                serial_number=d['serial_number'],
-                box_number=(d.get('box_number') or '').strip(),
-                returned=False,
-            )
-            for i, d in enumerate(released_rows)
-        ])
+        # Chunk TransactionDevice creation
+        for i in range(0, len(released_rows), CHUNK_SIZE):
+            chunk_rows = released_rows[i:i + CHUNK_SIZE]
+            chunk_txs  = txs[i:i + CHUNK_SIZE]
+            TransactionDevice.objects.bulk_create([
+                TransactionDevice(
+                    transaction=chunk_txs[j],
+                    serial_number=chunk_rows[j]['serial_number'],
+                    box_number=(chunk_rows[j].get('box_number') or '').strip(),
+                    returned=False,
+                )
+                for j in range(len(chunk_rows))
+            ])
 
     # ── Live broadcast ───────────────────────────────────────────────────────
     try:
@@ -237,7 +290,7 @@ def process_excel_import(self, rows_data, user_id):
         pass  # Don't fail the task just because broadcast errored
 
     return {
-        'ok': True,
+        'ok':      True,
         'created': len(to_create),
         'updated': len(to_update),
         'errors':  errors,
