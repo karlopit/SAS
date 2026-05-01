@@ -862,4 +862,76 @@
     if (typeof InvSysRT !== 'undefined' && InvSysRT.connect)
       InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
   });
+
+  // ==================== VIRTUAL RENDER ====================
+function renderAllRows(rowsData) {
+  const tbody = document.getElementById('dm-tbody');
+  tbody.innerHTML = '';
+
+  rowsData.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.dataset.rowId    = row.id;
+    tr.dataset.box      = (row.box_number || '').toLowerCase();
+    tr.dataset.college  = (row.office_college || '').toLowerCase();
+    tr.dataset.collegeRaw = row.office_college || '';
+    tr.dataset.person   = (row.accountable_person || '').toLowerCase();
+    tr.dataset.borrowerType = (row.borrower_type || '').toLowerCase();
+    tr.dataset.officer  = (row.accountable_officer || '').toLowerCase();
+    tr.dataset.officerRaw = row.accountable_officer || '';
+    tr.dataset.device   = (row.device || '').toLowerCase();
+    tr.dataset.serial   = (row.serial_number || '').toLowerCase();
+    tr.dataset.release  = row.release_status || '—';
+    tr.dataset.mr       = row.assigned_mr || '';
+    tr.dataset.mrLower  = (row.assigned_mr || '').toLowerCase();
+    tr.dataset.ptr      = row.ptr || '';
+    tr.dataset.ptrLower = (row.ptr || '').toLowerCase();
+    tr.dataset.serviceable    = row.serviceable    ? '1' : '0';
+    tr.dataset.nonServiceable = row.non_serviceable ? '1' : '0';
+    tr.dataset.sealed         = row.sealed         ? '1' : '0';
+    tr.dataset.missing        = row.missing        ? '1' : '0';
+    tr.dataset.incomplete     = row.incomplete     ? '1' : '0';
+
+    const releaseClass = row.release_status === 'Released' ? 'badge-released'
+                       : row.release_status === 'Returned' ? 'badge-returned-dm'
+                       : 'badge-none';
+
+    tr.innerHTML = `
+      <input type="hidden" name="row_id" value="${row.id}"/>
+      <td style="text-align:center"><input type="text" name="box_number" value="${row.box_number}" class="form-control dm-box-input" style="width:80px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="serial_number" value="${row.serial_number}" class="form-control dm-serial-input" style="width:110px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="office_college" value="${row.office_college}" class="form-control dm-college-input" style="width:110px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="accountable_person" value="${row.accountable_person}" class="form-control dm-person-input" style="width:130px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center">
+        <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
+          <option value="">— Select —</option>
+          <option value="student" ${row.borrower_type === 'student' ? 'selected' : ''}>Student</option>
+          <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
+        </select>
+      </td>
+      <td style="text-align:center"><input type="text" name="assigned_mr" value="${row.assigned_mr}" class="form-control dm-mr-input" style="width:110px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="accountable_officer" value="${row.accountable_officer}" class="form-control dm-officer-input" style="width:130px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="device" value="${row.device}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="serviceable" ${row.serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="non_serviceable" ${row.non_serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="sealed" ${row.sealed ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="ptr" value="${row.ptr}" class="form-control dm-ptr-input" style="width:100px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><span class="release-status-badge ${releaseClass}">${row.release_status}</span></td>
+      <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${row.date_returned_display}</td>
+      <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.remarks}</textarea></td>
+      <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${row.issue}</textarea></td>
+      <td style="text-align:center;white-space:nowrap">
+        <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
+        <button type="button" class="btn btn-danger btn-sm dm-delete-row" style="margin-left:4px">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    applyLockState(tr);
+  });
+
+  sortTableByBoxNumber();
+  populateFilterDropdowns();
+  applyDmFilters();
+  }
 })();

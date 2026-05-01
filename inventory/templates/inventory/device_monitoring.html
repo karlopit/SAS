@@ -6,7 +6,7 @@
 {% block content %}
 
 <!-- ══════════════════════════════════════════════════════
-     IMPORT EXCEL MODAL (inline onclick removed)
+     IMPORT EXCEL MODAL
 ══════════════════════════════════════════════════════ -->
 <div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);
      align-items:center;justify-content:center;z-index:2000;backdrop-filter:blur(2px)">
@@ -59,8 +59,16 @@
                       font-family:var(--font-mono)" id="import-preview-text"></div>
         </div>
 
-        <div id="import-error" style="display:none;margin-top:12px" class="alert alert-error"></div>
+        <div id="import-error"   style="display:none;margin-top:12px" class="alert alert-error"></div>
         <div id="import-success" style="display:none;margin-top:12px" class="alert alert-success"></div>
+
+        <!-- Progress bar -->
+        <div id="import-progress-wrap" style="display:none;margin-top:14px">
+          <div style="background:var(--surface2);border-radius:6px;height:8px;overflow:hidden">
+            <div id="import-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width .3s ease;border-radius:6px"></div>
+          </div>
+          <div id="import-progress-label" style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center"></div>
+        </div>
       </form>
     </div>
 
@@ -86,13 +94,9 @@
       </svg>
       <input type="text" id="dm-search" placeholder="Search across all columns..." style="width:100%"/>
     </div>
+    <!-- Dropdowns populated by JS from DM_ROWS — no Django template loop needed -->
     <select id="dm-filter-college" class="filter-select" style="max-width:170px">
       <option value="">All Colleges/Offices</option>
-      {% for row in rows %}
-        {% if row.office_college %}
-          <option value="{{ row.office_college }}">{{ row.office_college }}</option>
-        {% endif %}
-      {% endfor %}
     </select>
     <select id="dm-filter-borrower-type" class="filter-select" style="max-width:160px">
       <option value="">All Borrower Types</option>
@@ -101,27 +105,12 @@
     </select>
     <select id="dm-filter-officer" class="filter-select" style="max-width:180px">
       <option value="">All Accountable Officers</option>
-      {% for row in rows %}
-        {% if row.accountable_officer %}
-          <option value="{{ row.accountable_officer }}">{{ row.accountable_officer }}</option>
-        {% endif %}
-      {% endfor %}
     </select>
     <select id="dm-filter-mr" class="filter-select" style="max-width:160px">
       <option value="">All Assigned M.R.</option>
-      {% for row in rows %}
-        {% if row.assigned_mr %}
-          <option value="{{ row.assigned_mr }}">{{ row.assigned_mr }}</option>
-        {% endif %}
-      {% endfor %}
     </select>
     <select id="dm-filter-ptr" class="filter-select" style="max-width:160px">
       <option value="">All PTR</option>
-      {% for row in rows %}
-        {% if row.ptr %}
-          <option value="{{ row.ptr }}">{{ row.ptr }}</option>
-        {% endif %}
-      {% endfor %}
     </select>
     <select id="dm-filter-release" class="filter-select" style="max-width:160px">
       <option value="">All Release Statuses</option>
@@ -174,8 +163,8 @@
       </div>
     </div>
 
-    <div class="table-container" style="overflow-x: auto; max-height: 70vh; position: relative;">
-      <table id="dm-table" style="width:100%;min-width:2500px; border-collapse: collapse;">
+    <div class="table-container" style="overflow-x:auto;max-height:70vh;position:relative;">
+      <table id="dm-table" style="width:100%;min-width:2500px;border-collapse:collapse;">
         <thead>
           <tr>
             <th style="text-align:center;width:80px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Box #</th>
@@ -199,71 +188,8 @@
             <th style="text-align:center;width:110px;position:sticky;top:0;background:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1);">Actions</th>
           </tr>
         </thead>
-        <tbody id="dm-tbody">
-          {% for row in rows %}
-          {% with release_status=row.release_status|default:"—" %}
-          <tr data-row-id="{{ row.id }}"
-              data-box="{{ row.box_number|lower|default:'' }}"
-              data-college="{{ row.office_college|lower|default:'' }}"
-              data-person="{{ row.accountable_person|lower|default:'' }}"
-              data-borrower-type="{{ row.borrower_type|lower|default:'' }}"
-              data-officer="{{ row.accountable_officer|lower|default:'' }}"
-              data-device="{{ row.device|lower|default:'' }}"
-              data-serial="{{ row.serial_number|lower|default:'' }}"
-              data-release="{{ release_status }}"
-              data-mr="{{ row.assigned_mr|lower|default:'' }}"
-              data-ptr="{{ row.ptr|lower|default:'' }}"
-              data-serviceable="{{ row.serviceable|yesno:'1,0' }}"
-              data-non-serviceable="{{ row.non_serviceable|yesno:'1,0' }}"
-              data-sealed="{{ row.sealed|yesno:'1,0' }}"
-              data-missing="{{ row.missing|yesno:'1,0' }}"
-              data-incomplete="{{ row.incomplete|yesno:'1,0' }}">
-            <input type="hidden" name="row_id" value="{{ row.id }}"/>
-            <td style="text-align:center"><input type="text" name="box_number" value="{{ row.box_number|default:'' }}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="serial_number" value="{{ row.serial_number|default:'' }}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="office_college" value="{{ row.office_college|default:'' }}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="accountable_person" value="{{ row.accountable_person|default:'' }}" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center">
-              <select name="borrower_type" class="form-control dm-borrower-type-select" style="width:90px;text-align:center;margin:0 auto">
-                <option value="">— Select —</option>
-                <option value="student" {% if row.borrower_type == 'student' %}selected{% endif %}>Student</option>
-                <option value="employee" {% if row.borrower_type == 'employee' %}selected{% endif %}>Employee</option>
-              </select>
-            </td>
-            <td style="text-align:center"><input type="text" name="assigned_mr" value="{{ row.assigned_mr|default:'' }}" class="form-control dm-mr-input" placeholder="M.R" style="width:110px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="accountable_officer" value="{{ row.accountable_officer|default:'' }}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="device" value="{{ row.device|default:'Tablet' }}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center"><input type="hidden" name="serviceable" value="{{ row.serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
-            <td style="text-align:center"><input type="hidden" name="non_serviceable" value="{{ row.non_serviceable|yesno:'on,off' }}"/><input type="checkbox" {% if row.non_serviceable %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'non_serviceable');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
-            <td style="text-align:center"><input type="hidden" name="sealed" value="{{ row.sealed|yesno:'on,off' }}"/><input type="checkbox" {% if row.sealed %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'sealed');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
-            <td style="text-align:center"><input type="hidden" name="missing" value="{{ row.missing|yesno:'on,off' }}"/><input type="checkbox" {% if row.missing %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'missing');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
-            <td style="text-align:center"><input type="hidden" name="incomplete" value="{{ row.incomplete|yesno:'on,off' }}"/><input type="checkbox" {% if row.incomplete %}checked{% endif %} onchange="syncCheck(this);handleDmCheck(this,'incomplete');updateRowDataAttrs(this)" style="margin:0 auto"/></td>
-            <td style="text-align:center"><input type="text" name="ptr" value="{{ row.ptr|default:'' }}" class="form-control dm-ptr-input" placeholder="PTR" style="width:100px;text-align:center;margin:0 auto"/></td>
-            <td style="text-align:center">
-              <span class="release-status-badge {% if release_status == 'Released' %}badge-released{% elif release_status == 'Returned' %}badge-returned-dm{% else %}badge-none{% endif %}">
-                {{ release_status }}
-              </span>
-            </td>
-            <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">
-              {{ row.date_returned_display|default:"—" }}
-            </td>
-            <td style="text-align:center">
-              <textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">{{ row.remarks|default:'' }}</textarea>
-            </td>
-            <td style="text-align:center">
-              <textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">{{ row.issue|default:'' }}</textarea>
-            </td>
-            <td style="text-align:center;white-space:nowrap">
-              <button type="submit" name="save_row_id" value="{{ row.id }}" class="btn btn-primary btn-sm">✓ Save</button>
-              <form method="post" action="{% url 'device_monitoring_delete' row.id %}" style="display:inline;margin-left:4px">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this row?')">✕</button>
-              </form>
-            </td>
-          </tr>
-          {% endwith %}
-          {% endfor %}
-        </tbody>
+        <!-- tbody is populated entirely by renderAllRows() in device_monitoring.js -->
+        <tbody id="dm-tbody"></tbody>
       </table>
     </div>
 
@@ -283,87 +209,46 @@
 {% block extra_js %}
 <style>
 .filter-select {
-  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-  padding: 6px 10px; color: var(--text); font-family: var(--font-mono); font-size: 12px;
-  outline: none; cursor: pointer; transition: border-color 0.2s ease;
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:6px 10px;color:var(--text);font-family:var(--font-mono);font-size:12px;
+  outline:none;cursor:pointer;transition:border-color 0.2s ease;
+}
+.filter-select:focus { border-color:var(--accent); }
+.filter-select option { background:var(--surface2); }
+
+.release-status-badge {
+  display:inline-block;padding:4px 10px;border-radius:20px;
+  font-size:11px;font-weight:600;white-space:nowrap;
+}
+.badge-released   { background:rgba(255,179,71,0.15);color:#ffb347;border:1px solid rgba(255,179,71,0.3); }
+.badge-returned-dm{ background:rgba(0,229,160,0.15);color:#00e5a0;border:1px solid rgba(0,229,160,0.3); }
+.badge-none       { background:var(--surface2);color:var(--muted);border:1px solid var(--border); }
+
+@keyframes highlightNew {
+  0%{background:rgba(0,229,160,0.4)}50%{background:rgba(0,229,160,0.2)}100%{background:transparent}
+}
+tr.row-new { animation:highlightNew 2s ease-out; }
+
+@keyframes modalSlideIn {
+  from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1}
 }
 
-.filter-select:focus { border-color: var(--accent); }
-.filter-select option { 
-  background: var(--surface2); 
-}
+#dm-table td, #dm-table th { vertical-align:middle;padding:8px 6px; }
+.form-control { text-align:center; }
+input[type="checkbox"] { width:18px;height:18px;cursor:pointer;margin:0 auto;display:block; }
+textarea.form-control { text-align:left;resize:vertical;min-height:48px;line-height:1.4; }
+.table-container { overflow-x:auto;max-height:70vh;position:relative; }
+#dm-table thead th { position:sticky;top:0;background-color:var(--surface);z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.1); }
 
-.release-status-badge { 
-  display:inline-block; 
-  padding:4px 10px; 
-  border-radius:20px; 
-  font-size:11px; 
-  font-weight:600; 
-  white-space:nowrap; 
-}
-
-.badge-released  { 
-  background:rgba(255,179,71,0.15);  color:#ffb347; border:1px solid rgba(255,179,71,0.3); 
-}
-
-.badge-returned-dm { 
-  background:rgba(0,229,160,0.15); color:#00e5a0; border:1px solid rgba(0,229,160,0.3); 
-}
-
-.badge-none { 
-  background:var(--surface2); color:var(--muted); border:1px solid var(--border); 
-}
-
-@keyframes highlightNew { 
-  0%{background:rgba(0,229,160,0.4)}50%{background:rgba(0,229,160,0.2)}100%{background:transparent} 
-}
-
-tr.row-new { 
-  animation: highlightNew 2s ease-out; 
-}
-
-@keyframes modalSlideIn { 
-  from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} 
-}
-
-#dm-table td, #dm-table th { 
-  vertical-align:middle; 
-  padding:8px 6px; 
-}
-
-.form-control { 
-  text-align:center; 
-}
-
-input[type="checkbox"] { 
-  width:18px; 
-  height:18px; 
-  cursor:pointer; 
-  margin:0 auto; 
-  display:block; 
-}
-
-textarea.form-control { 
-  text-align:left; 
-  resize:vertical; 
-  min-height:48px; 
-  line-height:1.4; 
-}
-
-.table-container { 
-  overflow-x:auto; 
-  max-height:70vh; 
-  position: relative; 
-}
-
-#dm-table thead th { 
-  position:sticky; 
-  top:0; 
-  background-color:var(--surface); 
-  z-index:10; 
-  box-shadow:0 2px 4px rgba(0,0,0,0.1); 
+#dm-loading {
+  display:flex;align-items:center;justify-content:center;
+  padding:48px;color:var(--muted);font-size:13px;gap:10px;
 }
 </style>
 
+<!-- Pass rows as JSON so JS renders the table — avoids sending 2000 <tr> blocks as HTML -->
+<script>
+  const DM_ROWS = {{ rows_json|safe }};
+</script>
 <script src="{% static 'inventory/js/device_monitoring.js' %}"></script>
 {% endblock %}

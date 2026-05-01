@@ -331,22 +331,45 @@ def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
 
-    rows = list(DeviceMonitor.objects.all())
+    rows = DeviceMonitor.objects.all().order_by('box_number', 'id')
 
+    rows_json = []
     for row in rows:
         if row.date_returned:
-            row.release_status = 'Returned'
-            row.date_returned_display = format_ph_time(row.date_returned)
+            release_status        = 'Returned'
+            date_returned_display = format_ph_time(row.date_returned)
         elif row.is_released:
-            row.release_status = 'Released'
-            row.date_returned_display = '—'
+            release_status        = 'Released'
+            date_returned_display = '—'
         else:
-            row.release_status = '—'
-            row.date_returned_display = '—'
+            release_status        = '—'
+            date_returned_display = '—'
+
+        rows_json.append({
+            'id':                    row.id,
+            'box_number':            row.box_number            or '',
+            'serial_number':         row.serial_number         or '',
+            'office_college':        row.office_college        or '',
+            'accountable_person':    row.accountable_person    or '',
+            'borrower_type':         row.borrower_type         or '',
+            'assigned_mr':           row.assigned_mr           or '',
+            'accountable_officer':   row.accountable_officer   or '',
+            'device':                row.device                or 'Tablet',
+            'serviceable':           row.serviceable,
+            'non_serviceable':       row.non_serviceable,
+            'sealed':                row.sealed,
+            'missing':               row.missing,
+            'incomplete':            row.incomplete,
+            'ptr':                   row.ptr                   or '',
+            'remarks':               row.remarks               or '',
+            'issue':                 row.issue                 or '',
+            'release_status':        release_status,
+            'date_returned_display': date_returned_display,
+        })
 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
     return render(request, 'inventory/device_monitoring.html', {
-        'rows': rows,
+        'rows_json':    json.dumps(rows_json),
         'pending_count': pending_count,
     })
  
