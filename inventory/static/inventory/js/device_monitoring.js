@@ -443,61 +443,91 @@
   }
 
   async function _pollTaskStatus(taskId, totalRows) {
+  try {
+    const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, {
+      credentials: 'same-origin',
+    });
+
+    // Read text first — so a 404/500 HTML page gives a useful error instead of silent crash
+    const rawText = await resp.text();
+    let data;
     try {
-      const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, {
-        credentials: 'same-origin',
-      });
-      if (!resp.ok) return;
-      const data = await resp.json();
-
-      if (data.state === 'SUCCESS') {
-        _stopPolling();
-        _setImportProgress(100, 'Done!');
-
-        const sucEl = document.getElementById('import-success');
-        if (sucEl) {
-          let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
-          if (data.errors?.length) msg += ` ${data.errors.length} row(s) had errors.`;
-          sucEl.textContent = msg;
-          sucEl.style.display = 'flex';
-        }
-
-        const confirmBtn = document.getElementById('import-confirm-btn');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-
-        showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
-
-        // Reload the table after a short delay
-        setTimeout(() => {
-          closeImportModal();
-          window.location.reload();
-        }, 1800);
-        return;
+      data = JSON.parse(rawText);
+    } catch {
+      // Non-JSON response (404, server error page) — show it and stop polling
+      _stopPolling();
+      const errEl = document.getElementById('import-error');
+      if (errEl) {
+        errEl.textContent = `Server error (HTTP ${resp.status}). Check that the import status URL is registered in urls.py.`;
+        errEl.style.display = 'flex';
       }
-
-      if (data.state === 'FAILURE') {
-        _stopPolling();
-        const errEl = document.getElementById('import-error');
-        if (errEl) {
-          errEl.textContent = 'Import failed: ' + (data.error || 'Unknown error');
-          errEl.style.display = 'flex';
-        }
-        const confirmBtn = document.getElementById('import-confirm-btn');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
-        _setImportProgress(0, '');
-        showToast('Import failed', 'error');
-        return;
-      }
-
-      // PENDING / STARTED / RETRY — show indeterminate progress
-      const progress = data.progress || 0;
-      const pct = progress > 0 ? Math.min(95, progress) : _indeterminatePct();
-      _setImportProgress(pct, data.message || `Processing ${totalRows} row(s)…`);
-
-    } catch (err) {
-      // Network blip — keep polling
+      const confirmBtn = document.getElementById('import-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+      showToast('Import polling failed — server returned non-JSON', 'error');
+      return;
     }
+
+    if (!resp.ok) {
+      _stopPolling();
+      const errEl = document.getElementById('import-error');
+      if (errEl) {
+        errEl.textContent = 'Error: ' + (data.error || `HTTP ${resp.status}`);
+        errEl.style.display = 'flex';
+      }
+      const confirmBtn = document.getElementById('import-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+      return;
+    }
+
+    if (data.state === 'SUCCESS') {
+      _stopPolling();
+      _setImportProgress(100, 'Done!');
+      const sucEl = document.getElementById('import-success');
+      if (sucEl) {
+        let msg = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+        if (data.errors?.length) msg += ` ${data.errors.length} row(s) had errors.`;
+        sucEl.textContent = msg;
+        sucEl.style.display = 'flex';
+      }
+      const confirmBtn = document.getElementById('import-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+      showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
+      setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
+      return;
+    }
+
+    if (data.state === 'FAILURE') {
+      _stopPolling();
+      const errEl = document.getElementById('import-error');
+      if (errEl) {
+        errEl.textContent = 'Import failed: ' + (data.error || 'Unknown error');
+        errEl.style.display = 'flex';
+      }
+      const confirmBtn = document.getElementById('import-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+      _setImportProgress(0, '');
+      showToast('Import failed', 'error');
+      return;
+    }
+
+    // PENDING / STARTED / RETRY — keep polling, show progress
+    const progress = data.progress || 0;
+    const pct = progress > 0 ? Math.min(95, progress) : _indeterminatePct();
+    _setImportProgress(pct, data.message || `Processing ${totalRows} row(s)…`);
+
+  } catch (err) {
+    // True network failure (offline, CORS, etc.) — show error and stop
+    _stopPolling();
+    const errEl = document.getElementById('import-error');
+    if (errEl) {
+      errEl.textContent = 'Network error while checking import status: ' + err.message;
+      errEl.style.display = 'flex';
+    }
+    const confirmBtn = document.getElementById('import-confirm-btn');
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Import'; }
+    showToast('Network error: ' + err.message, 'error');
   }
+}
 
   // Indeterminate animation: oscillates 10 → 90
   let _indeterminateTick = 0;
@@ -507,62 +537,101 @@
   }
 
   async function confirmImport() {
-    const fileInput = document.getElementById('import-file-input');
-    const errEl     = document.getElementById('import-error');
-    const sucEl     = document.getElementById('import-success');
-    const btn       = document.getElementById('import-confirm-btn');
-    if (!errEl || !sucEl || !btn || !fileInput) return;
+  const fileInput = document.getElementById('import-file-input');
+  const errEl     = document.getElementById('import-error');
+  const sucEl     = document.getElementById('import-success');
+  const btn       = document.getElementById('import-confirm-btn');
+  if (!errEl || !sucEl || !btn || !fileInput) return;
 
-    errEl.style.display = 'none';
-    sucEl.style.display = 'none';
-    if (!fileInput.files || !fileInput.files[0]) return;
+  errEl.style.display = 'none';
+  sucEl.style.display = 'none';
+  if (!fileInput.files || !fileInput.files[0]) return;
 
-    const formData = new FormData();
-    formData.append('excel_file', fileInput.files[0]);
-    formData.append('csrfmiddlewaretoken', _getCsrf());
+  const formData = new FormData();
+  formData.append('excel_file', fileInput.files[0]);
+  formData.append('csrfmiddlewaretoken', _getCsrf());
 
-    btn.disabled = true;
+  btn.disabled = true;
+  btn.innerHTML = `
+    <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+    Uploading…`;
+  _setImportProgress(5, 'Uploading file…');
+
+  try {
+    const resp = await fetch('/device-monitoring/import/', {
+      method: 'POST', body: formData, credentials: 'same-origin',
+    });
+
+    // Read as text first — catches HTML error pages (CSRF failure, 500, redirect)
+    const rawText = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error(
+        `Server returned a non-JSON response (HTTP ${resp.status}). ` +
+        `This usually means a CSRF error or server crash. ` +
+        `First 200 chars: ${rawText.slice(0, 200)}`
+      );
+    }
+
+    if (!resp.ok) {
+      throw new Error(data.error || `HTTP ${resp.status}`);
+    }
+
+    if (!data.ok) {
+      throw new Error(data.error || 'Import failed');
+    }
+
+    // ── Synchronous fallback: Celery was unavailable, task ran inline ────────
+    if (data.done === true) {
+      _setImportProgress(100, 'Done!');
+      sucEl.textContent = `✓ Import complete: ${data.created} row(s) created, ${data.updated} row(s) updated.`;
+      sucEl.style.display = 'flex';
+      btn.disabled = false;
+      btn.textContent = 'Import';
+      showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
+      setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
+      return;
+    }
+
+    // ── Async path: Celery task queued, start polling ────────────────────────
+    const taskId    = data.task_id;
+    const totalRows = data.total || 0;
+
+    if (!taskId) {
+      // No task_id and not done — file had no rows
+      _setImportProgress(100, 'Done!');
+      sucEl.textContent = data.message || 'No data rows found in the file.';
+      sucEl.style.display = 'flex';
+      btn.disabled = false;
+      btn.textContent = 'Import';
+      return;
+    }
+
+    _currentTask = taskId;
+    _setImportProgress(15, `Queued ${totalRows} row(s) for processing…`);
     btn.innerHTML = `
       <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
-      Uploading…`;
-    _setImportProgress(5, 'Uploading file…');
+      Processing…`;
 
-    try {
-      const resp = await fetch('/device-monitoring/import/', {
-        method: 'POST', body: formData, credentials: 'same-origin',
-      });
-      const data = await resp.json();
+    // Fire immediately, then poll every 2 seconds
+    _pollTaskStatus(taskId, totalRows);
+    _pollTimer = setInterval(() => _pollTaskStatus(taskId, totalRows), 2000);
 
-      if (!data.ok) throw new Error(data.error || 'Import failed');
-
-      // File uploaded & parsed — now poll for Celery task
-      const taskId    = data.task_id;
-      const totalRows = data.total || 0;
-      _currentTask = taskId;
-
-      _setImportProgress(15, `Queued ${totalRows} row(s) for processing…`);
-      btn.innerHTML = `
-        <svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-        </svg>
-        Processing…`;
-
-      // Start polling every 2 seconds
-      _pollTimer = setInterval(() => _pollTaskStatus(taskId, totalRows), 2000);
-      // Also fire immediately
-      _pollTaskStatus(taskId, totalRows);
-
-    } catch (err) {
-      errEl.textContent = 'Error: ' + err.message;
-      errEl.style.display = 'flex';
-      btn.disabled = false;
-      btn.textContent = 'Import';
-      _setImportProgress(0, '');
-      showToast('Upload error: ' + err.message, 'error');
-    }
+  } catch (err) {
+    errEl.textContent = 'Error: ' + err.message;
+    errEl.style.display = 'flex';
+    btn.disabled = false;
+    btn.textContent = 'Import';
+    _setImportProgress(0, '');
+    showToast('Upload error: ' + err.message, 'error');
   }
+}
 
   /* ==================== WEBSOCKET REALTIME ==================== */
   function releaseBadgeHtml(status) {
