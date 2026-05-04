@@ -738,14 +738,14 @@ def device_monitoring_import(request):
         'device':              'device',
         'ptr':                 'ptr',
         'status':              'release_status_import',
-        'release / return':    'release_status_import',
-        'release/return':      'release_status_import',
-        'released/return':     'release_status_import',   # ← ADDED
-        'released / return':   'release_status_import',   # ← ADDED
+        'release  return':     'release_status_import',   # slash stripped → "release  return"
+        'release return':      'release_status_import',   # collapsed spaces → "release return"
+        'released return':     'release_status_import',   # ← RELEASED/RETURN stripped
+        'released  return':    'release_status_import',   # with double space
         'release status':      'release_status_import',
-        'released/returned':   'release_status_import',
-        'released/returned':   'release_status_import',   # ← your actual column name
-        'released / returned': 'release_status_import',   # ← with spaces variant
+        'released returned':   'release_status_import',
+        'released  returned':  'release_status_import',
+        'return status':       'release_status_import',
         'date returned':       'date_returned',
         'date released':       'date_returned',
         'remarks':             'remarks',
@@ -753,10 +753,11 @@ def device_monitoring_import(request):
     }
 
     def _norm(h):
-        """Lowercase, strip dots/hashes/extra spaces."""
+        """Lowercase, strip dots/hashes/slashes/extra spaces."""
         import re as _re
         h = str(h or '').strip().lower()
-        h = _re.sub(r'[.#]', '', h)
+        h = _re.sub(r'[.#/\\]', '', h)          # ← also strip slashes
+        h = _re.sub(r'[\u2215\u29f5\u2044]', '', h)  # ← strip unicode slash variants
         h = _re.sub(r'\s+', ' ', h).strip()
         return h
 
