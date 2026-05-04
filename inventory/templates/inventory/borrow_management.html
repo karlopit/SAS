@@ -94,27 +94,14 @@
 
       <select id="filter-college" class="filter-select">
         <option value="">All Colleges/Offices</option>
-        {% for tx in transactions %}
-          <option value="{{ tx.office_college }}">{{ tx.office_college }}</option>
-        {% endfor %}
       </select>
 
       <select id="filter-officer" class="filter-select">
         <option value="">All Accountable Officers</option>
-        {% for tx in transactions %}
-          <option value="{{ tx.borrower.get_full_name|default:tx.borrower.username }}">
-            {{ tx.borrower.get_full_name|default:tx.borrower.username }}
-          </option>
-        {% endfor %}
       </select>
 
       <select id="filter-borrower-name" class="filter-select">
         <option value="">All Borrowers</option>
-        {% for tx in transactions %}
-          <option value="{{ tx.borrow_request.borrower_name|default:tx.borrower.username }}">
-            {{ tx.borrow_request.borrower_name|default:tx.borrower.username }}
-          </option>
-        {% endfor %}
       </select>
 
       <select id="filter-borrower-type" class="filter-select">
@@ -163,52 +150,9 @@
         </tr>
       </thead>
       <tbody id="transactions-tbody">
-        {% for tx in transactions %}
-        <tr id="tx-row-{{ tx.id }}"
-            data-college="{{ tx.office_college|default:'' }}"
-            data-officer="{{ tx.borrower.get_full_name|default:tx.borrower.username }}"
-            data-borrower-name="{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}"
-            data-borrower-type="{{ tx.borrow_request.borrower_type|default:'' }}"
-            data-status="{{ tx.status }}"
-            data-returned-at="{{ tx.returned_at_display }}">
-          <td style="text-align:center"><span class="badge badge-blue">{% if tx.borrow_request %}#{{ tx.borrow_request.transaction_id }}{% else %}—{% endif %}</span></td>
-          <td style="text-align:center;font-weight:600">{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}</td>
-          <td style="text-align:center">
-            {% if tx.borrow_request.borrower_type == 'student' %}
-              <span class="badge badge-green">Student</span>
-            {% elif tx.borrow_request.borrower_type == 'employee' %}
-              <span class="badge badge-purple">Employee</span>
-            {% else %}
-              <span style="color:var(--muted)">—</span>
-            {% endif %}
-          </td>
-          <td style="text-align:center;font-weight:600;color:var(--accent2)">{{ tx.borrower.get_full_name|default:tx.borrower.username }}</td>
-          <td style="text-align:center">{{ tx.office_college|default:"—" }}</td>
-          <td style="text-align:center">{{ tx.item.name }}</td>
-          <td style="text-align:center">{{ tx.quantity_borrowed }}</td>
-          <td style="text-align:center">
-            <span class="returned-qty-display">{{ tx.returned_qty }}</span>
-            <span style="color:var(--muted);font-size:11px"> / {{ tx.quantity_borrowed }}</span>
-          </td>
-          <td style="text-align:center;color:var(--muted)">{{ tx.borrowed_at_display }}</td>
-          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">{{ tx.returned_at_display }}</td>
-          <td class="status-cell" style="text-align:center">
-            {% if tx.returned_qty >= tx.quantity_borrowed %}
-              <span class="badge badge-returned-full">✓ Returned</span>
-            {% else %}
-              <button class="btn-return-action"
-                      data-tx-id="{{ tx.id }}"
-                      data-borrower="{% if tx.borrow_request %}{{ tx.borrow_request.borrower_name }}{% else %}{{ tx.borrower.username }}{% endif %}"
-                      data-qty="{{ tx.quantity_borrowed }}"
-                      onclick="openReturnModal(this)">
-                ↩ Return
-              </button>
-            {% endif %}
-          </td>
+        <tr id="tx-loading-row">
+          <td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">Loading transactions…</td>
         </tr>
-        {% empty %}
-        <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
-        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -344,5 +288,6 @@
 .custom-toast.show { opacity: 1; transform: translateY(0); }
 </style>
 
+<script>window.INVSYS_BM_AJAX = "{% url 'ajax_borrow_management' %}";</script>
 <script src="{% static 'inventory/js/borrow_management.js' %}"></script>
 {% endblock %}

@@ -319,25 +319,9 @@ def borrow_item_public(request):
 def borrow_management(request):
     if request.user.role != 'staff':
         raise PermissionDenied
- 
-    items = Item.objects.all()
 
-    # All borrow cycles: active (released to borrower) and completed returns
-    transactions = Transaction.objects.select_related(
-        'item', 'borrower', 'borrow_request'
-    ).filter(status__in=('borrowed', 'returned')).order_by('-borrowed_at')
- 
-    for tx in transactions:
-        tx.returned_at_display = format_ph_time(tx.returned_at) if tx.returned_at else '—'
-        tx.borrowed_at_display = format_ph_time(tx.borrowed_at) if tx.borrowed_at else '—'
- 
-    pending_count = BorrowRequest.objects.filter(status='pending').count()
- 
-    return render(request, 'inventory/borrow_management.html', {
-        'items': items,
-        'transactions': transactions,
-        'pending_count': pending_count,
-    })
+    # Table data loads via GET /ajax/borrow-management/ after paint (large JSON, no giant HTML).
+    return render(request, 'inventory/borrow_management.html', {})
 
 
 @login_required
@@ -345,54 +329,10 @@ def borrow_management(request):
 def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
- 
-    # Use values() — 40-60% faster than loading full model objects for 4k+ rows
-    rows_qs = DeviceMonitor.objects.values(
-        'id', 'box_number', 'serial_number', 'office_college',
-        'accountable_person', 'borrower_type', 'assigned_mr',
-        'accountable_officer', 'device', 'serviceable', 'non_serviceable',
-        'sealed', 'missing', 'incomplete', 'ptr', 'remarks', 'issue',
-        'is_released', 'date_returned',
-    ).order_by('box_number', 'id')
- 
-    rows_json = []
-    for row in rows_qs:
-        if row['date_returned']:
-            release_status        = 'Returned'
-            date_returned_display = format_ph_time(row['date_returned'])
-        elif row['is_released']:
-            release_status        = 'Released'
-            date_returned_display = '—'
-        else:
-            release_status        = '—'
-            date_returned_display = '—'
- 
-        rows_json.append({
-            'id':                    row['id'],
-            'box_number':            row['box_number']            or '',
-            'serial_number':         row['serial_number']         or '',
-            'office_college':        row['office_college']        or '',
-            'accountable_person':    row['accountable_person']    or '',
-            'borrower_type':         row['borrower_type']         or '',
-            'assigned_mr':           row['assigned_mr']           or '',
-            'accountable_officer':   row['accountable_officer']   or '',
-            'device':                row['device']                or 'Tablet',
-            'serviceable':           row['serviceable'],
-            'non_serviceable':       row['non_serviceable'],
-            'sealed':                row['sealed'],
-            'missing':               row['missing'],
-            'incomplete':            row['incomplete'],
-            'ptr':                   row['ptr']                   or '',
-            'remarks':               row['remarks']               or '',
-            'issue':                 row['issue']                 or '',
-            'release_status':        release_status,
-            'date_returned_display': date_returned_display,
-        })
- 
-    pending_count = BorrowRequest.objects.filter(status='pending').count()
+
+    # Rows load via GET /ajax/device-monitoring/ after paint (avoids multi‑MB HTML documents).
     return render(request, 'inventory/device_monitoring.html', {
-        'rows_json':     json.dumps(rows_json),
-        'pending_count': pending_count,
+        'rows_json': '[]',
     })
  
  

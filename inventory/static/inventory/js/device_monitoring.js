@@ -50,6 +50,13 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
+  /** Align WebSocket / AJAX row shape with table (date label vs raw). */
+  function normalizeDmRow(r) {
+    const o = { ...r };
+    o.date_returned_display = o.date_returned_display ?? o.date_returned ?? '—';
+    return o;
+  }
+
   /* ==================== STATE ==================== */
   // allRows = full dataset from DM_ROWS (never mutated)
   // filteredRows = after filters/search (rebuilt on filter change)
@@ -548,15 +555,11 @@
     for (let i = 0; i < allRows.length; i++) {
       const id = String(allRows[i].id);
       if (incoming.has(id) && !dirtyRows.has(id)) {
-        allRows[i] = {
-          ...incoming.get(id),
-          date_returned_display: allRows[i].date_returned_display, // preserve formatted string
-        };
-        // Update DOM row if visible and not dirty
+        const inc = normalizeDmRow(incoming.get(id));
+        allRows[i] = { ...allRows[i], ...inc };
         const tr = rowIdToElement.get(id);
         if (tr && id !== focusedRowId && !dirtyRows.has(id)) {
           const row = allRows[i];
-          // Only update non-input display fields to avoid clobbering user input
           const badge = tr.querySelector('.release-status-badge');
           if (badge) {
             const cls = row.release_status === 'Released' ? 'badge-released'
@@ -566,7 +569,7 @@
             badge.textContent = row.release_status || '—';
           }
           const dateTd = tr.querySelector('.dm-date-returned');
-          if (dateTd) dateTd.textContent = row.date_returned || '—';
+          if (dateTd) dateTd.textContent = row.date_returned_display || '—';
         }
       }
     }
@@ -827,28 +830,41 @@
     tbody = document.getElementById('dm-tbody');
     if (!tbody) return;
 
-    // Show loading indicator immediately while JS processes
     const loadingRow = document.createElement('tr');
     loadingRow.id = 'dm-init-loading';
     loadingRow.innerHTML = `<td colspan="19" style="text-align:center;padding:48px;color:var(--muted)">
       <svg style="width:20px;height:20px;animation:spin .7s linear infinite;vertical-align:middle;margin-right:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
-      Loading ${typeof DM_ROWS !== 'undefined' ? DM_ROWS.length.toLocaleString() : ''} rows…
+      Loading device rows…
     </td>`;
     tbody.appendChild(loadingRow);
 
     attachEventListeners();
 
-    // Yield to browser to render loading state, then init virtual scroll
-    requestAnimationFrame(() => {
+    const dmUrl = window.INVSYS_DM_AJAX || '/ajax/device-monitoring/';
+    const embedded = typeof DM_ROWS !== 'undefined' && DM_ROWS.length > 0;
+
+    const startRows = (rows) => {
       loadingRow.remove();
-      if (typeof DM_ROWS !== 'undefined' && DM_ROWS.length) {
-        initVirtualScroll(DM_ROWS);
-      } else {
-        populateFilterDropdowns();
-      }
-    });
+      initVirtualScroll(rows.map(normalizeDmRow));
+    };
+
+    if (embedded) {
+      loadingRow.remove();
+      initVirtualScroll(DM_ROWS.map(normalizeDmRow));
+    } else {
+      fetch(dmUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then((r) => {
+          if (!r.ok) throw new Error('load failed');
+          return r.json();
+        })
+        .then((data) => startRows(data.rows || []))
+        .catch(() => {
+          loadingRow.innerHTML = '<td colspan="19" style="text-align:center;padding:48px;color:var(--muted)">Could not load device monitoring data.</td>';
+          showToast('Could not load device monitoring', 'error');
+        });
+    }
 
     const indicator = document.getElementById('rt-indicator');
     if (typeof InvSysRT !== 'undefined') {

@@ -6,6 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
   <title>{% block title %}InvSys{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
+  {% if request.user.is_authenticated %}
+  <link rel="prefetch" href="{% url 'index' %}" as="document" crossorigin="use-credentials">
+  {% if request.user.role == 'staff' %}
+  <link rel="prefetch" href="{% url 'borrow_requests' %}" as="document" crossorigin="use-credentials">
+  <link rel="prefetch" href="{% url 'borrow_management' %}" as="document" crossorigin="use-credentials">
+  <link rel="prefetch" href="{% url 'device_monitoring' %}" as="document" crossorigin="use-credentials">
+  <link rel="prefetch" href="{% url 'graduation_warnings' %}" as="document" crossorigin="use-credentials">
+  {% endif %}
+  {% endif %}
   <style>
     * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
     *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
@@ -193,6 +202,35 @@
 </div>
 
 <div id="toast-container"></div>
+<div id="invsys-nav-progress" aria-hidden="true" style="position:fixed;top:0;left:0;height:2px;width:0;z-index:99999;background:linear-gradient(90deg,var(--accent,#ffb347),#00e5a0);pointer-events:none;opacity:0;transition:width .2s ease,opacity .2s ease"></div>
+<script>
+(function () {
+  var bar = document.getElementById('invsys-nav-progress');
+  if (!bar) return;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href]');
+    if (!a || !a.href) return;
+    try {
+      var u = new URL(a.href, location.href);
+      if (u.origin !== location.origin) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (a.target && a.target !== '_self') return;
+      if (a.getAttribute('href') === '#') return;
+      bar.style.opacity = '1';
+      bar.style.width = '0';
+      void bar.offsetWidth;
+      bar.style.width = '38%';
+    } catch (err) {}
+  }, true);
+  window.addEventListener('pageshow', function () {
+    bar.style.width = '100%';
+    setTimeout(function () {
+      bar.style.opacity = '0';
+      setTimeout(function () { bar.style.width = '0'; }, 180);
+    }, 100);
+  });
+})();
+</script>
 
 <script src="{% static 'inventory/js/script.js' %}"></script>
 <script src="{% static 'inventory/js/realtime.js' %}"></script>

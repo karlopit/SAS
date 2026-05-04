@@ -246,7 +246,7 @@ textarea.form-control { text-align:left;resize:vertical;min-height:48px;line-hei
 }
 </style>
 
-<!-- Pass rows as JSON so JS renders the table — avoids sending 2000 <tr> blocks as HTML -->
+<script>window.INVSYS_DM_AJAX = "{% url 'ajax_device_monitoring' %}";</script>
 <script>
   const DM_ROWS = {{ rows_json|safe }};
 </script>

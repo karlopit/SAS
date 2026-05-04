@@ -333,10 +333,92 @@
     }).join('');
   }
 
-  const knownTxIds = new Set(
-    [...document.querySelectorAll('#transactions-tbody tr[id^="tx-row-"]')]
-      .map(r => r.id.replace('tx-row-', ''))
-  );
+  const knownTxIds = new Set();
+
+  function createTxRowElement(tx) {
+    const tr = document.createElement('tr');
+    tr.id = 'tx-row-' + tx.id;
+    tr.dataset.college      = tx.office_college || '';
+    tr.dataset.officer      = tx.accountable_officer || '';
+    tr.dataset.borrowerName = tx.borrower_name || '';
+    tr.dataset.borrowerType = tx.borrower_type || '';
+    tr.dataset.status       = tx.fully_returned ? 'returned' : 'borrowed';
+    tr.innerHTML = `
+          <td style="text-align:center"><span class="badge badge-blue">${tx.tx_id ? '#' + escapeHtml(String(tx.tx_id)) : '—'}</span></td>
+          <td style="text-align:center;font-weight:600">${escapeHtml(tx.borrower_name)}</td>
+          <td style="text-align:center">${borrowerTypeBadge(tx.borrower_type)}</td>
+          <td style="text-align:center;font-weight:600;color:var(--accent2)">${escapeHtml(tx.accountable_officer)}</td>
+          <td style="text-align:center">${escapeHtml(tx.office_college)}</td>
+          <td style="text-align:center">${escapeHtml(tx.item_name)}</td>
+          <td style="text-align:center">${tx.qty_borrowed}</td>
+          <td style="text-align:center">
+            <span class="returned-qty-display">${tx.returned_qty}</span>
+            <span style="color:var(--muted);font-size:11px"> / ${tx.qty_borrowed}</span>
+          </td>
+          <td style="text-align:center;color:var(--muted)">${escapeHtml(tx.borrowed_at)}</td>
+          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">${escapeHtml(tx.returned_at || '—')}</td>
+          <td class="status-cell" style="text-align:center">${statusCellHtml(tx)}</td>
+        `;
+    return tr;
+  }
+
+  function rebuildFilterSelectsFromTxs(txs) {
+    const colleges = new Set();
+    const officers = new Set();
+    const borrowers = new Set();
+    txs.forEach((tx) => {
+      if (tx.office_college) colleges.add(tx.office_college);
+      if (tx.accountable_officer) officers.add(tx.accountable_officer);
+      if (tx.borrower_name) borrowers.add(tx.borrower_name);
+    });
+    const refill = (selId, values) => {
+      const sel = document.getElementById(selId);
+      if (!sel || !sel.options[0]) return;
+      const placeholder = sel.options[0];
+      sel.innerHTML = '';
+      sel.appendChild(placeholder);
+      const seen = new Set(['']);
+      [...values].sort((a, b) => a.localeCompare(b)).forEach((v) => {
+        if (!v || seen.has(v)) return;
+        seen.add(v);
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    };
+    refill('filter-college', colleges);
+    refill('filter-officer', officers);
+    refill('filter-borrower-name', borrowers);
+  }
+
+  function bootstrapBorrowManagementFromAjax() {
+    const url = window.INVSYS_BM_AJAX || '/ajax/borrow-management/';
+    fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to load');
+        return r.json();
+      })
+      .then((data) => {
+        renderItems(data.items || []);
+        const txs = data.transactions || [];
+        rebuildFilterSelectsFromTxs(txs);
+        renderTransactions(txs, { replaceAll: true });
+        if (typeof data.pending_count === 'number') {
+          window.dispatchEvent(new CustomEvent('invsys:pending_count', { detail: data.pending_count }));
+        }
+        if (typeof data.graduation_warning_count === 'number') {
+          window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
+        }
+      })
+      .catch(() => {
+        const loadRow = document.getElementById('tx-loading-row');
+        if (loadRow) {
+          loadRow.innerHTML = '<td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">Could not load transactions. Refresh the page.</td>';
+        }
+        showToast('Could not load borrow management data', 'error');
+      });
+  }
 
   function borrowerTypeBadge(type) {
     if (type === 'student')  return '<span class="badge badge-green">Student</span>';
@@ -355,9 +437,30 @@
                     onclick="openReturnModal(this)">↩ Return</button>`;
   }
 
-  function renderTransactions(txs) {
+  function renderTransactions(txs, opts) {
+    const replaceAll = opts && opts.replaceAll;
     const tbody = document.getElementById('transactions-tbody');
     if (!tbody) return;
+
+    if (replaceAll) {
+      tbody.innerHTML = '';
+      knownTxIds.clear();
+      if (!txs.length) {
+        const er = document.createElement('tr');
+        er.id = 'tx-empty-row';
+        er.innerHTML = '<td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td>';
+        tbody.appendChild(er);
+        applyFilters();
+        return;
+      }
+      for (let i = txs.length - 1; i >= 0; i--) {
+        const tx = txs[i];
+        knownTxIds.add(String(tx.id));
+        tbody.prepend(createTxRowElement(tx));
+      }
+      applyFilters();
+      return;
+    }
 
     txs.forEach(tx => {
       const existing = document.getElementById('tx-row-' + tx.id);
@@ -383,30 +486,7 @@
         if (statusCell) statusCell.innerHTML = statusCellHtml(tx);
 
       } else {
-        const tr = document.createElement('tr');
-        tr.id = 'tx-row-' + tx.id;
-        tr.dataset.college      = tx.office_college;
-        tr.dataset.officer      = tx.accountable_officer;
-        tr.dataset.borrowerName = tx.borrower_name;
-        tr.dataset.borrowerType = tx.borrower_type || '';
-        tr.dataset.status       = tx.fully_returned ? 'returned' : 'borrowed';
-
-        tr.innerHTML = `
-          <td style="text-align:center"><span class="badge badge-blue">${tx.tx_id ? '#' + escapeHtml(String(tx.tx_id)) : '—'}</span></td>
-          <td style="text-align:center;font-weight:600">${escapeHtml(tx.borrower_name)}</td>
-          <td style="text-align:center">${borrowerTypeBadge(tx.borrower_type)}</td>
-          <td style="text-align:center;font-weight:600;color:var(--accent2)">${escapeHtml(tx.accountable_officer)}</td>
-          <td style="text-align:center">${escapeHtml(tx.office_college)}</td>
-          <td style="text-align:center">${escapeHtml(tx.item_name)}</td>
-          <td style="text-align:center">${tx.qty_borrowed}</td>
-          <td style="text-align:center">
-            <span class="returned-qty-display">${tx.returned_qty}</span>
-            <span style="color:var(--muted);font-size:11px"> / ${tx.qty_borrowed}</span>
-          </td>
-          <td style="text-align:center;color:var(--muted)">${escapeHtml(tx.borrowed_at)}</td>
-          <td class="returned-on-cell" style="text-align:center;color:var(--muted);font-size:12px">${escapeHtml(tx.returned_at || '—')}</td>
-          <td class="status-cell" style="text-align:center">${statusCellHtml(tx)}</td>
-        `;
+        const tr = createTxRowElement(tx);
 
         const emptyRow = document.getElementById('tx-empty-row');
         if (emptyRow) emptyRow.remove();
@@ -436,9 +516,13 @@
 
   /* ── DOMContentLoaded init ────────────────────────────────────────────── */
   document.addEventListener('DOMContentLoaded', () => {
-    dedupeSelect(document.getElementById('filter-college'));
-    dedupeSelect(document.getElementById('filter-officer'));
-    dedupeSelect(document.getElementById('filter-borrower-name'));
+    if (document.getElementById('tx-loading-row')) {
+      bootstrapBorrowManagementFromAjax();
+    } else {
+      dedupeSelect(document.getElementById('filter-college'));
+      dedupeSelect(document.getElementById('filter-officer'));
+      dedupeSelect(document.getElementById('filter-borrower-name'));
+    }
 
     const bind = (id, setter) => {
       const el = document.getElementById(id);
