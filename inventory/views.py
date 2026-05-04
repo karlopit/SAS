@@ -760,12 +760,25 @@ def device_monitoring_import(request):
         h = _re.sub(r'\s+', ' ', h).strip()   # collapse multiple spaces
         return h
 
-    col_map = {}   # 0-based col index → field name
+    col_map = {}
     for col_idx, cell_val in enumerate(header_row):
         norm = _norm(cell_val)
         field = ALIASES.get(norm)
         if field and field not in col_map.values():
             col_map[col_idx] = field
+
+    # --- Fallback: if release_status_import is still missing,
+    #     use any header that contains "release" in its raw (lowered) text ---
+    if 'release_status_import' not in col_map.values():
+        for col_idx, cell_val in enumerate(header_row):
+            # check original, trimmed, lowercase header *before* normalising
+            raw = str(cell_val).strip().lower()
+            # also check against norm for partial match
+            norm = _norm(cell_val)
+            if 'release' in raw or 'release' in norm:
+                if col_idx not in col_map:
+                    col_map[col_idx] = 'release_status_import'
+                    break
 
     if 'serial_number' not in col_map.values():
         return JsonResponse({
