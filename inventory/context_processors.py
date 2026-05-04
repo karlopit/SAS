@@ -1,15 +1,12 @@
 """
 inventory/context_processors.py
 
-Performance fix: this runs on EVERY page load for every authenticated staff user.
-The original version did a Python loop over all active transactions — very slow.
-
-Fixes:
-1. Uses values() query instead of loading full model objects
-2. Caches the result for 30 seconds per user to avoid repeated DB hits
-   (3 staff members × every page = 3x the queries)
+Runs on every authenticated staff page load. Keep it to cheap aggregate queries
+and cache — slow work here delays every navigation (especially on cloud DBs).
 """
 from django.core.cache import cache
+from django.db.models import Case, CharField, F, Q, When
+from django.db.models.functions import Lower, Trim
 from inventory.models import BorrowRequest, Transaction
 
 
@@ -25,41 +22,51 @@ def graduation_warning_count(request):
             'graduation_warning_count': graduation_warning_count_val,
         }
 
-    # Cache key is per-user so one user's stale badge doesn't affect others
     cache_key = f'ctx_badges_{request.user.id}'
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    # Fast count with index — no Python loop
     pending_count = BorrowRequest.objects.filter(status='pending').count()
 
-    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
+    # Mirror graduation_warnings view: trimmed year_level if set, else year_section
+    kw_q = Q()
+    for kw in ('4th', 'fourth', '5th', 'fifth'):
+        kw_q |= Q(_eff__icontains=kw)
 
-    # Use values() to avoid loading full objects — only pull the two fields we need
-    rows = Transaction.objects.filter(
-        status='borrowed',
-        borrow_request__borrower_type='student',
-    ).values(
-        'borrow_request__year_level',
-        'borrow_request__year_section',
+    graduation_warning_count_val = (
+        Transaction.objects.filter(
+            status='borrowed',
+            borrow_request__borrower_type='student',
+        )
+        .annotate(
+            _ylt=Trim('borrow_request__year_level'),
+            _yst=Trim('borrow_request__year_section'),
+        )
+        .annotate(
+            _eff=Lower(
+                Case(
+                    When(
+                        Q(borrow_request__year_level__isnull=True)
+                        | Q(_ylt__isnull=True)
+                        | Q(_ylt=''),
+                        then=F('_yst'),
+                    ),
+                    default=F('_ylt'),
+                    output_field=CharField(),
+                )
+            )
+        )
+        .filter(kw_q)
+        .count()
     )
-
-    for row in rows:
-        yl = (
-            row['borrow_request__year_level'] or
-            row['borrow_request__year_section'] or ''
-        ).strip().lower()
-        if any(k in yl for k in graduating_keywords):
-            graduation_warning_count_val += 1
 
     result = {
         'pending_count': pending_count,
         'graduation_warning_count': graduation_warning_count_val,
     }
 
-    # Cache for 30 seconds — stale by at most one page load cycle
-    # WebSocket pushes keep the live badges accurate anyway
-    cache.set(cache_key, result, 30)
+    # WebSocket updates refresh badges; longer TTL cuts DB wake-ups on Render/Neon
+    cache.set(cache_key, result, 120)
 
     return result
