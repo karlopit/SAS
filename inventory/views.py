@@ -760,12 +760,21 @@ def device_monitoring_import(request):
         h = _re.sub(r'\s+', ' ', h).strip()   # collapse multiple spaces
         return h
 
+    # Map headers → fields. Defer generic "Status" → release_status_import until after
+    # explicit RELEASED/RETURN-style headers, so a leftmost "Status" column does not
+    # steal the mapping from the real release/return column.
+    ALIASES_PRIMARY = {k: v for k, v in ALIASES.items() if k != 'status'}
     col_map = {}
     for col_idx, cell_val in enumerate(header_row):
         norm = _norm(cell_val)
-        field = ALIASES.get(norm)
+        field = ALIASES_PRIMARY.get(norm)
         if field and field not in col_map.values():
             col_map[col_idx] = field
+    if 'release_status_import' not in col_map.values():
+        for col_idx, cell_val in enumerate(header_row):
+            if _norm(cell_val) == 'status' and col_idx not in col_map:
+                col_map[col_idx] = 'release_status_import'
+                break
 
     # --- Fallback: if release_status_import is still missing,
     #     use any header that contains "release" in its raw (lowered) text ---
@@ -807,10 +816,21 @@ def device_monitoring_import(request):
         if not serial:
             continue
 
-        release_text = str_data.get('release_status_import', '').strip().lower()
-        is_returned  = release_text in ('returned', 'return')
-        is_released  = release_text in ('released', 'release', 'borrowed', 'out')
-        print(f"DEBUG row {serial}: release_text='{release_text}', is_released={is_released}, is_returned={is_returned}")
+        # Normalize like headers so "Released/Return", "RELEASED", etc. match.
+        release_norm = _norm(str_data.get('release_status_import', ''))
+        is_returned = (
+            release_norm in ('returned', 'return')
+            or release_norm.startswith('returned')
+        )
+        is_released = (
+            bool(release_norm)
+            and not is_returned
+            and (
+                release_norm in ('released', 'release', 'borrowed', 'out')
+                or release_norm.startswith('released')
+                or release_norm.startswith('release return')
+            )
+        )
 
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
