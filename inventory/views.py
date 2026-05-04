@@ -810,6 +810,7 @@ def device_monitoring_import(request):
         release_text = str_data.get('release_status_import', '').strip().lower()
         is_returned  = release_text in ('returned', 'return')
         is_released  = release_text in ('released', 'release', 'borrowed', 'out')
+        print(f"DEBUG row {serial}: release_text='{release_text}', is_released={is_released}, is_returned={is_returned}")
 
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
