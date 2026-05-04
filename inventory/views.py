@@ -711,54 +711,53 @@ def device_monitoring_import(request):
 
     header_row = all_rows[header_row_num - 1]
 
-    # ── Map normalized header text → field name ──────────────────────────────
+        # ── Map normalized header text → field name ──────────────────────────────
     ALIASES = {
-        'box number':          'box_number',
-        'box no':              'box_number',
-        'box':                 'box_number',
-        'serial number':       'serial_number',
-        'serial no':           'serial_number',
-        'serial':              'serial_number',
-        'sn':                  'serial_number',
-        'college / office':    'office_college',
-        'college/office':      'office_college',
-        'college':             'office_college',
-        'office':              'office_college',
-        'name of student':     'accountable_person',
-        'student name':        'accountable_person',
-        'name':                'accountable_person',
-        'accountable person':  'accountable_person',
-        'borrower type':       'borrower_type',
-        'type':                'borrower_type',
-        'accountable officer': 'accountable_officer',
-        'officer':             'accountable_officer',
-        'assigned mr':         'assigned_mr',
-        'assigned mr ':        'assigned_mr',
-        'mr':                  'assigned_mr',
-        'device':              'device',
-        'ptr':                 'ptr',
-        'status':              'release_status_import',
-        'release  return':     'release_status_import',   # slash stripped → "release  return"
-        'release return':      'release_status_import',   # collapsed spaces → "release return"
-        'released return':     'release_status_import',   # ← RELEASED/RETURN stripped
-        'released  return':    'release_status_import',   # with double space
-        'release status':      'release_status_import',
-        'released returned':   'release_status_import',
-        'released  returned':  'release_status_import',
-        'return status':       'release_status_import',
-        'date returned':       'date_returned',
-        'date released':       'date_returned',
-        'remarks':             'remarks',
-        'issue':               'issue',
+        'box number':           'box_number',
+        'box no':               'box_number',
+        'box':                  'box_number',
+        'serial number':        'serial_number',
+        'serial no':            'serial_number',
+        'serial':               'serial_number',
+        'sn':                   'serial_number',
+        'college office':       'office_college',    # "college / office" → "college office"
+        'college':              'office_college',
+        'office':               'office_college',
+        'name of student':      'accountable_person',
+        'student name':         'accountable_person',
+        'name':                 'accountable_person',
+        'accountable person':   'accountable_person',
+        'borrower type':        'borrower_type',
+        'type':                 'borrower_type',
+        'accountable officer':  'accountable_officer',
+        'officer':              'accountable_officer',
+        'assigned mr':          'assigned_mr',
+        'mr':                   'assigned_mr',
+        'device':               'device',
+        'ptr':                  'ptr',
+        # ── Release/Return column — all slash variants become spaces ──────
+        'status':               'release_status_import',
+        'release return':       'release_status_import',   # RELEASE/RETURN
+        'release  return':      'release_status_import',   # RELEASE / RETURN
+        'released return':      'release_status_import',   # RELEASED/RETURN  ← your column
+        'released  return':     'release_status_import',   # RELEASED / RETURN
+        'released returned':    'release_status_import',   # RELEASED/RETURNED
+        'released  returned':   'release_status_import',   # RELEASED / RETURNED
+        'release status':       'release_status_import',
+        'return status':        'release_status_import',
+        # ─────────────────────────────────────────────────────────────────
+        'date returned':        'date_returned',
+        'date released':        'date_returned',
+        'remarks':              'remarks',
+        'issue':                'issue',
     }
 
     def _norm(h):
-        """Lowercase, strip dots/hashes/slashes/extra spaces."""
+        """Lowercase, replace punctuation/slashes with spaces, collapse whitespace."""
         import re as _re
         h = str(h or '').strip().lower()
-        h = _re.sub(r'[.#/\\]', '', h)          # ← also strip slashes
-        h = _re.sub(r'[\u2215\u29f5\u2044]', '', h)  # ← strip unicode slash variants
-        h = _re.sub(r'\s+', ' ', h).strip()
+        h = _re.sub(r'[.#/\\\-_]', ' ', h)   # replace delimiters with space
+        h = _re.sub(r'\s+', ' ', h).strip()   # collapse multiple spaces
         return h
 
     col_map = {}   # 0-based col index → field name
@@ -767,14 +766,6 @@ def device_monitoring_import(request):
         field = ALIASES.get(norm)
         if field and field not in col_map.values():
             col_map[col_idx] = field
-
-    # TEMPORARY DEBUG — remove after confirming
-    return JsonResponse({
-        'ok': False,
-        'debug_headers_raw':   [str(h) for h in header_row if h],
-        'debug_headers_normed':[_norm(h) for h in header_row if h],
-        'debug_col_map':       {str(k): v for k, v in col_map.items()},
-    })
 
     if 'serial_number' not in col_map.values():
         return JsonResponse({
