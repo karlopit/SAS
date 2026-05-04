@@ -3,7 +3,7 @@ inventory/consumers.py  — Performance-optimized version
 
 Key improvements:
 - _build_dashboard_payload: uses aggregate DB queries instead of Python loops
-- _build_borrow_management_payload: only fetches borrowed transactions (not all)
+- _build_borrow_management_payload: borrowed + returned transactions (full history for the table)
 - _build_device_monitoring_payload: only sends fields needed by the table
 - All builders use select_related to avoid N+1 queries
 - Added values_list / annotate where possible to avoid loading full model objects
@@ -133,10 +133,9 @@ def _build_dashboard_payload():
 def _build_borrow_management_payload():
     from .models import Transaction, BorrowRequest, Item
 
-    # Only show currently-borrowed transactions (not all time) — limits to relevant rows
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
-    ).filter(status='borrowed').order_by('-borrowed_at')[:100]
+    ).filter(status__in=('borrowed', 'returned')).order_by('-borrowed_at')
 
     transactions_data = []
     for tx in transactions:

@@ -321,14 +321,11 @@ def borrow_management(request):
         raise PermissionDenied
  
     items = Item.objects.all()
- 
-    # ONLY show active (not fully returned) transactions
-    # The JS renders updates via WebSocket anyway
+
+    # All borrow cycles: active (released to borrower) and completed returns
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
-    ).filter(
-        status='borrowed'
-    ).order_by('-borrowed_at')[:200]   # cap at 200 for initial page load
+    ).filter(status__in=('borrowed', 'returned')).order_by('-borrowed_at')
  
     for tx in transactions:
         tx.returned_at_display = format_ph_time(tx.returned_at) if tx.returned_at else '—'

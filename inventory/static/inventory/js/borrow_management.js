@@ -392,7 +392,7 @@
         tr.dataset.status       = tx.fully_returned ? 'returned' : 'borrowed';
 
         tr.innerHTML = `
-          <td style="text-align:center"><span class="badge badge-blue">${escapeHtml(tx.tx_id)}</span></td>
+          <td style="text-align:center"><span class="badge badge-blue">${tx.tx_id ? '#' + escapeHtml(String(tx.tx_id)) : '—'}</span></td>
           <td style="text-align:center;font-weight:600">${escapeHtml(tx.borrower_name)}</td>
           <td style="text-align:center">${borrowerTypeBadge(tx.borrower_type)}</td>
           <td style="text-align:center;font-weight:600;color:var(--accent2)">${escapeHtml(tx.accountable_officer)}</td>

@@ -89,7 +89,7 @@
 <!-- ── Transactions Table ── -->
 <div class="table-card" style="margin-top:24px">
   <div class="table-header" style="flex-wrap:wrap;gap:12px">
-    <span class="table-title">Recent Transactions</span>
+    <span class="table-title">Transactions</span>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
 
       <select id="filter-college" class="filter-select">
@@ -207,7 +207,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.职务</tr>
+        <tr id="tx-empty-row"><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">No transactions yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
