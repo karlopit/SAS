@@ -768,6 +768,14 @@ def device_monitoring_import(request):
         if field and field not in col_map.values():
             col_map[col_idx] = field
 
+    # TEMPORARY DEBUG — remove after confirming
+    return JsonResponse({
+        'ok': False,
+        'debug_headers_raw':   [str(h) for h in header_row if h],
+        'debug_headers_normed':[_norm(h) for h in header_row if h],
+        'debug_col_map':       {str(k): v for k, v in col_map.items()},
+    })
+
     if 'serial_number' not in col_map.values():
         return JsonResponse({
             'ok': False,
