@@ -740,6 +740,8 @@ def device_monitoring_import(request):
         'status':              'release_status_import',
         'release / return':    'release_status_import',
         'release/return':      'release_status_import',
+        'released/return':     'release_status_import',   # ← ADDED
+        'released / return':   'release_status_import',   # ← ADDED
         'release status':      'release_status_import',
         'released/returned':   'release_status_import',
         'released/returned':   'release_status_import',   # ← your actual column name
