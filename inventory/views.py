@@ -741,6 +741,9 @@ def device_monitoring_import(request):
         'release / return':    'release_status_import',
         'release/return':      'release_status_import',
         'release status':      'release_status_import',
+        'released/returned':   'release_status_import',
+        'released/returned':   'release_status_import',   # ← your actual column name
+        'released / returned': 'release_status_import',   # ← with spaces variant
         'date returned':       'date_returned',
         'date released':       'date_returned',
         'remarks':             'remarks',
