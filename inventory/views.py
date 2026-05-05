@@ -622,18 +622,6 @@ def _parse_excel_date(raw):
 #  The import view
 # ─────────────────────────────────────────────────────────────────────────────
 
-"""
-STEP 1 — Add this URL to inventory/urls.py inside urlpatterns:
-
-    path('device-monitoring/import/status/<str:task_id>/', views.import_task_status, name='import_task_status'),
-
-STEP 2 — Replace device_monitoring_import() and import_task_status() in inventory/views.py
-         with the two functions below.
-
-No other files need changing.
-"""
-
-
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):

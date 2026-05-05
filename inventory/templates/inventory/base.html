@@ -424,44 +424,83 @@
 <script>
 (function () {
   var overlay   = document.getElementById('invsys-loading-overlay');
-  if (!overlay) return;
+  var progressBar = document.getElementById('export-progress-bar');
+  if (!overlay || !progressBar) return;
 
   var cookieCheckInterval = null;
+  var progressInterval    = null;
 
+  /* ── Overlay helpers ─────────────────────────────────── */
   function showOverlay() {
     overlay.classList.add('is-active');
     overlay.setAttribute('aria-hidden', 'false');
   }
-
   function hideOverlay() {
     overlay.classList.remove('is-active');
     overlay.setAttribute('aria-hidden', 'true');
   }
 
-  // Watch for download_finished cookie and hide overlay when it appears
+  /* ── Bottom progress bar helpers ─────────────────────── */
+  function resetProgressBar() {
+    progressBar.style.transition = 'none';
+    progressBar.style.width = '0%';
+    // Force reflow
+    progressBar.offsetWidth;
+    progressBar.style.transition = 'width 0.4s ease';
+    progressBar.style.display = 'block';
+    progressBar.style.backgroundColor = 'var(--accent)'; /* or your colour */
+  }
+
+  function setProgress(percent) {
+    progressBar.style.width = percent + '%';
+  }
+
+  function hideProgressBar() {
+    clearInterval(cookieCheckInterval);
+    clearInterval(progressInterval);
+    setProgress(100);
+    setTimeout(function () {
+      progressBar.style.opacity = '0';
+      setTimeout(function () {
+        progressBar.style.opacity = '1';
+        resetProgressBar();
+        progressBar.style.display = 'none';
+      }, 300);
+    }, 400);
+  }
+
+  /* ── Cookie monitor (only for exports) ───────────────── */
   function startCookieMonitor() {
+    // Remove any leftover cookie from a previous download
     document.cookie = 'download_finished=; max-age=0; path=/';
-    
+
     var attempts = 0;
     clearInterval(cookieCheckInterval);
     cookieCheckInterval = setInterval(function () {
       if (document.cookie.indexOf('download_finished=1') !== -1) {
-        clearInterval(cookieCheckInterval);
-        // Remove the cookie so it doesn't trigger again
-        document.cookie = 'download_finished=; max-age=0; path=/';
-        hideOverlay();
+        hideProgressBar();
       } else {
         attempts++;
         // safety timeout after 5 seconds
         if (attempts > 50) {
-          clearInterval(cookieCheckInterval);
-          hideOverlay();
+          hideProgressBar();
         }
       }
     }, 100);
   }
 
-  // Show overlay on all internal navigations, including export/download links.
+  /* ── Simulated progress (fills bar to 90% gradually) ── */
+  function startProgressAnimation() {
+    clearInterval(progressInterval);
+    var width = 0;
+    progressInterval = setInterval(function () {
+      width += 3;                     // increase by 3% every 200ms
+      if (width > 90) width = 90;     // cap at 90% until cookie arrives
+      setProgress(width);
+    }, 200);
+  }
+
+  /* ── Click handler ────────────────────────────────────── */
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
@@ -474,19 +513,23 @@
       if (u.origin !== location.origin) return;
     } catch (err) {}
 
-    // It's an internal navigation – show overlay.
-    showOverlay();
+    // Detect export / download links
+    var isExport = a.hasAttribute('download') ||
+                   /\/export\//.test(a.pathname) ||
+                   /\.(xlsx?|csv|pdf|zip)$/i.test(a.pathname);
 
-    // If it's an export/download link, watch for the cookie instead of waiting
-    // for a page navigation (which never happens).
-    if (a.hasAttribute('download') ||
-        /\/export\//.test(a.pathname) ||
-        /\.(xlsx?|csv|pdf|zip)$/i.test(a.pathname)) {
+    if (isExport) {
+      // Show bottom progress bar + start animation & cookie monitor
+      resetProgressBar();
+      startProgressAnimation();
       startCookieMonitor();
+    } else {
+      // Normal internal navigation → show dancing tablet overlay
+      showOverlay();
     }
-    // For normal pages the overlay will hide on 'pageshow'.
   }, true);
 
+  /* ── Form submit still shows overlay ──────────────────── */
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (form && form.tagName === 'FORM') {
@@ -494,6 +537,7 @@
     }
   }, true);
 
+  /* ── Hide overlay on normal page navigation ───────────── */
   window.addEventListener('pageshow', hideOverlay);
   window.addEventListener('pagehide', hideOverlay);
 })();

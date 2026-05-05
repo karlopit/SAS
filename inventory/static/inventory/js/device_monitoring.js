@@ -142,7 +142,7 @@
                        : 'badge-none';
 
     return `<input type="hidden" name="row_id" value="${row.id}"/>
-      <td style="text-align:center"><input type="text" name="box_number" value="${_esc(row.box_number)}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="box_number" value="${_esc((row.box_number || '').replace(/\.0$/, ''))}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="serial_number" value="${_esc(row.serial_number)}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="office_college" value="${_esc(row.office_college)}" class="form-control dm-college-input" placeholder="e.g. CCS" style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="accountable_person" value="${_esc(row.accountable_person)}" class="form-control dm-person-input" placeholder="Full name" style="width:130px;text-align:center;margin:0 auto"/></td>

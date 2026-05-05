@@ -139,8 +139,11 @@ def process_excel_import(self, rows_data, user_id):
         if is_released:
             date_returned = None
 
+        if box_number.endswith('.0') and box_number[:-2].isdigit():
+            box_number = box_number[:-2]
+
         defaults = {
-            'box_number':          (d.get('box_number')          or '').strip(),
+            'box_number': box_number,
             'office_college':      (d.get('office_college')      or 'Unknown').strip(),
             'accountable_person':  (d.get('accountable_person')  or '').strip(),
             'borrower_type':       (d.get('borrower_type')       or '').strip().lower(),
