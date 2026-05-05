@@ -802,9 +802,16 @@ def device_monitoring_import(request):
         if raw_date is not None and not isinstance(raw_date, str):
             raw_date = str(raw_date)
 
+        # Clean box number: remove ".0" when the cell was numeric
+        box_number_raw = str_data.get('box_number', '').strip()
+        if box_number_raw.endswith('.0') and '.' in box_number_raw[:-2]:  # still has a dot → not "1.0"
+            pass  # leave as is (e.g., "1.5")
+        elif box_number_raw.endswith('.0'):
+            box_number_raw = box_number_raw[:-2]      # "1.0" → "1"
+
         rows_data.append({
             'serial_number':       serial,
-            'box_number':          str_data.get('box_number', ''),
+            'box_number':          box_number_raw,
             'office_college':      str_data.get('office_college', ''),
             'accountable_person':  str_data.get('accountable_person', ''),
             'borrower_type':       borrower_type,
@@ -818,6 +825,7 @@ def device_monitoring_import(request):
             'is_returned':         is_returned,
             'is_released':         is_released,
         })
+    
 
     if not rows_data:
         return JsonResponse({

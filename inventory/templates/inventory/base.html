@@ -222,6 +222,19 @@
         animation: none !important;
       }
     }
+
+    /* ── Bottom export progress bar ── */
+    #export-progress-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 3px; background: var(--accent); 
+      transform: scaleX(0); transform-origin: left;
+      transition: transform 0.6s ease;
+      z-index: 100001;  /* above the loading overlay */
+      pointer-events: none;
+    }
+    #export-progress-bar.active {
+      transform: scaleX(1);
+    }
   </style>
 </head>
 <body>
@@ -378,7 +391,6 @@
     <div class="loader-bar" aria-hidden="true"></div>
   </div>
 </div>
-<div id="invsys-nav-progress" aria-hidden="true" style="position:fixed;top:0;left:0;height:2px;width:0;z-index:99999;background:linear-gradient(90deg,var(--accent,#ffb347),#00e5a0);pointer-events:none;opacity:0;transition:width .2s ease,opacity .2s ease"></div>
 <script>
 (function () {
   var bar = document.getElementById('invsys-nav-progress');
@@ -411,19 +423,32 @@
 <script>
 (function () {
   var overlay = document.getElementById('invsys-loading-overlay');
-  if (!overlay) return;
+  var exportBar = document.getElementById('export-progress-bar');
+  if (!overlay || !exportBar) return;
 
-  function show() {
+  function showOverlay() {
     overlay.classList.add('is-active');
     overlay.setAttribute('aria-hidden', 'false');
   }
-  function hide() {
+  function hideOverlay() {
     overlay.classList.remove('is-active');
     overlay.setAttribute('aria-hidden', 'true');
   }
 
-  // Show on internal navigations (same‑tab) and on form submits,
-  // BUT skip download / export links.
+  function showExportProgress() {
+    exportBar.style.transition = 'none';
+    exportBar.style.transform = 'scaleX(0)';
+    exportBar.classList.add('active');
+    // force reflow
+    exportBar.offsetWidth;
+    exportBar.style.transition = 'transform 0.6s ease';
+    exportBar.style.transform = 'scaleX(1)';
+    // hide after fill completes
+    setTimeout(function () {
+      exportBar.classList.remove('active');
+    }, 800);
+  }
+
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
@@ -431,29 +456,33 @@
     if (a.target && a.target !== '_self') return;
     if (a.getAttribute('href') === '#') return;
 
-    // --- NEW: don't show the overlay for download/export links ---
-    if (a.hasAttribute('download')) return;
+    // Detect export/download links
+    var isExport = false;
+    if (a.hasAttribute('download')) isExport = true;
     try {
       var u = new URL(a.href, location.href);
-      // stay inside the same origin, but skip export paths / common file extensions
       if (u.origin !== location.origin) return;
-      if (u.pathname === location.pathname && u.search === location.search && u.hash) return;
-      if (/\/export\//.test(u.pathname) || /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname)) return;
+      if (/\/export\//.test(u.pathname) || /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname)) isExport = true;
     } catch (err) {}
-    // -------------------------------------------------------------
 
-    show();
+    if (isExport) {
+      // Show the bottom progress bar instead of the overlay
+      showExportProgress();
+      return;   // do not show the overlay
+    }
+
+    // Normal internal navigation – show overlay
+    showOverlay();
   }, true);
 
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (!form || form.tagName !== 'FORM') return;
-    show();
+    showOverlay();
   }, true);
 
-  // When the next page finishes loading / bfcache restores, hide it.
-  window.addEventListener('pageshow', hide);
-  window.addEventListener('pagehide', hide);
+  window.addEventListener('pageshow', hideOverlay);
+  window.addEventListener('pagehide', hideOverlay);
 })();
 </script>
 
