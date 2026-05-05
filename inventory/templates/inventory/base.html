@@ -423,7 +423,7 @@
 </div>
 <script>
 (function () {
-  var overlay   = document.getElementById('invsys-loading-overlay');
+  var overlay    = document.getElementById('invsys-loading-overlay');
   var progressBar = document.getElementById('export-progress-bar');
   if (!overlay || !progressBar) return;
 
@@ -442,13 +442,15 @@
 
   /* ── Bottom progress bar helpers ─────────────────────── */
   function resetProgressBar() {
+    // Remove any inline transition so we can snap width to 0 immediately
     progressBar.style.transition = 'none';
     progressBar.style.width = '0%';
-    // Force reflow
+    // Force reflow so the snap is applied
     progressBar.offsetWidth;
+    // Set the real transition for width
     progressBar.style.transition = 'width 0.4s ease';
-    progressBar.style.display = 'block';
-    progressBar.style.backgroundColor = 'var(--accent)'; /* or your colour */
+    // Show the bar (override transform: scaleX(0))
+    progressBar.classList.add('active');
   }
 
   function setProgress(percent) {
@@ -458,14 +460,17 @@
   function hideProgressBar() {
     clearInterval(cookieCheckInterval);
     clearInterval(progressInterval);
+
+    // Fill to 100% immediately
     setProgress(100);
+
+    // After a brief moment, fade out and hide
     setTimeout(function () {
-      progressBar.style.opacity = '0';
+      progressBar.classList.remove('active');
+      // Reset width for next use (after the bar is hidden)
       setTimeout(function () {
-        progressBar.style.opacity = '1';
-        resetProgressBar();
-        progressBar.style.display = 'none';
-      }, 300);
+        progressBar.style.width = '0%';
+      }, 300);   // matches the CSS transform transition (0.6s)
     }, 400);
   }
 
