@@ -694,6 +694,7 @@ def device_monitoring_import(request):
         'officer':              'accountable_officer',
         'assigned mr':          'assigned_mr',
         'mr':                   'assigned_mr',
+        'assigned m r':         'assigned_mr',
         'device':               'device',
         'ptr':                  'ptr',
         # ── Release/Return column — all slash variants become spaces ──────
