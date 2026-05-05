@@ -235,6 +235,35 @@
     #export-progress-bar.active {
       transform: scaleX(1);
     }
+
+    /* Subtle custom scrollbars for draggable table containers */
+    .table-container,
+    .transactions-table-container {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.15) transparent;
+    }
+
+    .table-container::-webkit-scrollbar,
+    .transactions-table-container::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    .table-container::-webkit-scrollbar-track,
+    .transactions-table-container::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .table-container::-webkit-scrollbar-thumb,
+    .transactions-table-container::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.15);
+      border-radius: 3px;
+    }
+
+    .table-container::-webkit-scrollbar-corner,
+    .transactions-table-container::-webkit-scrollbar-corner {
+      background: transparent;
+    }
   </style>
 </head>
 <body>
