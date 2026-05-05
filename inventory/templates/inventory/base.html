@@ -440,6 +440,8 @@
 
   // Watch for download_finished cookie and hide overlay when it appears
   function startCookieMonitor() {
+    document.cookie = 'download_finished=; max-age=0; path=/';
+    
     var attempts = 0;
     clearInterval(cookieCheckInterval);
     cookieCheckInterval = setInterval(function () {
