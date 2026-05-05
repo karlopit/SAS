@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from .forms import RegisterForm, LoginForm, EditUserForm, ResetPasswordForm, AddUserForm
 from django.contrib.auth import get_user_model
 from inventory.models import BorrowRequest   # <-- added import
+from inventory.models import Transaction
 
 User = get_user_model()
 
@@ -45,8 +46,17 @@ def logout_view(request):
 @never_cache
 @login_required
 def profile_view(request):
+    # Avoid template-side sorting + N+1 queries by preloading relations here.
+    tx_qs = (
+        Transaction.objects
+        .filter(borrower=request.user)
+        .select_related('item', 'borrow_request')
+        .order_by('-borrowed_at')
+    )
     return render(request, 'users/profile.html', {
         'user': request.user,
+        'transactions': tx_qs[:200],
+        'transactions_total': tx_qs.count(),
     })
 
 

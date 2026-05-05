@@ -72,7 +72,7 @@
           All transactions handled by this account
         </p>
       </div>
-      {% with total=user.transactions.count %}
+      {% with total=transactions_total %}
       {% if total > 0 %}
       <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;background:rgba(0,229,160,0.1);color:var(--accent);padding:4px 12px;border-radius:20px;border:1px solid rgba(0,229,160,0.2)">
         {{ total }} record{% if total != 1 %}s{% endif %}
@@ -83,7 +83,7 @@
 
     <!-- Scrollable activity list -->
     <div class="activity-scroll">
-      {% if user.transactions.all %}
+      {% if transactions %}
 
         <!-- Column headers -->
         <div class="activity-header-row">
@@ -96,7 +96,7 @@
         </div>
 
         <!-- Rows -->
-        {% for tx in user.transactions.all|dictsortreversed:"borrowed_at" %}
+        {% for tx in transactions %}
         <div class="activity-row {% if forloop.last %}activity-row-last{% endif %}">
 
           <!-- Item -->
