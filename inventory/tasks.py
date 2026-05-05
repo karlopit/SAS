@@ -7,6 +7,9 @@ and broadcasts live updates when done.
 
 Bulk operations are chunked at CHUNK_SIZE rows to prevent Neon Postgres
 from timing out on large imports (4k+ rows).
+
+MODIFIED: accountable_officer now defaults to the importing user's full name
+         when the Excel column is empty or missing.
 """
 import random
 import pytz
@@ -139,12 +142,17 @@ def process_excel_import(self, rows_data, user_id):
         if is_released:
             date_returned = None
 
+        # ── Default accountable_officer to importing user if Excel is blank ──
+        accountable_officer = (d.get('accountable_officer') or '').strip()
+        if not accountable_officer:
+            accountable_officer = user.get_full_name() or user.username
+
         defaults = {
             'box_number':          (d.get('box_number')          or '').strip(),
             'office_college':      (d.get('office_college')      or 'Unknown').strip(),
             'accountable_person':  (d.get('accountable_person')  or '').strip(),
             'borrower_type':       (d.get('borrower_type')       or '').strip().lower(),
-            'accountable_officer': (d.get('accountable_officer') or '').strip(),
+            'accountable_officer': accountable_officer,   # <-- now defaults to the importing user
             'assigned_mr':         (d.get('assigned_mr')         or '').strip(),
             'device':              (d.get('device')              or 'Tablet').strip(),
             'ptr':                 (d.get('ptr')                 or '').strip(),
@@ -190,7 +198,6 @@ def process_excel_import(self, rows_data, user_id):
         errors.append(f'Bulk write error: {exc}')
 
     # ── Mark returned devices in TransactionDevice ───────────────────────────
-    # Process in chunks to avoid huge IN clauses
     if returned_serials:
         for i in range(0, len(returned_serials), CHUNK_SIZE):
             chunk = returned_serials[i:i + CHUNK_SIZE]
@@ -203,7 +210,6 @@ def process_excel_import(self, rows_data, user_id):
     if released_rows:
         released_serials_list = [d['serial_number'] for d in released_rows]
 
-        # Mark any existing TransactionDevice rows as returned in chunks
         for i in range(0, len(released_serials_list), CHUNK_SIZE):
             chunk = released_serials_list[i:i + CHUNK_SIZE]
             TransactionDevice.objects.filter(
@@ -211,7 +217,6 @@ def process_excel_import(self, rows_data, user_id):
                 returned=False,
             ).update(returned=True, returned_at=now_ph)
 
-        # Generate unique 5-digit transaction IDs in one DB call
         existing_ids = set(BorrowRequest.objects.values_list('transaction_id', flat=True))
         new_ids = []
         for _ in released_rows:
@@ -222,7 +227,6 @@ def process_excel_import(self, rows_data, user_id):
                     new_ids.append(tx_id)
                     break
 
-        # Chunk BorrowRequest creation
         borrow_reqs = []
         for i in range(0, len(released_rows), CHUNK_SIZE):
             chunk_rows = released_rows[i:i + CHUNK_SIZE]
@@ -246,7 +250,6 @@ def process_excel_import(self, rows_data, user_id):
             ])
             borrow_reqs.extend(created)
 
-        # Chunk Transaction creation
         txs = []
         for i in range(0, len(released_rows), CHUNK_SIZE):
             chunk_rows = released_rows[i:i + CHUNK_SIZE]
@@ -267,7 +270,6 @@ def process_excel_import(self, rows_data, user_id):
             ])
             txs.extend(created)
 
-        # Chunk TransactionDevice creation
         for i in range(0, len(released_rows), CHUNK_SIZE):
             chunk_rows = released_rows[i:i + CHUNK_SIZE]
             chunk_txs  = txs[i:i + CHUNK_SIZE]
@@ -287,7 +289,7 @@ def process_excel_import(self, rows_data, user_id):
         broadcast_device_monitoring()
         broadcast_dashboard()
     except Exception:
-        pass  # Don't fail the task just because broadcast errored
+        pass
 
     return {
         'ok':      True,
