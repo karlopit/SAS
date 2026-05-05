@@ -5,27 +5,45 @@ import pytz
 import openpyxl
 import traceback
 import re
-from datetime import datetime, date as _date
-from django.core.cache import cache
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
+from django.db import transaction as db_transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
-from django.views.decorators.http import require_http_methods
-from django.contrib import messages
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.chart import BarChart, Reference
 from .models import Item, Transaction, BorrowRequest, DeviceMonitor, TransactionDevice
 from .forms import ItemForm, StaffBorrowForm, TransactionConditionForm, BorrowRequestForm
 from .decorators import no_cache
 from .broadcasts import broadcast_device_monitoring, broadcast_dashboard
-from .utils import get_ph_time, format_ph_time, parse_excel_date, PH_TZ   # <-- only place these come from
+from django.contrib import messages
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.http import require_http_methods, require_POST
+from datetime import datetime, date as _date
 
+
+# Get Philippine timezone
+PH_TZ = pytz.timezone('Asia/Manila')
+
+def get_ph_time(dt=None):
+    """Return current time or converted datetime in Philippine timezone"""
+    if dt is None:
+        dt = timezone.now()
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.utc)
+    return dt.astimezone(PH_TZ)
+
+def format_ph_time(dt):
+    """Format datetime to Philippine time 12-hour format"""
+    if not dt:
+        return None
+    ph_dt = get_ph_time(dt)
+    return ph_dt.strftime('%b %d, %Y %I:%M %p')
 
 def _broadcasts():
     from inventory import broadcasts as b
@@ -124,9 +142,9 @@ def index(request):
 
     return render(request, 'inventory/index.html', {
         'items':          items,
-        'total_devices':  total_devices,
-        'active_borrows': active_borrows,
-        'total_returns':  total_returns,
+        'total_devices':  total_devices,      # ← new
+        'active_borrows': active_borrows,      # now = dm_released
+        'total_returns':  total_returns,       # now = dm_returned
         'pending_count':  pending_count,
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
@@ -325,7 +343,8 @@ def borrow_item_public(request):
 def borrow_management(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    # Table data loads via AJAX after paint to avoid huge HTML.
+
+    # Table data loads via GET /ajax/borrow-management/ after paint (large JSON, no giant HTML).
     return render(request, 'inventory/borrow_management.html', {})
 
 
@@ -334,24 +353,25 @@ def borrow_management(request):
 def device_monitoring(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-    # Rows load via AJAX after paint to avoid huge HTML.
+
+    # Rows load via GET /ajax/device-monitoring/ after paint (avoids multi‑MB HTML documents).
     return render(request, 'inventory/device_monitoring.html', {
         'rows_json': '[]',
     })
  
  
 # ─────────────────────────────────────────────────────────────────────────────
-#  Graduation Warnings
+# REPLACE: graduation_warnings view  (was Python-looping all transactions)
 # ─────────────────────────────────────────────────────────────────────────────
-
+ 
 @login_required
 @no_cache
 def graduation_warnings(request):
     if request.user.role != 'staff':
         raise PermissionDenied
-
+ 
     graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
-
+ 
     from django.db.models import Prefetch
     active_transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
@@ -361,7 +381,7 @@ def graduation_warnings(request):
         status='borrowed',
         borrow_request__borrower_type='student',
     ).order_by('-borrowed_at')
-
+ 
     warnings = []
     for tx in active_transactions:
         br = tx.borrow_request
@@ -372,11 +392,12 @@ def graduation_warnings(request):
             year_level = (br.year_section or '').strip().lower()
         if not any(k in year_level for k in graduating_keywords):
             continue
-
+ 
         qty_outstanding = tx.quantity_borrowed - tx.returned_qty
+        # devices already prefetched — no extra DB query
         all_devices = list(tx.devices.all())
         serials_display = ', '.join(d.serial_number for d in all_devices) if all_devices else (tx.serial_number or '—')
-
+ 
         warnings.append({
             'borrower_name':   br.borrower_name,
             'year_level':      br.year_level or br.year_section or '—',
@@ -391,9 +412,9 @@ def graduation_warnings(request):
             'officer':         (tx.borrower.get_full_name() or '').strip() or tx.borrower.username,
             'tx_id':           br.transaction_id,
         })
-
+ 
     pending_count = BorrowRequest.objects.filter(status='pending').count()
-
+ 
     return render(request, 'inventory/graduation_warnings.html', {
         'warnings':      warnings,
         'warning_count': len(warnings),
@@ -401,16 +422,15 @@ def graduation_warnings(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Device Monitoring Save / Delete
-# ─────────────────────────────────────────────────────────────────────────────
-
 @login_required
 @require_POST
 def device_monitoring_save(request):
     if request.user.role != 'staff':
         raise PermissionDenied
 
+    # ──────────────────────────────────────────────────────────
+    # 1. JSON request (Save All)
+    # ──────────────────────────────────────────────────────────
     if request.content_type == 'application/json':
         try:
             data = json.loads(request.body)
@@ -454,12 +474,13 @@ def device_monitoring_save(request):
                     old_date_returned = obj.date_returned
                     for attr, value in fields.items():
                         setattr(obj, attr, value)
-                    obj.date_returned = old_date_returned
+                    obj.date_returned = old_date_returned  # preserve date_returned
                     obj.save()
                     saved_count += 1
             except Exception as e:
                 errors.append(f"Row {row_id}: {str(e)}")
 
+        # Broadcast updates
         b = _broadcasts()
         b.broadcast_device_monitoring()
         b.broadcast_dashboard()
@@ -470,7 +491,9 @@ def device_monitoring_save(request):
             'errors': errors
         })
 
-    # Normal form submission (individual row saves)
+    # ──────────────────────────────────────────────────────────
+    # 2. Normal form submission (individual row saves)
+    # ──────────────────────────────────────────────────────────
     ids                  = request.POST.getlist('row_id')
     box_numbers          = request.POST.getlist('box_number')
     offices              = request.POST.getlist('office_college')
@@ -529,9 +552,11 @@ def device_monitoring_save(request):
     b.broadcast_device_monitoring()
     b.broadcast_dashboard()
 
+    # If this is an AJAX request (e.g., from the per-row save buttons), return JSON
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'ok': True, 'saved': len(ids)})
 
+    # Otherwise (normal form submit) redirect back to device monitoring page
     return redirect('device_monitoring')
 
 
@@ -549,20 +574,74 @@ def device_monitoring_delete(request, row_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Excel Import Helpers & Views
+#  Helper: normalize a header string for fuzzy matching
 # ─────────────────────────────────────────────────────────────────────────────
-
 def _normalize_header(h):
+    """
+    'Assigned M.R. #' → 'assigned mr'
+    'P.T.R.'          → 'ptr'
+    Strip, lowercase, remove dots/hashes, collapse whitespace.
+    """
     h = str(h or '').strip().lower()
     h = re.sub(r'\.', '', h)
     h = re.sub(r'#', '', h)
     h = re.sub(r'\s+', ' ', h).strip()
     return h
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Helper: parse an Excel cell value into a PH-timezone-aware datetime
+# ─────────────────────────────────────────────────────────────────────────────
+def _parse_excel_date(raw):
+    """
+    Convert an openpyxl cell value to a timezone-aware datetime (Asia/Manila).
+    Returns None for blank / unparseable values.
+    """
+    if raw is None or str(raw).strip() in ('', '—', '-', 'N/A', 'None'):
+        return None
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else PH_TZ.localize(raw)
+    if isinstance(raw, _date):
+        return PH_TZ.localize(datetime(raw.year, raw.month, raw.day))
+    text = str(raw).strip()
+    for fmt in (
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d',
+        '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M', '%m/%d/%Y',
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y',
+        '%b %d, %Y %I:%M %p', '%b %d, %Y',
+        '%B %d, %Y %I:%M %p', '%B %d, %Y',
+    ):
+        try:
+            return PH_TZ.localize(datetime.strptime(text, fmt))
+        except ValueError:
+            continue
+    return None
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+#  The import view
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+STEP 1 — Add this URL to inventory/urls.py inside urlpatterns:
+
+    path('device-monitoring/import/status/<str:task_id>/', views.import_task_status, name='import_task_status'),
+
+STEP 2 — Replace device_monitoring_import() and import_task_status() in inventory/views.py
+         with the two functions below.
+
+No other files need changing.
+"""
 
 
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):
+    """
+    Accepts an Excel file, parses it synchronously (fast — just reading cells),
+    then hands the parsed row-dicts to a Celery task for the slow DB work.
+    Returns JSON immediately with a task_id the frontend can poll.
+    """
     if request.user.role != 'staff':
         return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
 
@@ -572,13 +651,14 @@ def device_monitoring_import(request):
     if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
         return JsonResponse({'ok': False, 'error': 'Invalid file. Please upload .xlsx or .xls.'}, status=400)
 
+    # ── Read workbook ────────────────────────────────────────────────────────
     try:
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
     except Exception as exc:
         return JsonResponse({'ok': False, 'error': f'Could not read Excel file: {exc}'}, status=400)
 
-    # Detect header row
+    # ── Detect header row (first row with ≥ 3 non-empty cells) ───────────────
     header_row_num = None
     all_rows = list(ws.iter_rows(min_row=1, max_row=15, values_only=True))
     for row_idx, row in enumerate(all_rows, start=1):
@@ -592,6 +672,7 @@ def device_monitoring_import(request):
 
     header_row = all_rows[header_row_num - 1]
 
+        # ── Map normalized header text → field name ──────────────────────────────
     ALIASES = {
         'box number':           'box_number',
         'box no':               'box_number',
@@ -600,7 +681,7 @@ def device_monitoring_import(request):
         'serial no':            'serial_number',
         'serial':               'serial_number',
         'sn':                   'serial_number',
-        'college office':       'office_college',
+        'college office':       'office_college',    # "college / office" → "college office"
         'college':              'office_college',
         'office':               'office_college',
         'name of student':      'accountable_person',
@@ -616,15 +697,17 @@ def device_monitoring_import(request):
         'assigned m r':         'assigned_mr',
         'device':               'device',
         'ptr':                  'ptr',
+        # ── Release/Return column — all slash variants become spaces ──────
         'status':               'release_status_import',
-        'release return':       'release_status_import',
-        'release  return':      'release_status_import',
-        'released return':      'release_status_import',
-        'released  return':     'release_status_import',
-        'released returned':    'release_status_import',
-        'released  returned':   'release_status_import',
+        'release return':       'release_status_import',   # RELEASE/RETURN
+        'release  return':      'release_status_import',   # RELEASE / RETURN
+        'released return':      'release_status_import',   # RELEASED/RETURN  ← your column
+        'released  return':     'release_status_import',   # RELEASED / RETURN
+        'released returned':    'release_status_import',   # RELEASED/RETURNED
+        'released  returned':   'release_status_import',   # RELEASED / RETURNED
         'release status':       'release_status_import',
         'return status':        'release_status_import',
+        # ─────────────────────────────────────────────────────────────────
         'date returned':        'date_returned',
         'date released':        'date_returned',
         'remarks':              'remarks',
@@ -632,12 +715,16 @@ def device_monitoring_import(request):
     }
 
     def _norm(h):
+        """Lowercase, replace punctuation/slashes with spaces, collapse whitespace."""
         import re as _re
         h = str(h or '').strip().lower()
-        h = _re.sub(r'[.#/\\\-_]', ' ', h)
-        h = _re.sub(r'\s+', ' ', h).strip()
+        h = _re.sub(r'[.#/\\\-_]', ' ', h)   # replace delimiters with space
+        h = _re.sub(r'\s+', ' ', h).strip()   # collapse multiple spaces
         return h
 
+    # Map headers → fields. Defer generic "Status" → release_status_import until after
+    # explicit RELEASED/RETURN-style headers, so a leftmost "Status" column does not
+    # steal the mapping from the real release/return column.
     ALIASES_PRIMARY = {k: v for k, v in ALIASES.items() if k != 'status'}
     col_map = {}
     for col_idx, cell_val in enumerate(header_row):
@@ -650,9 +737,14 @@ def device_monitoring_import(request):
             if _norm(cell_val) == 'status' and col_idx not in col_map:
                 col_map[col_idx] = 'release_status_import'
                 break
+
+    # --- Fallback: if release_status_import is still missing,
+    #     use any header that contains "release" in its raw (lowered) text ---
     if 'release_status_import' not in col_map.values():
         for col_idx, cell_val in enumerate(header_row):
+            # check original, trimmed, lowercase header *before* normalising
             raw = str(cell_val).strip().lower()
+            # also check against norm for partial match
             norm = _norm(cell_val)
             if 'release' in raw or 'release' in norm:
                 if col_idx not in col_map:
@@ -662,9 +754,13 @@ def device_monitoring_import(request):
     if 'serial_number' not in col_map.values():
         return JsonResponse({
             'ok': False,
-            'error': f'Could not find a "Serial Number" column. Headers: {[str(h) for h in header_row if h]}'
+            'error': (
+                'Could not find a "Serial Number" column. '
+                f'Headers detected: {[str(h) for h in header_row if h]}'
+            )
         }, status=400)
 
+    # ── Parse data rows into plain dicts (no DB calls here) ─────────────────
     rows_data = []
     data_rows = list(ws.iter_rows(min_row=header_row_num + 1, values_only=True))
     for row in data_rows:
@@ -682,6 +778,7 @@ def device_monitoring_import(request):
         if not serial:
             continue
 
+        # Normalize like headers so "Released/Return", "RELEASED", etc. match.
         release_norm = _norm(str_data.get('release_status_import', ''))
         is_returned = (
             release_norm in ('returned', 'return')
@@ -700,13 +797,17 @@ def device_monitoring_import(request):
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
 
+        # Serialize the raw date as string so Celery can receive it via JSON
         raw_date = raw_data.get('date_returned')
         if raw_date is not None and not isinstance(raw_date, str):
             raw_date = str(raw_date)
 
+        # Clean box number: remove ".0" when the cell was numeric
         box_number_raw = str_data.get('box_number', '').strip()
-        if box_number_raw.endswith('.0') and '.' not in box_number_raw[:-2] and box_number_raw[:-2].isdigit():
-            box_number_raw = box_number_raw[:-2]
+        if box_number_raw.endswith('.0') and '.' in box_number_raw[:-2]:  # still has a dot → not "1.0"
+            pass  # leave as is (e.g., "1.5")
+        elif box_number_raw.endswith('.0'):
+            box_number_raw = box_number_raw[:-2]      # "1.0" → "1"
 
         rows_data.append({
             'serial_number':       serial,
@@ -724,6 +825,7 @@ def device_monitoring_import(request):
             'is_returned':         is_returned,
             'is_released':         is_released,
         })
+    
 
     if not rows_data:
         return JsonResponse({
@@ -732,23 +834,26 @@ def device_monitoring_import(request):
             'message': 'No data rows found in the file.',
         })
 
+    # ── Dispatch to Celery ───────────────────────────────────────────────────
     try:
         from inventory.tasks import process_excel_import
         task = process_excel_import.delay(rows_data, request.user.id)
         task_id = task.id
-    except Exception:
+    except Exception as exc:
+        # Celery unavailable — fall back to running synchronously
+        import traceback as _tb
         try:
             from inventory.tasks import process_excel_import
             result = process_excel_import(rows_data, request.user.id)
             return JsonResponse({
                 'ok':      True,
-                'task_id': None,
+                'task_id': None,   # no task — ran inline
                 'total':   len(rows_data),
                 'created': result.get('created', 0),
                 'updated': result.get('updated', 0),
                 'errors':  result.get('errors', []),
-                'message': 'Import complete (ran synchronously).',
-                'done':    True,
+                'message': 'Import complete (ran synchronously — Celery unavailable).',
+                'done':    True,   # tell the frontend it's already finished
             })
         except Exception as exc2:
             return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
@@ -763,13 +868,17 @@ def device_monitoring_import(request):
 
 @login_required
 def import_task_status(request, task_id):
+    """
+    Polling endpoint.  Always returns JSON — never raises an unhandled exception.
+    URL: /device-monitoring/import/status/<task_id>/
+    """
     if request.user.role != 'staff':
         return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
 
     try:
         from celery.result import AsyncResult
         result = AsyncResult(task_id)
-        state  = result.state
+        state  = result.state   # PENDING | STARTED | SUCCESS | FAILURE | RETRY | REVOKED
     except Exception as exc:
         return JsonResponse({'state': 'FAILURE', 'error': str(exc)})
 
@@ -789,6 +898,7 @@ def import_task_status(request, task_id):
         error_msg = str(result.result) if result.result else 'Unknown error'
         return JsonResponse({'state': 'FAILURE', 'error': error_msg})
 
+    # PENDING / STARTED / RETRY
     meta = {}
     try:
         if isinstance(result.info, dict):
@@ -804,7 +914,7 @@ def import_task_status(request, task_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Staff Borrow Confirmation / Decline
+#  Staff borrow confirmation / decline
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -840,6 +950,7 @@ def staff_confirm_borrow(request, request_id):
             device_monitors = []
             for i, serial in enumerate(serial_numbers):
                 box = box_numbers[i] if i < len(box_numbers) else ''
+
                 TransactionDevice.objects.create(
                     transaction=transaction,
                     serial_number=serial,
@@ -847,6 +958,7 @@ def staff_confirm_borrow(request, request_id):
                     returned=False,
                     returned_at=None,
                 )
+
                 device_monitors.append(DeviceMonitor(
                     box_number=box,
                     office_college=borrow_req.office_college,
@@ -896,7 +1008,7 @@ def decline_request(request, request_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Return / Condition
+#  Return / condition
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -998,6 +1110,7 @@ def return_devices(request, transaction_id):
     now_ph = get_ph_time()
     returned_serials = []
 
+    # ── Mark TransactionDevice rows as returned ───────────────────────────────
     if device_ids:
         real_ids = [d for d in device_ids if d is not None]
         if real_ids:
@@ -1017,6 +1130,7 @@ def return_devices(request, transaction_id):
                 td.save()
                 returned_serials.append(sn)
 
+    # ── Mirror the return into DeviceMonitor (sets date_returned) ────────────
     if returned_serials:
         if tx.borrow_request:
             borrower_name = tx.borrow_request.borrower_name
@@ -1032,13 +1146,16 @@ def return_devices(request, transaction_id):
             date_returned__isnull=True,
         ).update(date_returned=now_ph)
 
+    # ── Recalculate returned count ────────────────────────────────────────────
     if tx.devices.exists():
         returned_count = tx.devices.filter(returned=True).count()
     else:
+        # Legacy path: no TransactionDevice rows
         returned_count = tx.returned_qty + len(returned_serials)
 
     returned_count = min(returned_count, tx.quantity_borrowed)
 
+    # ── Update Transaction ────────────────────────────────────────────────────
     delta = returned_count - tx.returned_qty
     if delta > 0:
         tx.item.available_quantity = tx.item.available_quantity + delta
@@ -1049,10 +1166,11 @@ def return_devices(request, transaction_id):
     tx.status       = 'returned' if returned_count >= tx.quantity_borrowed else 'borrowed'
     tx.save()
 
+    # ── Broadcast live updates to ALL connected pages ─────────────────────────
     b = _broadcasts()
     b.broadcast_borrow_management()
     b.broadcast_dashboard()
-    b.broadcast_device_monitoring()
+    b.broadcast_device_monitoring()   # ← device monitoring page updates live
 
     return JsonResponse({
         'ok':            True,
@@ -1064,67 +1182,811 @@ def return_devices(request, transaction_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Graduation Warnings (again? already defined above, so we skip duplicate)
-#  (Already provided once above)
+#  Graduation Warnings
 # ─────────────────────────────────────────────────────────────────────────────
 
+@login_required
+@no_cache
+def graduation_warnings(request):
+    """
+    Shows staff a list of active borrowers who are 4th year (or higher),
+    meaning they are near graduation and their tablets should be recalled.
+    Displays all serial numbers of devices borrowed in the transaction,
+    regardless of whether they have been returned or not.
+    """
+    if request.user.role != 'staff':
+        raise PermissionDenied
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Excel Export Dispatchers  (tasks are in inventory/tasks.py)
-# ═══════════════════════════════════════════════════════════════════════════
+    graduating_keywords = ['4th', '4', 'fourth', '5th', '5', 'fifth']
+
+    active_transactions = Transaction.objects.select_related(
+        'item', 'borrower', 'borrow_request'
+    ).filter(
+        status='borrowed',
+        borrow_request__borrower_type='student',
+    ).order_by('-borrowed_at')
+
+    warnings = []
+    for tx in active_transactions:
+        br = tx.borrow_request
+        if not br:
+            continue
+        year_level = (br.year_level or '').strip().lower()
+        if not year_level:
+            year_level = (br.year_section or '').strip().lower()
+        if not any(k in year_level for k in graduating_keywords):
+            continue
+
+        qty_outstanding = tx.quantity_borrowed - tx.returned_qty
+
+        # --- Get ALL serial numbers (including returned) ---
+        all_devices = tx.devices.all()
+        if all_devices.exists():
+            # Use TransactionDevice records (all, regardless of returned flag)
+            all_serials = [d.serial_number for d in all_devices]
+            serials_display = ', '.join(all_serials)
+        else:
+            # Fallback for legacy transactions: use the comma-separated field
+            serials_display = tx.serial_number or '—'
+
+        warnings.append({
+            'borrower_name':   br.borrower_name,
+            'year_level':      br.year_level or br.year_section or '—',
+            'section':         br.section or '—',
+            'college':         br.college or br.office_college or '—',
+            'academic_year':   br.academic_year or '—',
+            'student_id':      br.student_id or '—',
+            'item_name':       tx.item.name,
+            'qty_outstanding': qty_outstanding,
+            'serial_number':   serials_display,
+            'borrowed_at':     format_ph_time(tx.borrowed_at),
+            'officer':         (tx.borrower.get_full_name() or '').strip() or tx.borrower.username,
+            'tx_id':           br.transaction_id,
+        })
+
+    pending_count = BorrowRequest.objects.filter(status='pending').count()
+
+    return render(request, 'inventory/graduation_warnings.html', {
+        'warnings':      warnings,
+        'warning_count': len(warnings),
+        'pending_count': pending_count,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Excel exports — helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _xl_title(ws, text, col_count):
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
+    c = ws.cell(row=1, column=1)
+    c.value = text; c.font = Font(bold=True, size=14, color='00E5A0')
+    c.fill = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
+    c.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 30
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=col_count)
+    s = ws.cell(row=2, column=1)
+    ph_now = get_ph_time()
+    s.value = f'Generated: {ph_now.strftime("%B %d, %Y %I:%M %p")}'
+    s.font = Font(size=9, color='6B7080')
+    s.fill = PatternFill(start_color='0E0F13', end_color='0E0F13', fill_type='solid')
+    s.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[2].height = 16
+
+
+def _xl_header(ws, row_num, headers):
+    fill = PatternFill(start_color='1E2029', end_color='1E2029', fill_type='solid')
+    font = Font(bold=True, color='00E5A0', size=11)
+    border = Border(bottom=Side(style='thin', color='2A2D3A'))
+    align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    for col, heading in enumerate(headers, start=1):
+        c = ws.cell(row=row_num, column=col, value=heading)
+        c.fill = fill; c.font = font; c.border = border; c.alignment = align
+    ws.row_dimensions[row_num].height = 22
+
+
+def _xl_row(ws, row_num, values, even=False):
+    bg     = '1A1C24' if even else '16181F'
+    fill   = PatternFill(start_color=bg, end_color=bg, fill_type='solid')
+    font   = Font(color='E8EAF0', size=10)
+    border = Border(bottom=Side(style='thin', color='2A2D3A'))
+    align  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    for col, val in enumerate(values, start=1):
+        c = ws.cell(row=row_num, column=col, value=val)
+        c.fill = fill; c.font = font; c.border = border; c.alignment = align
+
+
+def _xl_response(wb, filename_prefix):
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    ph_now = get_ph_time()
+    filename = f'{filename_prefix}_{ph_now.strftime("%Y%m%d_%H%M")}.xlsx'
+    resp = HttpResponse(buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Export: Borrow Management
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def export_borrow_management(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
-    from .tasks import generate_borrow_management_export
-    task = generate_borrow_management_export.delay(request.user.id)
-    return JsonResponse({'ok': True, 'task_id': task.id})
 
+    transactions = Transaction.objects.select_related(
+        'item', 'borrower', 'borrow_request'
+    ).all().order_by('-borrowed_at')
+
+    headers = [
+        'Tx ID', 'Borrower Name', 'Borrower Type', 'Accountable Officer',
+        'College / Office', 'Item', 'Device Serial #', 'Qty Borrowed',
+        'Returned Qty', 'Borrowed On', 'Returned On',
+    ]
+    col_widths = [12, 24, 14, 26, 22, 20, 18, 14, 14, 20, 20]
+
+    wb = Workbook()
+
+    # ── Sheet 1: Transaction Details ──────────────────────────────────────────
+    ws_data = wb.active
+    ws_data.title = 'Borrow Transactions'
+    ws_data.sheet_properties.tabColor = 'FFFFFF'
+
+    ws_data.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    c = ws_data.cell(row=1, column=1, value='Borrow Management Report')
+    c.font = Font(bold=True, size=14, color='000000')
+    c.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    c.alignment = Alignment(horizontal='center', vertical='center')
+    ws_data.row_dimensions[1].height = 30
+
+    ws_data.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    s = ws_data.cell(row=2, column=1)
+    ph_now = get_ph_time()
+    s.value = f'Generated: {ph_now.strftime("%B %d, %Y %I:%M %p")}'
+    s.font = Font(size=9, color='000000')
+    s.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    s.alignment = Alignment(horizontal='center', vertical='center')
+    ws_data.row_dimensions[2].height = 16
+
+    fill_header = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    font_header = Font(bold=True, color='000000', size=11)
+    border      = Border(bottom=Side(style='thin', color='CCCCCC'))
+    align       = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    for col, heading in enumerate(headers, start=1):
+        cell = ws_data.cell(row=3, column=col, value=heading)
+        cell.fill = fill_header
+        cell.font = font_header
+        cell.border = border
+        cell.alignment = align
+    ws_data.row_dimensions[3].height = 22
+
+    # Collect summary data
+    summary_data = {}
+
+    for i, tx in enumerate(transactions, start=1):
+        officer = (tx.borrower.get_full_name() or '').strip() or tx.borrower.username
+        college = tx.office_college or 'Unknown'
+        borrower_name = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
+        borrower_type_display = ''
+        if tx.borrow_request:
+            if tx.borrow_request.borrower_type == 'student':
+                borrower_type_display = 'Student'
+            elif tx.borrow_request.borrower_type == 'employee':
+                borrower_type_display = 'Employee'
+
+        pending_qty = tx.quantity_borrowed - tx.returned_qty
+
+        if college not in summary_data:
+            summary_data[college] = {
+                'borrowed': 0,
+                'returned': 0,
+                'pending': 0,
+                'count': 0,
+                'accountable_officers': {},
+            }
+
+        summary_data[college]['borrowed'] += tx.quantity_borrowed
+        summary_data[college]['returned'] += tx.returned_qty
+        summary_data[college]['pending']  += pending_qty
+        summary_data[college]['count']    += 1
+        summary_data[college]['accountable_officers'][officer] = True
+
+        bg_color = 'FFFFFF' if i % 2 == 0 else 'F9F9F9'
+        fill_row   = PatternFill(start_color=bg_color, end_color=bg_color, fill_type='solid')
+        font_row   = Font(color='000000', size=10)
+        border_row = Border(bottom=Side(style='thin', color='EEEEEE'))
+        align_row  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        values = [
+            f'#{tx.borrow_request.transaction_id}' if tx.borrow_request else '—',
+            borrower_name,
+            borrower_type_display or '—',
+            officer,
+            college,
+            tx.item.name,
+            tx.serial_number or '—',
+            tx.quantity_borrowed,
+            tx.returned_qty,
+            format_ph_time(tx.borrowed_at),
+            format_ph_time(tx.returned_at) if tx.returned_at else '—',
+        ]
+
+        for col, val in enumerate(values, start=1):
+            cell = ws_data.cell(row=i + 3, column=col, value=val)
+            cell.fill = fill_row
+            cell.font = font_row
+            cell.border = border_row
+            cell.alignment = align_row
+
+    # Totals
+    total_borrowed      = sum(d['borrowed'] for d in summary_data.values())
+    total_returned      = sum(d['returned'] for d in summary_data.values())
+    total_pending       = sum(d['pending']  for d in summary_data.values())
+    overall_return_rate = (total_returned / total_borrowed * 100) if total_borrowed > 0 else 0
+
+    # ── Sheet 2: Summary Report ───────────────────────────────────────────────
+    ws_summary = wb.create_sheet('Summary Report')
+    ws_summary.sheet_properties.tabColor = 'FFFFFF'
+
+    ws_summary.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+    title_cell = ws_summary.cell(row=1, column=1, value='BORROW MANAGEMENT SUMMARY REPORT')
+    title_cell.font = Font(bold=True, size=16, color='000000')
+    title_cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    title_cell.alignment = Alignment(horizontal='center')
+
+    ws_summary.merge_cells(start_row=2, start_column=1, end_row=2, end_column=4)
+    date_cell = ws_summary.cell(row=2, column=1, value=f'Report Generated: {format_ph_time(timezone.now())}')
+    date_cell.font = Font(size=10, color='000000')
+    date_cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    date_cell.alignment = Alignment(horizontal='center')
+
+    row_num = 4
+
+    ws_summary.cell(row=row_num, column=1, value='OVERVIEW:').font = Font(bold=True, size=12, color='000000')
+    row_num += 1
+
+    overview_text = (
+        f"As of {format_ph_time(timezone.now())}, there have been a total of "
+        f"{transactions.count()} borrowing transactions across all colleges and offices. "
+        f"A total of {total_borrowed} items have been borrowed, with {total_returned} items "
+        f"successfully returned ({overall_return_rate:.1f}% return rate). "
+        f"Currently, {total_pending} items are still pending return."
+    )
+    ws_summary.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=4)
+    ov_cell = ws_summary.cell(row=row_num, column=1, value=overview_text)
+    ov_cell.alignment = Alignment(wrap_text=True)
+    ov_cell.font = Font(size=11, color='000000')
+    ov_cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    ws_summary.row_dimensions[row_num].height = 60
+    row_num += 2
+
+    ws_summary.cell(row=row_num, column=1, value='BREAKDOWN BY COLLEGE/OFFICE:').font = Font(bold=True, size=12, color='000000')
+    row_num += 1
+
+    best_college      = None
+    best_rate         = 0
+    attention_colleges = []
+
+    for college, data in sorted(summary_data.items()):
+        college_return_rate = (data['returned'] / data['borrowed'] * 100) if data['borrowed'] > 0 else 0
+
+        if college_return_rate >= 90:
+            rating = 'Excellent'
+        elif college_return_rate >= 70:
+            rating = 'Good'
+        elif college_return_rate >= 50:
+            rating = 'Fair'
+        else:
+            rating = 'Needs Attention'
+            attention_colleges.append(college)
+
+        if college_return_rate > best_rate and data['borrowed'] > 0:
+            best_rate    = college_return_rate
+            best_college = college
+
+        officers_list = ', '.join(data['accountable_officers'].keys())
+
+        ws_summary.cell(row=row_num, column=1, value=f'{college}:').font = Font(bold=True, size=11, color='000000')
+        row_num += 1
+
+        for line in [
+            f'  • Transactions: {data["count"]} | Borrowed: {data["borrowed"]} | Returned: {data["returned"]} | Pending: {data["pending"]}',
+            f'  • Return Rate: {college_return_rate:.1f}% ({rating})',
+            f'  • Accountable Officer(s): {officers_list}',
+        ]:
+            ws_summary.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=4)
+            cell = ws_summary.cell(row=row_num, column=1, value=line)
+            cell.alignment = Alignment(wrap_text=True)
+            cell.font = Font(size=11, color='000000')
+            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+            row_num += 1
+
+        ws_summary.cell(row=row_num, column=1, value='')
+        row_num += 1
+
+    ws_summary.cell(row=row_num, column=1, value='KEY INSIGHTS:').font = Font(bold=True, size=12, color='000000')
+    row_num += 1
+
+    insights = []
+    if best_college:
+        insights.append(f'• Best Performing: {best_college} with a {best_rate:.1f}% return rate.')
+    most_active = max(summary_data.items(), key=lambda x: x[1]['count']) if summary_data else (None, None)
+    if most_active and most_active[0]:
+        insights.append(f'• Most Active: {most_active[0]} with {most_active[1]["count"]} borrowing transaction(s).')
+    if attention_colleges:
+        insights.append(f'• Needs Attention: {", ".join(attention_colleges)} have return rates below 50%.')
+    insights.append(f'• Overall Return Rate: {overall_return_rate:.1f}% ({total_returned} of {total_borrowed} items).')
+    insights.append(f'• Outstanding Items: {total_pending} items still need to be returned.')
+
+    for line in insights:
+        ws_summary.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=4)
+        cell = ws_summary.cell(row=row_num, column=1, value=line)
+        cell.alignment = Alignment(wrap_text=True)
+        cell.font = Font(size=11, color='000000')
+        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+        row_num += 1
+
+    row_num += 1
+    ws_summary.cell(row=row_num, column=1, value='RECOMMENDATIONS:').font = Font(bold=True, size=12, color='000000')
+    row_num += 1
+
+    recs = []
+    if total_pending > 10:
+        recs.append(f'• Follow up on {total_pending} outstanding items across all colleges.')
+    for college in attention_colleges:
+        recs.append(f'• Schedule follow-up with {college} regarding {summary_data[college]["pending"]} pending item(s).')
+    if overall_return_rate < 80:
+        recs.append('• Consider implementing stricter borrowing policies to improve return rates.')
+    if not recs:
+        recs.append('• All colleges are performing well. Continue current monitoring practices.')
+
+    for line in recs:
+        ws_summary.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=4)
+        cell = ws_summary.cell(row=row_num, column=1, value=line)
+        cell.alignment = Alignment(wrap_text=True)
+        cell.font = Font(size=11, color='000000')
+        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+        row_num += 1
+
+    ws_summary.column_dimensions['A'].width = 30
+    ws_summary.column_dimensions['B'].width = 50
+    ws_summary.column_dimensions['C'].width = 15
+    ws_summary.column_dimensions['D'].width = 15
+
+    # ── Sheet 3: Summary Table ────────────────────────────────────────────────
+    ws_table = wb.create_sheet('Summary Table')
+    ws_table.sheet_properties.tabColor = 'FFFFFF'
+
+    ws_table.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+    tbl_title = ws_table.cell(row=1, column=1, value='QUICK REFERENCE SUMMARY BY COLLEGE')
+    tbl_title.font = Font(bold=True, size=14, color='000000')
+    tbl_title.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    tbl_title.alignment = Alignment(horizontal='center')
+
+    tbl_headers     = ['College / Office', 'Accountable Officer(s)', 'Transactions', 'Borrowed', 'Returned', 'Pending', 'Return Rate']
+    fill_tbl_header = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    font_tbl_header = Font(bold=True, color='000000', size=11)
+
+    for col, hdr in enumerate(tbl_headers, start=1):
+        cell = ws_table.cell(row=3, column=col, value=hdr)
+        cell.fill = fill_tbl_header
+        cell.font = font_tbl_header
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = Border(bottom=Side(style='thin', color='CCCCCC'))
+
+    tbl_row = 4
+    for college, data in sorted(summary_data.items()):
+        return_rate   = (data['returned'] / data['borrowed'] * 100) if data['borrowed'] > 0 else 0
+        officers_list = ', '.join(data['accountable_officers'].keys())
+
+        bg_color = 'FFFFFF' if tbl_row % 2 == 0 else 'F9F9F9'
+        fill_r   = PatternFill(start_color=bg_color, end_color=bg_color, fill_type='solid')
+        font_r   = Font(color='000000', size=10)
+
+        row_values = [college, officers_list, data['count'], data['borrowed'], data['returned'], data['pending'], f'{return_rate:.1f}%']
+        for col, val in enumerate(row_values, start=1):
+            cell = ws_table.cell(row=tbl_row, column=col, value=val)
+            cell.fill = fill_r
+            cell.font = font_r
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
+
+        rate_cell = ws_table.cell(row=tbl_row, column=7)
+        if return_rate >= 90:
+            rate_cell.font = Font(color='00e5a0', bold=True, size=10)
+        elif return_rate >= 70:
+            rate_cell.font = Font(color='ffb347', bold=True, size=10)
+        else:
+            rate_cell.font = Font(color='ff4444', bold=True, size=10)
+
+        tbl_row += 1
+
+    # Grand total
+    grand_vals = ['GRAND TOTAL', '', sum(d['count'] for d in summary_data.values()),
+                  total_borrowed, total_returned, total_pending, f'{overall_return_rate:.1f}%']
+    for col, val in enumerate(grand_vals, start=1):
+        cell = ws_table.cell(row=tbl_row, column=col, value=val)
+        cell.font = Font(bold=True, color='000000', size=10)
+        cell.fill = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center')
+
+    table_col_widths = [25, 45, 15, 12, 12, 12, 15]
+    for col, width in enumerate(table_col_widths, start=1):
+        ws_table.column_dimensions[get_column_letter(col)].width = width
+
+    for col, width in enumerate(col_widths, start=1):
+        ws_data.column_dimensions[get_column_letter(col)].width = width
+    ws_data.freeze_panes = 'A4'
+
+    return _xl_response(wb, 'borrow_management')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Export: Device Monitoring
+# ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def export_device_monitoring(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
-    from .tasks import generate_device_monitoring_export
-    task = generate_device_monitoring_export.delay(request.user.id)
-    return JsonResponse({'ok': True, 'task_id': task.id})
 
+    # Get all devices and sort numerically by box number
+    rows = list(DeviceMonitor.objects.all())
+    
+    def box_number_key(row):
+        bn = row.box_number or ''
+        import re
+        match = re.search(r'(\d+)', bn)
+        if match:
+            return (int(match.group(1)), bn)
+        return (float('inf'), bn)
+    
+    rows.sort(key=box_number_key)
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Download + export status views  (uses cache set by Celery tasks)
-# ─────────────────────────────────────────────────────────────────────────────
+    # Annotate release_status on each row
+    for row in rows:
+        if row.date_returned:
+            row.release_status = 'Returned'
+        else:
+            active_td = TransactionDevice.objects.filter(
+                serial_number=row.serial_number,
+                returned=False
+            ).select_related('transaction').first()
+            if active_td and active_td.transaction:
+                tx = active_td.transaction
+                tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
+                if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
+                    row.release_status = 'Released'
+                else:
+                    row.release_status = '—'
+            else:
+                row.release_status = '—'
 
-@login_required
-def download_export(request, token):
-    file_data = cache.get(f'export_{token}')
-    filename = cache.get(f'export_{token}_fn', 'export.xlsx')
-    if not file_data:
-        return HttpResponse('Export expired or not found.', status=404)
+    # ─── Collect summary statistics ──────────────────────────────────────────
+    summary_data = {}
+    device_status_summary = {
+        'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
+        'missing': 0, 'incomplete': 0, 'released': 0, 'returned': 0,
+    }
+    device_type_summary = {}
+    mr_stats = {}  # key = assigned_mr, value = dict with totals and per-college details
 
-    resp = HttpResponse(
-        file_data,
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return resp
+    for row in rows:
+        college = row.office_college or 'Unknown'
+        assigned_mr = (row.assigned_mr or '').strip()
+        if assigned_mr == '':
+            assigned_mr = '—'
 
+        # College-level summary (still needed for later use?)
+        if college not in summary_data:
+            summary_data[college] = {
+                'total_devices': 0, 'serviceable': 0, 'non_serviceable': 0,
+                'sealed': 0, 'missing': 0, 'incomplete': 0,
+                'released': 0, 'returned': 0, 'devices_with_issues': 0,
+            }
+        summary_data[college]['total_devices'] += 1
+        for field in ('serviceable', 'non_serviceable', 'sealed', 'missing', 'incomplete'):
+            if getattr(row, field):
+                summary_data[college][field] += 1
+                device_status_summary[field] += 1
+                if field in ('non_serviceable', 'missing', 'incomplete'):
+                    summary_data[college]['devices_with_issues'] += 1
 
-@login_required
-def export_task_status(request, task_id):
-    from celery.result import AsyncResult
-    result = AsyncResult(task_id)
-    info = result.result if result.ready() else {}
-    token = info.get('token', '') if isinstance(info, dict) else ''
-    return JsonResponse({'state': result.state, 'token': token})
+        rs = getattr(row, 'release_status', '—')
+        if rs == 'Released':
+            summary_data[college]['released'] += 1
+            device_status_summary['released'] += 1
+        elif rs == 'Returned':
+            summary_data[college]['returned'] += 1
+            device_status_summary['returned'] += 1
 
+        # Per MR statistics
+        if assigned_mr not in mr_stats:
+            mr_stats[assigned_mr] = {
+                'total': 0, 'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
+                'missing': 0, 'incomplete': 0, 'released': 0, 'returned': 0,
+                'college_details': {},
+            }
+        stats = mr_stats[assigned_mr]
+        stats['total'] += 1
+        for field in ('serviceable', 'non_serviceable', 'sealed', 'missing', 'incomplete'):
+            if getattr(row, field):
+                stats[field] += 1
+        if rs == 'Released':
+            stats['released'] += 1
+        elif rs == 'Returned':
+            stats['returned'] += 1
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Database keep‑alive (Neon)
-# ─────────────────────────────────────────────────────────────────────────────
+        # Per MR + college details
+        if college not in stats['college_details']:
+            stats['college_details'][college] = {
+                'total': 0, 'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
+                'missing': 0, 'incomplete': 0, 'released': 0, 'returned': 0,
+            }
+        col_stats = stats['college_details'][college]
+        col_stats['total'] += 1
+        for field in ('serviceable', 'non_serviceable', 'sealed', 'missing', 'incomplete'):
+            if getattr(row, field):
+                col_stats[field] += 1
+        if rs == 'Released':
+            col_stats['released'] += 1
+        elif rs == 'Returned':
+            col_stats['returned'] += 1
+
+        # Device type distribution
+        device = row.device or 'Tablet'
+        device_type_summary[device] = device_type_summary.get(device, 0) + 1
+
+    total_devices = len(rows)
+    total_issues = (device_status_summary['non_serviceable']
+                    + device_status_summary['missing']
+                    + device_status_summary['incomplete'])
+    health_percentage = ((total_devices - total_issues) / total_devices * 100) if total_devices > 0 else 0
+    svc_pct = (device_status_summary['serviceable'] / total_devices * 100) if total_devices > 0 else 0
+
+    # ─── Excel Workbook ──────────────────────────────────────────────────────
+    wb = Workbook()
+
+    # ------------------------------------------------------------
+    # Sheet 1: Device Details (numerically sorted by box number)
+    # ------------------------------------------------------------
+    ws_details = wb.active
+    ws_details.title = 'Device Details'
+    ws_details.sheet_properties.tabColor = 'FFFFFF'
+
+    headers = [
+        'Box Number', 'College / Office', 'Student', 'Borrower Type',
+        'Accountable Officer', 'Assigned M.R.', 'Device', 'Serial Number',
+        'Serviceable', 'Non-Serviceable', 'Sealed', 'Missing', 'Incomplete',
+        'Release / Return', 'Date Returned', 'Remarks', 'Issue',
+    ]
+    col_widths = [15, 20, 24, 12, 24, 18, 14, 20, 14, 16, 10, 10, 12, 16, 22, 28, 28]
+
+    ws_details.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    c = ws_details.cell(row=1, column=1, value='Device Monitoring Report')
+    c.font = Font(bold=True, size=14, color='000000')
+    c.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    c.alignment = Alignment(horizontal='center', vertical='center')
+    ws_details.row_dimensions[1].height = 30
+
+    ws_details.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    s = ws_details.cell(row=2, column=1)
+    ph_now = get_ph_time()
+    s.value = f'Generated: {ph_now.strftime("%B %d, %Y %I:%M %p")}'
+    s.font = Font(size=9, color='000000')
+    s.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+    s.alignment = Alignment(horizontal='center', vertical='center')
+    ws_details.row_dimensions[2].height = 16
+
+    fill_hdr = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    font_hdr = Font(bold=True, color='000000', size=11)
+    bdr = Border(bottom=Side(style='thin', color='CCCCCC'))
+    aln = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    for col, heading in enumerate(headers, start=1):
+        cell = ws_details.cell(row=3, column=col, value=heading)
+        cell.fill = fill_hdr
+        cell.font = font_hdr
+        cell.border = bdr
+        cell.alignment = aln
+    ws_details.row_dimensions[3].height = 22
+
+    for i, row in enumerate(rows, start=1):
+        borrower_type_display = (
+            'Student' if row.borrower_type == 'student' else
+            'Employee' if row.borrower_type == 'employee' else '—'
+        )
+        release_status = getattr(row, 'release_status', '—')
+        date_ret = format_ph_time(row.date_returned) if row.date_returned else '—'
+
+        bg_color = 'FFFFFF' if i % 2 == 0 else 'F9F9F9'
+        fill_row = PatternFill(start_color=bg_color, end_color=bg_color, fill_type='solid')
+        font_row = Font(color='000000', size=10)
+        border_row = Border(bottom=Side(style='thin', color='EEEEEE'))
+        align_row = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        bool_vals = [row.serviceable, row.non_serviceable, row.sealed, row.missing, row.incomplete]
+        values = [
+            row.box_number or '—',
+            row.office_college or '—',
+            row.accountable_person or '—',
+            borrower_type_display,
+            row.accountable_officer or '—',
+            row.assigned_mr or '—',
+            row.device or 'Tablet',
+            row.serial_number or '—',
+            '✓' if row.serviceable else '—',
+            '✓' if row.non_serviceable else '—',
+            '✓' if row.sealed else '—',
+            '✓' if row.missing else '—',
+            '✓' if row.incomplete else '—',
+            release_status,
+            date_ret,
+            row.remarks or '—',
+            row.issue or '—',
+        ]
+
+        for col, val in enumerate(values, start=1):
+            cell = ws_details.cell(row=i + 3, column=col, value=val)
+            cell.fill = fill_row
+            cell.font = font_row
+            cell.border = border_row
+            cell.alignment = align_row
+
+        for col_offset, val in enumerate(bool_vals):
+            if val:
+                ws_details.cell(row=i + 3, column=8 + col_offset).font = Font(color='00e5a0', bold=True, size=10)
+
+    for col, width in enumerate(col_widths, start=1):
+        ws_details.column_dimensions[get_column_letter(col)].width = width
+    ws_details.freeze_panes = 'A4'
+
+    # ------------------------------------------------------------
+    # Sheet 2: Summary Report (only selected tables)
+    # ------------------------------------------------------------
+    ws_summary = wb.create_sheet('Summary Report')
+    ws_summary.sheet_properties.tabColor = 'FFFFFF'
+
+    def write_table(ws, start_row, title, headers, data_rows, col_widths=None):
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=len(headers))
+        title_cell = ws.cell(row=start_row, column=1, value=title)
+        title_cell.font = Font(bold=True, size=12, color='000000')
+        title_cell.fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+        title_cell.alignment = Alignment(horizontal='center')
+        ws.row_dimensions[start_row].height = 25
+        header_row = start_row + 1
+
+        fill_hdr2 = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
+        font_hdr2 = Font(bold=True, color='000000', size=11)
+        for col, hdr in enumerate(headers, start=1):
+            cell = ws.cell(row=header_row, column=col, value=hdr)
+            cell.fill = fill_hdr2
+            cell.font = font_hdr2
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = Border(bottom=Side(style='thin', color='888888'))
+        ws.row_dimensions[header_row].height = 20
+
+        for i, row_vals in enumerate(data_rows, start=1):
+            bg = 'FFFFFF' if i % 2 == 0 else 'F9F9F9'
+            fill_r = PatternFill(start_color=bg, end_color=bg, fill_type='solid')
+            font_r = Font(color='000000', size=10)
+            for col, val in enumerate(row_vals, start=1):
+                cell = ws.cell(row=header_row + i, column=col, value=val)
+                cell.fill = fill_r
+                cell.font = font_r
+                cell.alignment = Alignment(horizontal='center', wrap_text=True)
+                cell.border = Border(bottom=Side(style='thin', color='EEEEEE'))
+        if col_widths:
+            for col, width in enumerate(col_widths, start=1):
+                ws.column_dimensions[get_column_letter(col)].width = width
+        return header_row + len(data_rows) + 1
+
+    current_row = 1
+
+    # Table 1: Overall Inventory Status
+    overall_data = [
+        ['Total Devices', total_devices],
+        ['Serviceable', f"{device_status_summary['serviceable']} ({svc_pct:.1f}%)"],
+        ['Sealed', device_status_summary['sealed']],
+        ['Non-Serviceable', device_status_summary['non_serviceable']],
+        ['Missing', device_status_summary['missing']],
+        ['Incomplete', device_status_summary['incomplete']],
+        ['Devices with Issues', total_issues],
+        ['Overall Device Health', f"{health_percentage:.1f}%"],
+    ]
+    current_row = write_table(ws_summary, current_row, '📊 OVERALL INVENTORY STATUS',
+                              ['Metric', 'Value'], overall_data, [30, 20])
+    current_row += 1
+
+    # Table 2: Device Type Distribution (if more than one type)
+    if len(device_type_summary) > 1:
+        dev_type_data = [[k, v] for k, v in device_type_summary.items()]
+        current_row = write_table(ws_summary, current_row, '📱 DEVICE TYPE DISTRIBUTION',
+                                  ['Device Type', 'Count'], dev_type_data, [25, 15])
+        current_row += 1
+
+    # Table 3: Detailed Breakdown by Assigned M.R. and College (enhanced)
+    detail_data = []
+    for mr_name in sorted(mr_stats.keys(), key=lambda x: (x == '—', x)):
+        for college, col_stats in sorted(mr_stats[mr_name]['college_details'].items()):
+            total_in_college = col_stats['total']
+            issues = col_stats['non_serviceable'] + col_stats['missing'] + col_stats['incomplete']
+            health_pct = ((total_in_college - issues) / total_in_college * 100) if total_in_college > 0 else 0
+            detail_data.append([
+                mr_name,
+                college,
+                total_in_college,
+                col_stats['serviceable'],
+                col_stats['non_serviceable'],
+                col_stats['sealed'],
+                col_stats['missing'],
+                col_stats['incomplete'],
+                col_stats['released'],
+                col_stats['returned'],
+                f"{health_pct:.1f}%",
+            ])
+    if detail_data:
+        detail_headers = ['Assigned M.R.', 'College / Office', 'Total Devices', 'Serviceable',
+                          'Non‑Svc', 'Sealed', 'Missing', 'Incomplete', 'Borrowed', 'Returned', 'Healthy %']
+        detail_widths = [25, 30, 12, 12, 12, 10, 10, 12, 12, 12, 12]
+        current_row = write_table(ws_summary, current_row, '🔍 DETAILED BREAKDOWN BY ASSIGNED M.R. AND COLLEGE',
+                                  detail_headers, detail_data, detail_widths)
+        current_row += 1
+
+    # Table 4: Key Insights
+    insights_lines = [
+        f"• Overall device health: {health_percentage:.1f}%",
+        f"• Serviceable rate: {svc_pct:.1f}%",
+    ]
+    if device_status_summary['missing'] > 0:
+        insights_lines.append(f"⚠️ ALERT: {device_status_summary['missing']} device(s) marked MISSING")
+    if device_status_summary['non_serviceable'] > 0:
+        insights_lines.append(f"🔧 {device_status_summary['non_serviceable']} device(s) need repair")
+    if device_status_summary['incomplete'] > 0:
+        insights_lines.append(f"📦 {device_status_summary['incomplete']} device(s) are incomplete")
+    colleges_issues = [c for c, d in summary_data.items() if d['devices_with_issues'] > 0]
+    if colleges_issues:
+        insights_lines.append(f"⚠️ Colleges needing attention: {', '.join(colleges_issues)}")
+    if device_status_summary['released'] > 0:
+        insights_lines.append(f"🔄 {device_status_summary['released']} device(s) currently borrowed")
+    insight_text = '\n'.join(insights_lines)
+    merge_cols = len(detail_headers) if detail_headers else 11
+    ws_summary.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=merge_cols)
+    cell = ws_summary.cell(row=current_row, column=1, value='💡 KEY INSIGHTS\n' + insight_text)
+    cell.font = Font(bold=True, size=11, color='000000')
+    cell.fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    cell.alignment = Alignment(wrap_text=True, horizontal='left')
+    ws_summary.row_dimensions[current_row].height = 30 + 15 * len(insights_lines)
+    current_row += 2
+
+    # Table 5: Recommendations
+    recs = []
+    if device_status_summary['missing'] > 0:
+        recs.append(f"🔴 Conduct physical inventory for {device_status_summary['missing']} missing device(s)")
+    if device_status_summary['non_serviceable'] > 0:
+        recs.append(f"🔧 Schedule repair for {device_status_summary['non_serviceable']} non‑serviceable devices")
+    if device_status_summary['incomplete'] > 0:
+        recs.append(f"📋 Audit {device_status_summary['incomplete']} incomplete devices")
+    for college in colleges_issues:
+        recs.append(f"📞 Follow up with {college} ({summary_data[college]['devices_with_issues']} device(s) with issues)")
+    if not recs:
+        recs.append("✅ All devices in good condition. Continue regular monitoring.")
+    rec_text = '\n'.join(recs)
+    ws_summary.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=merge_cols)
+    cell = ws_summary.cell(row=current_row, column=1, value='🎯 RECOMMENDATIONS\n' + rec_text)
+    cell.font = Font(bold=True, size=11, color='000000')
+    cell.fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    cell.alignment = Alignment(wrap_text=True, horizontal='left')
+    ws_summary.row_dimensions[current_row].height = 30 + 20 * len(recs)
+    current_row += 2
+
+    return _xl_response(wb, 'device_monitoring')
 
 @csrf_exempt
 def db_keepalive(request):
+    """Lightweight endpoint for cron to keep Neon DB awake."""
     try:
         from django.db import connection
         with connection.cursor() as cursor:
