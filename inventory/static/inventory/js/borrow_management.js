@@ -593,7 +593,7 @@
 
     initDragScroll(document.querySelector('.transactions-table-container'));
   
-    const exportBtn = document.querySelector('a[href*="export_borrow_management"]');
+    const exportBtn = document.querySelector('.export-btn');
     if (exportBtn) {
       exportBtn.addEventListener('click', async function(e) {
           e.preventDefault();

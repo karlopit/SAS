@@ -894,7 +894,7 @@
     }
     
     // ── Export Excel button (Celery async) ──
-    const exportBtn = document.querySelector('a[href*="export_device_monitoring"]');
+    const exportBtn = document.querySelector('.export-btn');
     if (exportBtn) {
       exportBtn.addEventListener('click', async function(e) {
         e.preventDefault();
