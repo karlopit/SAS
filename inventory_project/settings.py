@@ -147,8 +147,24 @@ TIME_ZONE     = 'Asia/Manila'
 USE_I18N      = True
 USE_TZ        = True
 
-CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+# ═══════════════════════════════════════════════════════════════════════════
+#  Celery configuration  (fixed for Render rediss:// URL)
+# ═══════════════════════════════════════════════════════════════════════════
+import os
+
+_redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+# Celery requires ssl_cert_reqs when using rediss://
+if _redis_url.startswith('rediss://'):
+    if '?' in _redis_url:
+        _celery_broker_url = f'{_redis_url}&ssl_cert_reqs=CERT_NONE'
+    else:
+        _celery_broker_url = f'{_redis_url}?ssl_cert_reqs=CERT_NONE'
+else:
+    _celery_broker_url = _redis_url
+
+CELERY_BROKER_URL = _celery_broker_url
+CELERY_RESULT_BACKEND = _celery_broker_url
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
