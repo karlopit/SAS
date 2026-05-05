@@ -422,20 +422,27 @@
     overlay.setAttribute('aria-hidden', 'true');
   }
 
-  // Show on internal navigations (same-tab) and on form submits.
+  // Show on internal navigations (same‑tab) and on form submits,
+  // BUT skip download / export links.
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (a.target && a.target !== '_self') return;
     if (a.getAttribute('href') === '#') return;
+
+    // --- NEW: don't show the overlay for download/export links ---
+    if (a.hasAttribute('download')) return;
     try {
       var u = new URL(a.href, location.href);
+      // stay inside the same origin, but skip export paths / common file extensions
       if (u.origin !== location.origin) return;
-      // Avoid flashing loader on same-page hash changes
       if (u.pathname === location.pathname && u.search === location.search && u.hash) return;
-      show();
+      if (/\/export\//.test(u.pathname) || /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname)) return;
     } catch (err) {}
+    // -------------------------------------------------------------
+
+    show();
   }, true);
 
   document.addEventListener('submit', function (e) {
