@@ -6,7 +6,6 @@ import openpyxl
 import traceback
 import re
 import os
-from .tasks import generate_borrow_management_export  # type: Task
 from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
