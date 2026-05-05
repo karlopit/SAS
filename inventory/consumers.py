@@ -111,10 +111,13 @@ def _build_dashboard_payload():
 
     grad_count               = _get_grad_count()
     dm_released, dm_returned = _get_dm_release_counts()
+    total_devices            = DeviceMonitor.objects.count()   
+    active_borrows           = dm_released                    
+    total_returns            = dm_returned                    
 
     return {
         'type':                     'dashboard.update',
-        'items_count':              items_count,
+        'total_devices':            total_devices,
         'active_borrows':           active_borrows,
         'total_returns':            total_returns,
         'pending_count':            pending_count,

@@ -157,7 +157,7 @@
   function handleDashboardMessage(data) {
     if (data.type !== 'dashboard.update') return;
 
-    flashStat(document.getElementById('stat-items'),   data.items_count);
+    flashStat(document.getElementById('stat-items'),   data.total_devices);
     flashStat(document.getElementById('stat-borrows'),  data.active_borrows);
     flashStat(document.getElementById('stat-returns'),  data.total_returns);
     flashStat(document.getElementById('stat-pending'),  data.pending_count);

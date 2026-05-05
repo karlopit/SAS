@@ -2,6 +2,36 @@
 {% block title %}Dashboard — InvSys{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Items</div>
+    <div class="stat-value" id="stat-items">{{ total_devices }}</div>
+    <div class="stat-sub">across all categories</div>
+    <div class="stat-icon">📦</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Borrows</div>
+    <div class="stat-value" id="stat-borrows" style="color:var(--warning)">{{ active_borrows }}</div>
+    <div class="stat-sub">currently borrowed</div>
+    <div class="stat-icon">🔄</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Returns</div>
+    <div class="stat-value" id="stat-returns" style="color:var(--accent2)">{{ total_returns }}</div>
+    <div class="stat-sub">all time</div>
+    <div class="stat-icon">↩️</div>
+  </div>
+  {% if request.user.role == 'staff' %}
+  <div class="stat-card" style="cursor:pointer" onclick="window.location='{% url 'borrow_requests' %}'">
+    <div class="stat-label">Pending Requests</div>
+    <div class="stat-value" id="stat-pending" style="color:var(--accent)">{{ pending_count }}</div>
+    <div class="stat-sub">awaiting approval</div>
+    <div class="stat-icon">📋</div>
+  </div>
+  {% endif %}
+</div>
+
 {% if request.user.role == 'staff' %}
 <div style="display:grid;grid-template-columns:320px 1fr;gap:24px;margin-top:24px;align-items:start">
 

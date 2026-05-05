@@ -97,13 +97,11 @@ def welcome(request):
 @no_cache
 def index(request):
     from django.db.models import Count, Q, Sum
- 
+
     pending_count  = BorrowRequest.objects.filter(status='pending').count()
     items          = Item.objects.all()
-    active_borrows = Transaction.objects.filter(status='borrowed').count()
-    total_returns  = Transaction.objects.filter(status='returned').count()
     available_qty  = Item.objects.aggregate(t=Sum('available_quantity'))['t'] or 0
- 
+
     agg = Transaction.objects.annotate(
         still_out=ExpressionWrapper(
             F('quantity_borrowed') - F('returned_qty'),
@@ -111,16 +109,17 @@ def index(request):
         )
     ).aggregate(total=Sum('still_out'))
     borrowed_qty = max(0, agg['total'] or 0)
- 
-    # DB aggregate — no Python loop over monitors
+
+    # Stats from DeviceMonitor (instead of Transaction counts)
     dm_counts = DeviceMonitor.objects.aggregate(
         dm_returned=Count('id', filter=Q(date_returned__isnull=False)),
         dm_released=Count('id', filter=Q(is_released=True, date_returned__isnull=True)),
     )
-    dm_released = dm_counts['dm_released']
-    dm_returned = dm_counts['dm_returned']
- 
-    # Bar chart: aggregate per office in one query
+    total_devices  = DeviceMonitor.objects.count()
+    active_borrows = dm_counts['dm_released']   # devices currently released
+    total_returns  = dm_counts['dm_returned']   # devices physically returned
+
+    # Bar chart data (unchanged)
     offices = list(
         DeviceMonitor.objects.values_list('office_college', flat=True)
         .distinct().order_by('office_college')
@@ -140,16 +139,17 @@ def index(request):
         dm_seal = [agg_map.get(o, {}).get('seal', 0) for o in offices]
         dm_miss = [agg_map.get(o, {}).get('miss', 0) for o in offices]
         dm_inc  = [agg_map.get(o, {}).get('inc',  0) for o in offices]
- 
+
     return render(request, 'inventory/index.html', {
         'items':          items,
-        'active_borrows': active_borrows,
-        'total_returns':  total_returns,
+        'total_devices':  total_devices,      # ← new
+        'active_borrows': active_borrows,      # now = dm_released
+        'total_returns':  total_returns,       # now = dm_returned
         'pending_count':  pending_count,
         'available_qty':  available_qty,
         'borrowed_qty':   borrowed_qty,
-        'dm_released':    dm_released,
-        'dm_returned':    dm_returned,
+        'dm_released':    dm_counts['dm_released'],
+        'dm_returned':    dm_counts['dm_returned'],
         'dm_offices':     json.dumps(offices),
         'dm_serviceable': json.dumps(dm_svc),
         'dm_non_service': json.dumps(dm_non),
