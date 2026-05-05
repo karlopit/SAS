@@ -423,62 +423,43 @@
 </div>
 <script>
 (function () {
-  var bar = document.getElementById('invsys-nav-progress');
-  if (!bar) return;
-  document.addEventListener('click', function (e) {
-    var a = e.target.closest('a[href]');
-    if (!a || !a.href) return;
-    try {
-      var u = new URL(a.href, location.href);
-      if (u.origin !== location.origin) return;
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      if (a.target && a.target !== '_self') return;
-      if (a.getAttribute('href') === '#') return;
-      bar.style.opacity = '1';
-      bar.style.width = '0';
-      void bar.offsetWidth;
-      bar.style.width = '38%';
-    } catch (err) {}
-  }, true);
-  window.addEventListener('pageshow', function () {
-    bar.style.width = '100%';
-    setTimeout(function () {
-      bar.style.opacity = '0';
-      setTimeout(function () { bar.style.width = '0'; }, 180);
-    }, 100);
-  });
-})();
-</script>
+  var overlay   = document.getElementById('invsys-loading-overlay');
+  if (!overlay) return;
 
-<script>
-(function () {
-  var overlay = document.getElementById('invsys-loading-overlay');
-  var exportBar = document.getElementById('export-progress-bar');
-  if (!overlay || !exportBar) return;
+  var cookieCheckInterval = null;
 
   function showOverlay() {
     overlay.classList.add('is-active');
     overlay.setAttribute('aria-hidden', 'false');
   }
+
   function hideOverlay() {
     overlay.classList.remove('is-active');
     overlay.setAttribute('aria-hidden', 'true');
   }
 
-  function showExportProgress() {
-    exportBar.style.transition = 'none';
-    exportBar.style.transform = 'scaleX(0)';
-    exportBar.classList.add('active');
-    // force reflow
-    exportBar.offsetWidth;
-    exportBar.style.transition = 'transform 0.6s ease';
-    exportBar.style.transform = 'scaleX(1)';
-    // hide after fill completes
-    setTimeout(function () {
-      exportBar.classList.remove('active');
-    }, 800);
+  // Watch for download_finished cookie and hide overlay when it appears
+  function startCookieMonitor() {
+    var attempts = 0;
+    clearInterval(cookieCheckInterval);
+    cookieCheckInterval = setInterval(function () {
+      if (document.cookie.indexOf('download_finished=1') !== -1) {
+        clearInterval(cookieCheckInterval);
+        // Remove the cookie so it doesn't trigger again
+        document.cookie = 'download_finished=; max-age=0; path=/';
+        hideOverlay();
+      } else {
+        attempts++;
+        // safety timeout after 5 seconds
+        if (attempts > 50) {
+          clearInterval(cookieCheckInterval);
+          hideOverlay();
+        }
+      }
+    }, 100);
   }
 
+  // Show overlay on all internal navigations, including export/download links.
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
@@ -486,29 +467,29 @@
     if (a.target && a.target !== '_self') return;
     if (a.getAttribute('href') === '#') return;
 
-    // Detect export/download links
-    var isExport = false;
-    if (a.hasAttribute('download')) isExport = true;
     try {
       var u = new URL(a.href, location.href);
       if (u.origin !== location.origin) return;
-      if (/\/export\//.test(u.pathname) || /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname)) isExport = true;
     } catch (err) {}
 
-    if (isExport) {
-      // Show the bottom progress bar instead of the overlay
-      showExportProgress();
-      return;   // do not show the overlay
-    }
-
-    // Normal internal navigation – show overlay
+    // It's an internal navigation – show overlay.
     showOverlay();
+
+    // If it's an export/download link, watch for the cookie instead of waiting
+    // for a page navigation (which never happens).
+    if (a.hasAttribute('download') ||
+        /\/export\//.test(a.pathname) ||
+        /\.(xlsx?|csv|pdf|zip)$/i.test(a.pathname)) {
+      startCookieMonitor();
+    }
+    // For normal pages the overlay will hide on 'pageshow'.
   }, true);
 
   document.addEventListener('submit', function (e) {
     var form = e.target;
-    if (!form || form.tagName !== 'FORM') return;
-    showOverlay();
+    if (form && form.tagName === 'FORM') {
+      showOverlay();
+    }
   }, true);
 
   window.addEventListener('pageshow', hideOverlay);

@@ -1620,7 +1620,9 @@ def export_borrow_management(request):
         ws_data.column_dimensions[get_column_letter(col)].width = width
     ws_data.freeze_panes = 'A4'
 
-    return _xl_response(wb, 'borrow_management')
+    response = _xl_response(wb, 'borrow_management')
+    response.set_cookie('download_finished', '1', max_age=10)   # ← new
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1982,7 +1984,9 @@ def export_device_monitoring(request):
     ws_summary.row_dimensions[current_row].height = 30 + 20 * len(recs)
     current_row += 2
 
-    return _xl_response(wb, 'device_monitoring')
+    response = _xl_response(wb, 'device_monitoring')
+    response.set_cookie('download_finished', '1', max_age=10)   # ← new
+    return response
 
 @csrf_exempt
 def db_keepalive(request):
