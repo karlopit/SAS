@@ -1,13 +1,11 @@
-"""
-inventory/context_processors.py
+# inventory/context_processors.py — replace the entire file
 
-Runs on every authenticated staff page load. Keep it to cheap aggregate queries
-and cache — slow work here delays every navigation (especially on cloud DBs).
-"""
 from django.core.cache import cache
-from django.db.models import Case, CharField, F, Q, When
-from django.db.models.functions import Lower, Trim
 from inventory.models import BorrowRequest, Transaction
+
+# Shared across all users — same data, no reason for per-user keys
+BADGES_CACHE_KEY = 'nav_badges_shared'
+BADGES_CACHE_TTL = 300  # 5 minutes; WS broadcasts will invalidate this
 
 
 def graduation_warning_count(request):
@@ -22,51 +20,39 @@ def graduation_warning_count(request):
             'graduation_warning_count': graduation_warning_count_val,
         }
 
-    cache_key = f'ctx_badges_{request.user.id}'
-    cached = cache.get(cache_key)
+    cached = cache.get(BADGES_CACHE_KEY)
     if cached is not None:
         return cached
 
+    # Simple count — no annotations, no Case/When, no Lower/Trim
     pending_count = BorrowRequest.objects.filter(status='pending').count()
 
-    # Mirror graduation_warnings view: trimmed year_level if set, else year_section
-    kw_q = Q()
-    for kw in ('4th', 'fourth', '5th', 'fifth'):
-        kw_q |= Q(_eff__icontains=kw)
-
-    graduation_warning_count_val = (
-        Transaction.objects.filter(
-            status='borrowed',
-            borrow_request__borrower_type='student',
-        )
-        .annotate(
-            _ylt=Trim('borrow_request__year_level'),
-            _yst=Trim('borrow_request__year_section'),
-        )
-        .annotate(
-            _eff=Lower(
-                Case(
-                    When(
-                        Q(borrow_request__year_level__isnull=True)
-                        | Q(_ylt__isnull=True)
-                        | Q(_ylt=''),
-                        then=F('_yst'),
-                    ),
-                    default=F('_ylt'),
-                    output_field=CharField(),
-                )
-            )
-        )
-        .filter(kw_q)
-        .count()
+    # Simplified graduation check — filter in DB with raw LIKE, no annotations
+    from django.db.models import Q
+    grad_q = (
+        Q(borrow_request__year_level__icontains='4th') |
+        Q(borrow_request__year_level__icontains='fourth') |
+        Q(borrow_request__year_level__icontains='5th') |
+        Q(borrow_request__year_level__icontains='fifth') |
+        Q(borrow_request__year_section__icontains='4th') |
+        Q(borrow_request__year_section__icontains='fourth') |
+        Q(borrow_request__year_section__icontains='5th') |
+        Q(borrow_request__year_section__icontains='fifth')
     )
+    graduation_warning_count_val = Transaction.objects.filter(
+        status='borrowed',
+        borrow_request__borrower_type='student',
+    ).filter(grad_q).count()
 
     result = {
         'pending_count': pending_count,
         'graduation_warning_count': graduation_warning_count_val,
     }
 
-    # WebSocket updates refresh badges; longer TTL cuts DB wake-ups on Render/Neon
-    cache.set(cache_key, result, 120)
-
+    cache.set(BADGES_CACHE_KEY, result, BADGES_CACHE_TTL)
     return result
+
+
+def invalidate_nav_badges():
+    """Call this after any mutation that affects pending count or grad warnings."""
+    cache.delete(BADGES_CACHE_KEY)

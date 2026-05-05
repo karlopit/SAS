@@ -26,27 +26,24 @@ def _fmt_ph(dt):
 
 
 def _get_grad_count():
-    """Count active transactions from graduating students (4th/5th year).
-    Uses values() to avoid loading full objects — much faster on large tables.
-    """
+    """Simple icontains — no annotations, runs fast on indexed columns."""
+    from django.db.models import Q
     from inventory.models import Transaction
-    graduating_keywords = ['4th', 'fourth', '5th', 'fifth']
 
-    # Only pull the fields we need — avoids loading entire related objects
-    rows = Transaction.objects.filter(
+    grad_q = (
+        Q(borrow_request__year_level__icontains='4th') |
+        Q(borrow_request__year_level__icontains='fourth') |
+        Q(borrow_request__year_level__icontains='5th') |
+        Q(borrow_request__year_level__icontains='fifth') |
+        Q(borrow_request__year_section__icontains='4th') |
+        Q(borrow_request__year_section__icontains='fourth') |
+        Q(borrow_request__year_section__icontains='5th') |
+        Q(borrow_request__year_section__icontains='fifth')
+    )
+    return Transaction.objects.filter(
         status='borrowed',
         borrow_request__borrower_type='student',
-    ).values(
-        'borrow_request__year_level',
-        'borrow_request__year_section',
-    )
-
-    count = 0
-    for row in rows:
-        yl = (row['borrow_request__year_level'] or row['borrow_request__year_section'] or '').strip().lower()
-        if any(k in yl for k in graduating_keywords):
-            count += 1
-    return count
+    ).filter(grad_q).count()
 
 
 def _get_dm_release_counts():

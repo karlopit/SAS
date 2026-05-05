@@ -94,26 +94,25 @@ else:
 # ── Database (Neon PostgreSQL) ────────────────────────────────────────────────
 DATABASE_URL = config('DATABASE_URL', default=None)
 
+# inventory_project/settings.py — replace the DATABASE_URL block
+
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=300,
+            conn_max_age=600,        # was 300 — hold connections longer
             conn_health_checks=True,
             ssl_require=True,
         )
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE':   'django.db.backends.postgresql',
-            'NAME':     config('DB_NAME'),
-            'USER':     config('DB_USER'),
-            'PASSWORD': config('DB_PASSWORD'),
-            'HOST':     config('DB_HOST', default='localhost'),
-            'PORT':     config('DB_PORT', default='5432'),
-        }
-    }
+    # Add TCP keepalive so Neon doesn't silently drop idle connections
+    DATABASES['default'].setdefault('OPTIONS', {}).update({
+        'connect_timeout': 10,
+        'keepalives': 1,
+        'keepalives_idle': 60,
+        'keepalives_interval': 10,
+        'keepalives_count': 5,
+    })
 
 # ── Cache — used by context_processors to avoid per-request DB hits ───────────
 if REDIS_URL:

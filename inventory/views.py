@@ -201,32 +201,56 @@ def transaction_devices_json(request, transaction_id):
 
 @login_required
 def ajax_dashboard_data(request):
+    from django.core.cache import cache
     from inventory.consumers import _build_dashboard_payload
-    return JsonResponse(_build_dashboard_payload())
+    key = 'dashboard_stats'
+    data = cache.get(key)
+    if data is None:
+        data = _build_dashboard_payload()
+        cache.set(key, data, 60)
+    return JsonResponse(data)
 
 
 @login_required
 def ajax_borrow_management_data(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
+    from django.core.cache import cache
     from inventory.consumers import _build_borrow_management_payload
-    return JsonResponse(_build_borrow_management_payload())
+    key = 'ajax_borrow_mgmt'
+    data = cache.get(key)
+    if data is None:
+        data = _build_borrow_management_payload()
+        cache.set(key, data, 30)
+    return JsonResponse(data)
 
 
 @login_required
 def ajax_borrow_requests_data(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
+    from django.core.cache import cache
     from inventory.consumers import _build_borrow_requests_payload
-    return JsonResponse(_build_borrow_requests_payload())
+    key = 'ajax_borrow_requests'
+    data = cache.get(key)
+    if data is None:
+        data = _build_borrow_requests_payload()
+        cache.set(key, data, 30)
+    return JsonResponse(data)
 
 
 @login_required
 def ajax_device_monitoring_data(request):
     if request.user.role != 'staff':
         return JsonResponse({'error': 'Forbidden'}, status=403)
+    from django.core.cache import cache
     from inventory.consumers import _build_device_monitoring_payload
-    return JsonResponse(_build_device_monitoring_payload())
+    key = 'ajax_device_monitoring'
+    data = cache.get(key)
+    if data is None:
+        data = _build_device_monitoring_payload()
+        cache.set(key, data, 30)
+    return JsonResponse(data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
