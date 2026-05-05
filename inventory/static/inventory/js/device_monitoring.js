@@ -17,6 +17,28 @@
   const OVERSCAN       = 10;   // extra rows above/below visible area
   const VISIBLE_BUFFER = 15;   // rows kept outside viewport for smooth scroll
 
+  async function pollExportTask(taskId) {
+    const hide = () => {
+      const overlay = document.getElementById('invsys-loading-overlay');
+      if (overlay) overlay.classList.remove('is-active');
+    };
+    try {
+      const resp = await fetch(`/export-task-status/${taskId}/`);
+      const data = await resp.json();
+      if (data.state === 'SUCCESS') {
+        window.location.href = `/download-export/${data.token}/`;
+        hide();
+      } else if (data.state === 'FAILURE') {
+        alert('Export failed.');
+        hide();
+      } else {
+        setTimeout(() => pollExportTask(taskId), 2000);
+      }
+    } catch (err) {
+      hide();
+    }
+  }
+
   /* ==================== TOAST ==================== */
   function showToast(message, type) {
     let el = document.getElementById('dm-toast');
@@ -869,6 +891,29 @@
     const indicator = document.getElementById('rt-indicator');
     if (typeof InvSysRT !== 'undefined') {
       InvSysRT.connect('/ws/device-monitoring/', handleMessage, indicator);
+    }
+    
+    // ── Export Excel button (Celery async) ──
+    const exportBtn = document.querySelector('a[href*="export_device_monitoring"]');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const overlay = document.getElementById('invsys-loading-overlay');
+        if (overlay) overlay.classList.add('is-active');
+        try {
+          const resp = await fetch(this.href);
+          const data = await resp.json();
+          if (data.ok && data.task_id) {
+            pollExportTask(data.task_id);
+          } else {
+            if (overlay) overlay.classList.remove('is-active');
+            alert('Export failed to start.');
+          }
+        } catch (err) {
+          if (overlay) overlay.classList.remove('is-active');
+          alert('Export failed to start.');
+        }
+      });
     }
   });
 })();

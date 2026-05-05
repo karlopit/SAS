@@ -5,6 +5,11 @@ import pytz
 import openpyxl
 import traceback
 import re
+import os
+from .tasks import generate_borrow_management_export  # type: Task
+from django.core.cache import cache
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 from django.db.models import Sum, F, ExpressionWrapper, IntegerField
 from django.db import transaction as db_transaction
 from django.shortcuts import render, redirect, get_object_or_404
@@ -25,6 +30,9 @@ from django.contrib import messages
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from datetime import datetime, date as _date
+from inventory.models import Transaction
+from inventory.views import format_ph_time, get_ph_time
+from inventory.models import DeviceMonitor, TransactionDevice
 
 
 # Get Philippine timezone
@@ -1315,7 +1323,19 @@ def _xl_response(wb, filename_prefix):
 def export_borrow_management(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
+    from .tasks import generate_borrow_management_export
+    task = generate_borrow_management_export.delay(request.user.id)
+    return JsonResponse({'ok': True, 'task_id': task.id})
 
+import io
+from django.core.cache import cache
+
+@shared_task(bind=True)
+def generate_borrow_management_export(self, user_id):
+    """
+    Build the Borrow Management Excel file exactly like the old view,
+    but store the result in the cache and return a token.
+    """
     transactions = Transaction.objects.select_related(
         'item', 'borrower', 'borrow_request'
     ).all().order_by('-borrowed_at')
@@ -1329,7 +1349,7 @@ def export_borrow_management(request):
 
     wb = Workbook()
 
-    # ── Sheet 1: Transaction Details ──────────────────────────────────────────
+    # ── Sheet 1: Transaction Details ──────────────────────────────────────
     ws_data = wb.active
     ws_data.title = 'Borrow Transactions'
     ws_data.sheet_properties.tabColor = 'FFFFFF'
@@ -1363,7 +1383,6 @@ def export_borrow_management(request):
         cell.alignment = align
     ws_data.row_dimensions[3].height = 22
 
-    # Collect summary data
     summary_data = {}
 
     for i, tx in enumerate(transactions, start=1):
@@ -1421,13 +1440,12 @@ def export_borrow_management(request):
             cell.border = border_row
             cell.alignment = align_row
 
-    # Totals
     total_borrowed      = sum(d['borrowed'] for d in summary_data.values())
     total_returned      = sum(d['returned'] for d in summary_data.values())
     total_pending       = sum(d['pending']  for d in summary_data.values())
     overall_return_rate = (total_returned / total_borrowed * 100) if total_borrowed > 0 else 0
 
-    # ── Sheet 2: Summary Report ───────────────────────────────────────────────
+    # ── Sheet 2: Summary Report ───────────────────────────────────────────
     ws_summary = wb.create_sheet('Summary Report')
     ws_summary.sheet_properties.tabColor = 'FFFFFF'
 
@@ -1444,7 +1462,6 @@ def export_borrow_management(request):
     date_cell.alignment = Alignment(horizontal='center')
 
     row_num = 4
-
     ws_summary.cell(row=row_num, column=1, value='OVERVIEW:').font = Font(bold=True, size=12, color='000000')
     row_num += 1
 
@@ -1556,7 +1573,7 @@ def export_borrow_management(request):
     ws_summary.column_dimensions['C'].width = 15
     ws_summary.column_dimensions['D'].width = 15
 
-    # ── Sheet 3: Summary Table ────────────────────────────────────────────────
+    # ── Sheet 3: Summary Table ────────────────────────────────────────────
     ws_table = wb.create_sheet('Summary Table')
     ws_table.sheet_properties.tabColor = 'FFFFFF'
 
@@ -1566,7 +1583,7 @@ def export_borrow_management(request):
     tbl_title.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
     tbl_title.alignment = Alignment(horizontal='center')
 
-    tbl_headers     = ['College / Office', 'Accountable Officer(s)', 'Transactions', 'Borrowed', 'Returned', 'Pending', 'Return Rate']
+    tbl_headers = ['College / Office', 'Accountable Officer(s)', 'Transactions', 'Borrowed', 'Returned', 'Pending', 'Return Rate']
     fill_tbl_header = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
     font_tbl_header = Font(bold=True, color='000000', size=11)
 
@@ -1603,7 +1620,6 @@ def export_borrow_management(request):
 
         tbl_row += 1
 
-    # Grand total
     grand_vals = ['GRAND TOTAL', '', sum(d['count'] for d in summary_data.values()),
                   total_borrowed, total_returned, total_pending, f'{overall_return_rate:.1f}%']
     for col, val in enumerate(grand_vals, start=1):
@@ -1620,10 +1636,17 @@ def export_borrow_management(request):
         ws_data.column_dimensions[get_column_letter(col)].width = width
     ws_data.freeze_panes = 'A4'
 
-    response = _xl_response(wb, 'borrow_management')
-    response.set_cookie('download_finished', '1', max_age=10)   # ← new
-    return response
+    # ── Save to cache instead of returning response ─────────────────────────
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    file_data = buffer.getvalue()
 
+    token = self.request.id
+    cache.set(f'export_{token}', file_data, 300)               # 5 minutes
+    cache.set(f'export_{token}_fn', 'borrow_management.xlsx', 300)
+
+    return {'ok': True, 'token': token}
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Export: Device Monitoring
@@ -1633,21 +1656,26 @@ def export_borrow_management(request):
 def export_device_monitoring(request):
     if request.user.role not in ('staff', 'admin'):
         raise PermissionDenied
+    from .tasks import generate_device_monitoring_export
+    task = generate_device_monitoring_export.delay(request.user.id)
+    return JsonResponse({'ok': True, 'task_id': task.id})
 
-    # Get all devices and sort numerically by box number
+@shared_task(bind=True)
+def generate_device_monitoring_export(self, user_id):
+    """
+    Build the Device Monitoring Excel file, store in cache, return a token.
+    """
     rows = list(DeviceMonitor.objects.all())
-    
+
     def box_number_key(row):
         bn = row.box_number or ''
-        import re
         match = re.search(r'(\d+)', bn)
         if match:
             return (int(match.group(1)), bn)
         return (float('inf'), bn)
-    
+
     rows.sort(key=box_number_key)
 
-    # Annotate release_status on each row
     for row in rows:
         if row.date_returned:
             row.release_status = 'Returned'
@@ -1666,14 +1694,13 @@ def export_device_monitoring(request):
             else:
                 row.release_status = '—'
 
-    # ─── Collect summary statistics ──────────────────────────────────────────
     summary_data = {}
     device_status_summary = {
         'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
         'missing': 0, 'incomplete': 0, 'released': 0, 'returned': 0,
     }
     device_type_summary = {}
-    mr_stats = {}  # key = assigned_mr, value = dict with totals and per-college details
+    mr_stats = {}
 
     for row in rows:
         college = row.office_college or 'Unknown'
@@ -1681,7 +1708,6 @@ def export_device_monitoring(request):
         if assigned_mr == '':
             assigned_mr = '—'
 
-        # College-level summary (still needed for later use?)
         if college not in summary_data:
             summary_data[college] = {
                 'total_devices': 0, 'serviceable': 0, 'non_serviceable': 0,
@@ -1704,7 +1730,6 @@ def export_device_monitoring(request):
             summary_data[college]['returned'] += 1
             device_status_summary['returned'] += 1
 
-        # Per MR statistics
         if assigned_mr not in mr_stats:
             mr_stats[assigned_mr] = {
                 'total': 0, 'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
@@ -1721,7 +1746,6 @@ def export_device_monitoring(request):
         elif rs == 'Returned':
             stats['returned'] += 1
 
-        # Per MR + college details
         if college not in stats['college_details']:
             stats['college_details'][college] = {
                 'total': 0, 'serviceable': 0, 'non_serviceable': 0, 'sealed': 0,
@@ -1737,7 +1761,6 @@ def export_device_monitoring(request):
         elif rs == 'Returned':
             col_stats['returned'] += 1
 
-        # Device type distribution
         device = row.device or 'Tablet'
         device_type_summary[device] = device_type_summary.get(device, 0) + 1
 
@@ -1748,12 +1771,8 @@ def export_device_monitoring(request):
     health_percentage = ((total_devices - total_issues) / total_devices * 100) if total_devices > 0 else 0
     svc_pct = (device_status_summary['serviceable'] / total_devices * 100) if total_devices > 0 else 0
 
-    # ─── Excel Workbook ──────────────────────────────────────────────────────
     wb = Workbook()
 
-    # ------------------------------------------------------------
-    # Sheet 1: Device Details (numerically sorted by box number)
-    # ------------------------------------------------------------
     ws_details = wb.active
     ws_details.title = 'Device Details'
     ws_details.sheet_properties.tabColor = 'FFFFFF'
@@ -1845,9 +1864,7 @@ def export_device_monitoring(request):
         ws_details.column_dimensions[get_column_letter(col)].width = width
     ws_details.freeze_panes = 'A4'
 
-    # ------------------------------------------------------------
-    # Sheet 2: Summary Report (only selected tables)
-    # ------------------------------------------------------------
+    # ── Summary Report ─────────────────────────────────────────────────────
     ws_summary = wb.create_sheet('Summary Report')
     ws_summary.sheet_properties.tabColor = 'FFFFFF'
 
@@ -1887,7 +1904,6 @@ def export_device_monitoring(request):
 
     current_row = 1
 
-    # Table 1: Overall Inventory Status
     overall_data = [
         ['Total Devices', total_devices],
         ['Serviceable', f"{device_status_summary['serviceable']} ({svc_pct:.1f}%)"],
@@ -1902,14 +1918,12 @@ def export_device_monitoring(request):
                               ['Metric', 'Value'], overall_data, [30, 20])
     current_row += 1
 
-    # Table 2: Device Type Distribution (if more than one type)
     if len(device_type_summary) > 1:
         dev_type_data = [[k, v] for k, v in device_type_summary.items()]
         current_row = write_table(ws_summary, current_row, '📱 DEVICE TYPE DISTRIBUTION',
                                   ['Device Type', 'Count'], dev_type_data, [25, 15])
         current_row += 1
 
-    # Table 3: Detailed Breakdown by Assigned M.R. and College (enhanced)
     detail_data = []
     for mr_name in sorted(mr_stats.keys(), key=lambda x: (x == '—', x)):
         for college, col_stats in sorted(mr_stats[mr_name]['college_details'].items()):
@@ -1937,7 +1951,6 @@ def export_device_monitoring(request):
                                   detail_headers, detail_data, detail_widths)
         current_row += 1
 
-    # Table 4: Key Insights
     insights_lines = [
         f"• Overall device health: {health_percentage:.1f}%",
         f"• Serviceable rate: {svc_pct:.1f}%",
@@ -1963,7 +1976,6 @@ def export_device_monitoring(request):
     ws_summary.row_dimensions[current_row].height = 30 + 15 * len(insights_lines)
     current_row += 2
 
-    # Table 5: Recommendations
     recs = []
     if device_status_summary['missing'] > 0:
         recs.append(f"🔴 Conduct physical inventory for {device_status_summary['missing']} missing device(s)")
@@ -1984,9 +1996,17 @@ def export_device_monitoring(request):
     ws_summary.row_dimensions[current_row].height = 30 + 20 * len(recs)
     current_row += 2
 
-    response = _xl_response(wb, 'device_monitoring')
-    response.set_cookie('download_finished', '1', max_age=10)   # ← new
-    return response
+    # ── Save to cache ───────────────────────────────
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    file_data = buffer.getvalue()
+
+    token = self.request.id
+    cache.set(f'export_{token}', file_data, 300)
+    cache.set(f'export_{token}_fn', 'device_monitoring.xlsx', 300)
+
+    return {'ok': True, 'token': token}
 
 @csrf_exempt
 def db_keepalive(request):
@@ -1998,3 +2018,29 @@ def db_keepalive(request):
         return JsonResponse({'ok': True})
     except Exception as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+    
+@login_required
+def download_export(request, token):
+    """Serve a previously generated Excel file from the cache."""
+    file_data = cache.get(f'export_{token}')
+    filename = cache.get(f'export_{token}_fn', 'export.xlsx')
+    if not file_data:
+        return HttpResponse('Export expired or not found.', status=404)
+
+    resp = HttpResponse(
+        file_data,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+@login_required
+def export_task_status(request, task_id):
+    """Polling endpoint for export tasks."""
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    info = result.result if result.ready() else {}
+    return JsonResponse({
+        'state': result.state,
+        'token': info.get('token', '') if isinstance(info, dict) else '',
+    })
