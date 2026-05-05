@@ -45,10 +45,8 @@ def logout_view(request):
 @never_cache
 @login_required
 def profile_view(request):
-    pending_count = BorrowRequest.objects.filter(status='pending').count()
     return render(request, 'users/profile.html', {
         'user': request.user,
-        'pending_count': pending_count,
     })
 
 
