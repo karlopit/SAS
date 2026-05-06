@@ -969,12 +969,14 @@ def staff_confirm_borrow(request, request_id):
                     accountable_officer=accountable_officer,
                     device=transaction.item.name,
                     serial_number=serial,
-                    serviceable=True,
+                    serviceable=False,
                     non_serviceable=False,
                     sealed=False,
                     missing=False,
                     incomplete=False,
                     assigned_mr=assigned_mr,
+                    is_released=True,
+                    release_status='Released',
                 ))
 
             DeviceMonitor.objects.bulk_create(device_monitors)
@@ -1146,7 +1148,10 @@ def return_devices(request, transaction_id):
             accountable_person=borrower_name,
             office_college=office,
             date_returned__isnull=True,
-        ).update(date_returned=now_ph)
+        ).update(date_returned=now_ph,
+                 release_status='Returned',
+                 is_released=False,
+                 )
 
     # ── Recalculate returned count ────────────────────────────────────────────
     if tx.devices.exists():
