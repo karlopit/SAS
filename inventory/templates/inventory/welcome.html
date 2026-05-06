@@ -378,10 +378,12 @@
               {% if borrow_form.year_level.errors %}<span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>{% endif %}
             </div>
             <div>
-              <input type="text" name="section" class="form-control" placeholder="BSCS-A" value="{{ borrow_form.section.value|default:'' }}">
-              {% if borrow_form.section.errors %}<span class="form-error">{{ borrow_form.section.errors.0 }}</span>{% endif %}
+              <div class="form-group">
+                <label class="form-label">Program and Section<span style="color:red">*</span></label>
+                <input type="text" name="section" class="form-control" placeholder="BSCS-A" value="{{ borrow_form.section.value|default:'' }}">
+                {% if borrow_form.section.errors %}<span class="form-error">{{ borrow_form.section.errors.0 }}</span>{% endif %}
+              </div>
             </div>
-          </div>
           <div id="fourth-year-warning" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(255,179,71,0.12);border:1px solid rgba(255,179,71,0.4);border-radius:8px;font-size:12px;color:#ffb347;line-height:1.5">
             ⚠️ <strong>4th/5th Year Notice:</strong> Please ensure you are aware that borrowed devices must be returned before graduation. Staff will be notified of your request.
           </div>
