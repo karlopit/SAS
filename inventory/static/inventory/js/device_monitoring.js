@@ -1,11 +1,10 @@
 /**
- * device_monitoring.js — Auto-save edition with editable Release/Return dropdown
+ * device_monitoring.js — Release/Return badge with inline dropdown edit
  *
- * Changes from original:
- * - buildRowHtml now uses a <select> for release_status (options: Released, Returned)
- * - extractRowPayload, harvestRowEdits, and addDmRow include release_status
- * - Change event listener updates row.release_status and dataset.release
- * - The static badge span has been completely removed.
+ * - Release/Return column shows a colored badge (original design)
+ * - Click on badge to open a dropdown with values "Released" / "Returned"
+ * - On change, badge updates, value saved via auto-save
+ * - New rows default to "—" badge, click to select
  */
 
 (function () {
@@ -202,6 +201,81 @@
     _saveTimers.set(rowId, timer);
   }
 
+  /* ==================== RELEASE BADGE + INLINE EDIT ==================== */
+  function getReleaseBadgeHtml(value) {
+    const displayValue = value || '—';
+    let badgeClass = 'badge-none';
+    if (displayValue === 'Released') badgeClass = 'badge-released';
+    if (displayValue === 'Returned') badgeClass = 'badge-returned-dm';
+    return `<span class="release-status-badge ${badgeClass}" data-release-value="${displayValue}" style="cursor:pointer;">${_esc(displayValue)}</span>`;
+  }
+
+  function createReleaseDropdown(currentValue) {
+    const select = document.createElement('select');
+    select.className = 'form-control dm-release-select temp-release-select';
+    select.style.cssText = 'width:100px;text-align:center;margin:0 auto;padding:2px;';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '—';
+    select.appendChild(emptyOpt);
+    const releasedOpt = document.createElement('option');
+    releasedOpt.value = 'Released';
+    releasedOpt.textContent = 'Released';
+    const returnedOpt = document.createElement('option');
+    returnedOpt.value = 'Returned';
+    returnedOpt.textContent = 'Returned';
+    select.appendChild(releasedOpt);
+    select.appendChild(returnedOpt);
+    if (currentValue === 'Released') select.value = 'Released';
+    else if (currentValue === 'Returned') select.value = 'Returned';
+    else select.value = '';
+    return select;
+  }
+
+  function attachReleaseEditListener(container) {
+    container.addEventListener('click', (e) => {
+      const badge = e.target.closest('.release-status-badge');
+      if (!badge) return;
+      e.stopPropagation();
+
+      const td = badge.closest('td');
+      const tr = td.closest('tr[data-row-id]');
+      const rowId = tr?.dataset.rowId;
+      if (!rowId) return;
+
+      const currentValue = badge.getAttribute('data-release-value') === '—' ? '' : badge.getAttribute('data-release-value');
+      const dropdown = createReleaseDropdown(currentValue);
+      td.innerHTML = '';
+      td.appendChild(dropdown);
+      dropdown.focus();
+
+      const saveAndRestore = async () => {
+        const newValue = dropdown.value;
+        if (newValue !== currentValue) {
+          // Update row data
+          const dataRow = allRows.find(r => String(r.id) === rowId);
+          if (dataRow) dataRow.release_status = newValue;
+          tr.dataset.release = newValue || '—';
+          markDirtyFromRow(tr);
+          // Save
+          await saveRow(tr);
+        }
+        // Restore badge
+        const finalValue = newValue || '';
+        td.innerHTML = getReleaseBadgeHtml(finalValue);
+        // Re-attach listener to the new badge (delegation will handle because container is parent)
+      };
+
+      dropdown.addEventListener('change', saveAndRestore);
+      dropdown.addEventListener('blur', () => {
+        // Small delay to allow change event to fire first
+        setTimeout(() => {
+          if (document.activeElement !== dropdown) saveAndRestore();
+        }, 100);
+      });
+    });
+  }
+
   /* ==================== BUILD ROW HTML ==================== */
   function _esc(str) {
     return String(str || '')
@@ -209,9 +283,8 @@
       .replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // ----- RELEASE / RETURN DROPDOWN replaces the static badge -----
   function buildRowHtml(row) {
-    const releaseValue = row.release_status || '';
+    const releaseBadgeHtml = getReleaseBadgeHtml(row.release_status);
     return `<input type="hidden" name="row_id" value="${row.id}"/>
       <td style="text-align:center"><input type="text" name="box_number" value="${_esc((row.box_number || '').replace(/\.0$/, ''))}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="serial_number" value="${_esc(row.serial_number)}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
@@ -223,7 +296,7 @@
           <option value="student"  ${row.borrower_type === 'student'  ? 'selected' : ''}>Student</option>
           <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
         </select>
-      </td>
+      </table>
       <td style="text-align:center"><input type="text" name="assigned_mr" value="${_esc(row.assigned_mr)}" class="form-control dm-mr-input" placeholder="M.R." style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="accountable_officer" value="${_esc(row.accountable_officer)}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="device" value="${_esc(row.device)}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
@@ -233,13 +306,7 @@
       <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="ptr" value="${_esc(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR" style="width:100px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center">
-        <select name="release_status" class="form-control dm-release-select" style="width:100px;text-align:center;margin:0 auto">
-          <option value="">—</option>
-          <option value="Released" ${releaseValue === 'Released' ? 'selected' : ''}>Released</option>
-          <option value="Returned" ${releaseValue === 'Returned' ? 'selected' : ''}>Returned</option>
-        </select>
-      </td>
+      <td style="text-align:center">${releaseBadgeHtml}</td>
       <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${_esc(row.date_returned_display || '—')}</td>
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.remarks)}</textarea></td>
       <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.issue)}</textarea></td>
@@ -341,8 +408,9 @@
     dataRow.ptr                 = g('ptr');
     dataRow.remarks             = tr.querySelector('textarea[name="remarks"]')?.value ?? dataRow.remarks;
     dataRow.issue               = tr.querySelector('textarea[name="issue"]')?.value ?? dataRow.issue;
-    // Capture release/return dropdown
-    dataRow.release_status      = tr.querySelector('select[name="release_status"]')?.value ?? dataRow.release_status;
+    // release_status is not in an input; we rely on the badge's data attribute; but we also have a hidden? No. So we keep current.
+    // Actually release_status is in the dataRow; we don't overwrite from DOM because it's a badge.
+    // We'll trust the dataRow value.
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
     dataRow.serviceable     = cbState('serviceable');
     dataRow.non_serviceable = cbState('non_serviceable');
@@ -357,6 +425,11 @@
     const isNew = rawId.startsWith('new_');
     const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? '';
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
+
+    // Get release_status from the badge's data attribute or from the row's dataset
+    const badge = tr.querySelector('.release-status-badge');
+    let releaseStatus = badge ? badge.getAttribute('data-release-value') : tr.dataset.release;
+    if (releaseStatus === '—') releaseStatus = '';
 
     return {
       row_id:              isNew ? 'new' : rawId,
@@ -377,7 +450,7 @@
       ptr:                 g('ptr'),
       remarks:             tr.querySelector('textarea[name="remarks"]')?.value ?? '',
       issue:               tr.querySelector('textarea[name="issue"]')?.value ?? '',
-      release_status:      tr.querySelector('select[name="release_status"]')?.value ?? '',
+      release_status:      releaseStatus,
     };
   }
 
@@ -546,8 +619,7 @@
     _setRowStatus(tr, 'saving');
 
     try {
-      // Capture the current release_status from the dropdown (may be empty initially)
-      const releaseStatus = tr.querySelector('select[name="release_status"]')?.value || '';
+      const releaseStatus = ''; // new row has no release status yet
       const resp = await fetch(form.action, {
         method:  'POST',
         headers: {
@@ -587,13 +659,14 @@
     }
   }
 
-  /* ==================== SAVE ROW (auto‑save) ==================== */
+  /* ==================== SAVE ROW ==================== */
   async function saveRow(tr) {
     if (!tr) return;
 
     const clientId = tr.dataset.rowId;
     if (clientId.startsWith('new_')) return;
 
+    // Important: harvest edits before saving, but note that release_status is already in dataRow.
     harvestRowEdits(tr, clientId);
     const payload = extractRowPayload(tr);
 
@@ -722,13 +795,17 @@
         allRows[i] = { ...allRows[i], ...inc };
         const tr = rowIdToElement.get(id);
         if (tr && id !== focusedRowId) {
-          // Update the release dropdown value if changed externally
-          const releaseSelect = tr.querySelector('select[name="release_status"]');
-          if (releaseSelect && inc.release_status !== undefined) {
-            releaseSelect.value = inc.release_status || '';
+          const badge = tr.querySelector('.release-status-badge');
+          if (badge && inc.release_status !== undefined) {
+            const newValue = inc.release_status || '';
+            const cls = newValue === 'Released' ? 'badge-released' : (newValue === 'Returned' ? 'badge-returned-dm' : 'badge-none');
+            badge.className = `release-status-badge ${cls}`;
+            badge.textContent = newValue || '—';
+            badge.setAttribute('data-release-value', newValue || '—');
+            tr.dataset.release = newValue || '—';
           }
           const dateTd = tr.querySelector('.dm-date-returned');
-          if (dateTd) dateTd.textContent = row.date_returned_display || '—';
+          if (dateTd) dateTd.textContent = inc.date_returned_display || '—';
         }
       }
     }
@@ -889,7 +966,7 @@
       }, 50);
     });
 
-    // Generic change listener for checkboxes, selects, etc.
+    // Checkboxes
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
       if (cb?.type === 'checkbox') {
@@ -897,29 +974,18 @@
         handleDmCheck(cb, cb.getAttribute('data-field'));
         return;
       }
-
+      // Other selects (borrower_type)
       const tr = e.target.closest('tr[data-row-id]');
-      if (!tr) return;
-      const rowId = tr.dataset.rowId;
-      if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
-
-      const dataRow = allRows.find(r => String(r.id) === String(rowId));
-      if (dataRow) {
-        // Handle release/return dropdown change
-        if (e.target.matches('select[name="release_status"]')) {
-          dataRow.release_status = e.target.value;
-          tr.dataset.release = e.target.value || '—';
-        }
-        // Handle borrower_type dropdown
-        if (e.target.matches('select[name="borrower_type"]')) {
-          dataRow.borrower_type = e.target.value;
-        }
+      if (tr && e.target.matches('select[name="borrower_type"]')) {
+        const rowId = tr.dataset.rowId;
+        if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
+        const dataRow = allRows.find(r => String(r.id) === String(rowId));
+        if (dataRow) dataRow.borrower_type = e.target.value;
+        scheduleAutoSave(tr);
       }
-
-      scheduleAutoSave(tr);
     });
 
-    // Input listener for text fields and textareas
+    // Text inputs / textareas
     document.addEventListener('input', e => {
       const tr = e.target.closest('tr[data-row-id]');
       if (!tr) return;
@@ -1017,6 +1083,10 @@
         }
       });
     }
+
+    // Attach the release badge inline edit listener after rows are rendered (delegation)
+    const tableContainer = document.querySelector('.table-container');
+    if (tableContainer) attachReleaseEditListener(tableContainer);
   }
 
   /* ==================== SAVE ALL ROWS ==================== */
