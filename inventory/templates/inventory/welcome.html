@@ -378,7 +378,7 @@
               {% if borrow_form.year_level.errors %}<span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>{% endif %}
             </div>
             <div>
-              <input type="text" name="section" class="form-control" placeholder="BSCS-A" value="{{ borrow_form.section.value|default:'' }}">
+              <input type="text" name="section" class="form-control" placeholder="ex. BSCS-A" value="{{ borrow_form.section.value|default:'' }}">
               {% if borrow_form.section.errors %}<span class="form-error">{{ borrow_form.section.errors.0 }}</span>{% endif %}
             </div>
           </div>
