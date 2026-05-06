@@ -454,7 +454,7 @@ def device_monitoring_save(request):
                 'office_college':      row_data.get('office_college', ''),
                 'assigned_mr':         row_data.get('assigned_mr', ''),
                 'accountable_person':  row_data.get('accountable_person', ''),
-                'borrower_type':       row_data.get('borrower_type', ''),
+                'borrower_type':       row_data.get('borrower_type', '') or None,
                 'accountable_officer': row_data.get('accountable_officer', ''),
                 'device':              row_data.get('device', 'Tablet'),
                 'serial_number':       row_data.get('serial_number', ''),
@@ -464,13 +464,18 @@ def device_monitoring_save(request):
                 'missing':             row_data.get('missing')         == 'on',
                 'incomplete':          row_data.get('incomplete')      == 'on',
                 'release_status':      release_status,
-                # Keep is_released boolean in sync with release_status
-                # so dashboard stats (which use is_released) stay accurate
                 'is_released':         release_status == 'Released',
                 'ptr':                 row_data.get('ptr', ''),
                 'remarks':             row_data.get('remarks', ''),
                 'issue':               row_data.get('issue', ''),
             }
+
+            # If release_status field doesn't exist on model yet,
+            # remove it so the save doesn't fail entirely
+            from django.db import models as _dm
+            model_field_names = [f.name for f in DeviceMonitor._meta.get_fields()]
+            if 'release_status' not in model_field_names:
+                fields.pop('release_status', None)
 
             try:
                 if row_id == 'new':
@@ -486,11 +491,22 @@ def device_monitoring_save(request):
                     obj.save()
                     saved_count += 1
             except Exception as e:
-                errors.append(f"Row {row_id}: {str(e)}")
+                import traceback
+                errors.append(f"Row {row_id}: {str(e)} | {traceback.format_exc()}")
 
         b = _broadcasts()
         b.broadcast_device_monitoring()
         b.broadcast_dashboard()
+
+        # If everything failed, return ok=False so JS shows the real error
+        if saved_count == 0 and errors:
+            return JsonResponse({
+                'ok':      False,
+                'saved':   0,
+                'errors':  errors,
+                'new_ids': new_ids,
+                'error':   errors[0],
+            })
 
         return JsonResponse({
             'ok':      True,

@@ -257,7 +257,7 @@
 
     _savingNew.add(clientId);
     harvestRowEdits(tr, clientId);
-    const payload = extractRowPayload(tr);   // ← reads release_status from hidden input
+    const payload = extractRowPayload(tr);
 
     const form = document.getElementById('dm-form');
     if (!form) { _savingNew.delete(clientId); return; }
@@ -279,16 +279,24 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
 
-      if (result.ok && result.new_ids?.length > 0) {
-        _swapRowId(tr, clientId, String(result.new_ids[0]));
-        _setRowStatus(tr, 'saved');
-      } else {
+      // ── Show the real server error in the toast ──────────────────────────
+      if (!result.ok || !result.new_ids?.length) {
+        const serverError = result.errors?.length
+          ? result.errors[0]
+          : (result.error || 'no new_ids returned');
         _setRowStatus(tr, 'error');
-        showToast('Could not save new row', 'error');
+        showToast('Save failed: ' + serverError, 'error');
+        console.error('_saveNewRow server response:', result);
+        return;
       }
+
+      _swapRowId(tr, clientId, String(result.new_ids[0]));
+      _setRowStatus(tr, 'saved');
+
     } catch (err) {
       _setRowStatus(tr, 'error');
       showToast('Row save failed: ' + err.message, 'error');
+      console.error('_saveNewRow fetch error:', err);
     } finally {
       _savingNew.delete(clientId);
     }
