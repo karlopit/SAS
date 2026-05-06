@@ -1,10 +1,10 @@
 /**
  * device_monitoring.js — Release/Return badge with inline dropdown edit
- * FIXED: release_status now saved correctly by reading from allRows in extractRowPayload
+ * FIXED: hidden input stores release_status so the server receives it
  *
  * - Release/Return column shows a colored badge (original design)
  * - Click on badge to open a dropdown with values "Released" / "Returned"
- * - On change, badge updates, value saved via auto-save
+ * - On change, badge updates, hidden input updates, value saved via auto-save
  * - New rows default to "—" badge, click to select
  */
 
@@ -253,23 +253,25 @@
       const saveAndRestore = async () => {
         const newValue = dropdown.value;
         if (newValue !== currentValue) {
-          // Update row data in allRows (the source of truth)
+          // Update row data in allRows
           const dataRow = allRows.find(r => String(r.id) === rowId);
           if (dataRow) dataRow.release_status = newValue;
           tr.dataset.release = newValue || '—';
+          // Update hidden input so server receives the value
+          const hiddenInput = tr.querySelector('input[type=hidden][name="release_status"]');
+          if (hiddenInput) hiddenInput.value = newValue;
           markDirtyFromRow(tr);
-          // Save the updated row
           await saveRow(tr);
         }
         // Restore badge
         const finalValue = newValue || '';
         td.innerHTML = getReleaseBadgeHtml(finalValue);
-        // Re-attach listener to the new badge (delegation will handle because container is parent)
+        // Restore hidden input inside the new TD? The hidden input is placed in the row, not inside this TD.
+        // Actually the hidden input is in the row (outside the TD). We don't need to re-add it.
       };
 
       dropdown.addEventListener('change', saveAndRestore);
       dropdown.addEventListener('blur', () => {
-        // Small delay to allow change event to fire first
         setTimeout(() => {
           if (document.activeElement !== dropdown) saveAndRestore();
         }, 100);
@@ -307,7 +309,10 @@
       <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="ptr" value="${_esc(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR" style="width:100px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center">${releaseBadgeHtml}</td>
+      <td style="text-align:center">
+        <input type="hidden" name="release_status" value="${_esc(row.release_status || '')}"/>
+        ${releaseBadgeHtml}
+      </td>
       <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${_esc(row.date_returned_display || '—')}</td>
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.remarks)}</textarea></td>
       <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.issue)}</textarea></td>
@@ -409,7 +414,9 @@
     dataRow.ptr                 = g('ptr');
     dataRow.remarks             = tr.querySelector('textarea[name="remarks"]')?.value ?? dataRow.remarks;
     dataRow.issue               = tr.querySelector('textarea[name="issue"]')?.value ?? dataRow.issue;
-    // release_status is not in an input; we rely on the dataRow value (already up-to-date)
+    // Update release_status from hidden input if exists
+    const releaseHidden = tr.querySelector('input[type=hidden][name="release_status"]');
+    if (releaseHidden) dataRow.release_status = releaseHidden.value;
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
     dataRow.serviceable     = cbState('serviceable');
     dataRow.non_serviceable = cbState('non_serviceable');
@@ -419,16 +426,14 @@
   }
 
   /* ==================== EXTRACT ROW PAYLOAD ==================== */
-  // FIXED: read release_status directly from the in‑memory row object
   function extractRowPayload(tr) {
     const rawId = tr.dataset.rowId || '';
     const isNew = rawId.startsWith('new_');
     const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? '';
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
 
-    // Get the live row data from our in-memory array (source of truth)
-    const dataRow = allRows.find(r => String(r.id) === rawId);
-    let releaseStatus = dataRow ? dataRow.release_status : '';
+    // Get release_status from hidden input (ensures server receives it)
+    const releaseStatus = tr.querySelector('input[type=hidden][name="release_status"]')?.value || '';
 
     return {
       row_id:              isNew ? 'new' : rawId,
@@ -618,7 +623,7 @@
     _setRowStatus(tr, 'saving');
 
     try {
-      const releaseStatus = ''; // new row has no release status yet
+      // Release status is empty initially; hidden input already has value ''
       const resp = await fetch(form.action, {
         method:  'POST',
         headers: {
@@ -635,7 +640,7 @@
             serviceable: 'off', non_serviceable: 'off', sealed: 'off',
             missing: 'off', incomplete: 'off',
             ptr: '', remarks: '', issue: '',
-            release_status: releaseStatus,
+            release_status: '',
           }],
           save_all: false,
         }),
@@ -658,24 +663,20 @@
     }
   }
 
-  /* ==================== SAVE ROW (fixed) ==================== */
+  /* ==================== SAVE ROW ==================== */
   async function saveRow(tr) {
     if (!tr) return;
 
     const clientId = tr.dataset.rowId;
     if (clientId.startsWith('new_')) return;
 
-    // Harvest other fields (box_number, etc.) but keep release_status from dataRow
     harvestRowEdits(tr, clientId);
-    const payload = extractRowPayload(tr);  // now uses the corrected extractor
+    const payload = extractRowPayload(tr);
 
     const form = document.getElementById('dm-form');
     if (!form) return;
 
     _setRowStatus(tr, 'saving');
-
-    // Optional: log what we're sending (remove in production)
-    // console.log('Saving row', clientId, 'release_status =', payload.release_status);
 
     try {
       const resp = await fetch(form.action, {
@@ -798,13 +799,17 @@
         const tr = rowIdToElement.get(id);
         if (tr && id !== focusedRowId) {
           const badge = tr.querySelector('.release-status-badge');
-          if (badge && inc.release_status !== undefined) {
+          const hidden = tr.querySelector('input[type=hidden][name="release_status"]');
+          if (inc.release_status !== undefined) {
             const newValue = inc.release_status || '';
-            const cls = newValue === 'Released' ? 'badge-released' : (newValue === 'Returned' ? 'badge-returned-dm' : 'badge-none');
-            badge.className = `release-status-badge ${cls}`;
-            badge.textContent = newValue || '—';
-            badge.setAttribute('data-release-value', newValue || '—');
-            tr.dataset.release = newValue || '—';
+            if (hidden) hidden.value = newValue;
+            if (badge) {
+              const cls = newValue === 'Released' ? 'badge-released' : (newValue === 'Returned' ? 'badge-returned-dm' : 'badge-none');
+              badge.className = `release-status-badge ${cls}`;
+              badge.textContent = newValue || '—';
+              badge.setAttribute('data-release-value', newValue || '—');
+              tr.dataset.release = newValue || '—';
+            }
           }
           const dateTd = tr.querySelector('.dm-date-returned');
           if (dateTd) dateTd.textContent = inc.date_returned_display || '—';
