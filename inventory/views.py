@@ -447,7 +447,8 @@ def device_monitoring_save(request):
             if not row_id:
                 continue
 
-            # Build fields dict exactly as before
+            release_status = row_data.get('release_status', '') or ''
+
             fields = {
                 'box_number':          row_data.get('box_number', ''),
                 'office_college':      row_data.get('office_college', ''),
@@ -462,7 +463,10 @@ def device_monitoring_save(request):
                 'sealed':              row_data.get('sealed')          == 'on',
                 'missing':             row_data.get('missing')         == 'on',
                 'incomplete':          row_data.get('incomplete')      == 'on',
-                'release_status':      row_data.get('release_status', '') or '',
+                'release_status':      release_status,
+                # Keep is_released boolean in sync with release_status
+                # so dashboard stats (which use is_released) stay accurate
+                'is_released':         release_status == 'Released',
                 'ptr':                 row_data.get('ptr', ''),
                 'remarks':             row_data.get('remarks', ''),
                 'issue':               row_data.get('issue', ''),
@@ -470,26 +474,15 @@ def device_monitoring_save(request):
 
             try:
                 if row_id == 'new':
-                    # --- NEW ROW: create with all fields, including release_status
                     obj = DeviceMonitor.objects.create(**fields)
                     new_ids.append(obj.pk)
                     saved_count += 1
                 else:
-                    # --- EXISTING ROW: update while preserving date_returned
                     obj = DeviceMonitor.objects.get(pk=int(row_id))
                     old_date_returned = obj.date_returned
-
-                    # Update every field from the payload
                     for attr, value in fields.items():
                         setattr(obj, attr, value)
-
-                    # Restore date_returned (only if it wasn't intentionally changed)
                     obj.date_returned = old_date_returned
-
-                    # ✅ CRITICAL FIX: ensure release_status is taken from payload,
-                    #    not from any model logic that might override it.
-                    obj.release_status = fields['release_status']
-
                     obj.save()
                     saved_count += 1
             except Exception as e:

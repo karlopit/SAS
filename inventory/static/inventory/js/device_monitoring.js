@@ -215,10 +215,15 @@
   function scheduleAutoSave(tr) {
     const rowId = tr?.dataset?.rowId;
     if (!rowId) return;
-
-    // ── New (unsaved) row — create in DB ─────────────────────────────────────
+ 
+    // ── FIX 3: if focus just moved TO the release dropdown, don't schedule
+    // a save yet — the dropdown's own saveAndRestore will handle it.
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.classList.contains('temp-release-select')) return;
+ 
+    // ── New (unsaved) row ─────────────────────────────────────────────────
     if (rowId.startsWith('new_')) {
-      if (_savingNew.has(rowId)) return;   // already in flight
+      if (_savingNew.has(rowId)) return;
       if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
       _setRowStatus(tr, 'saving');
       const timer = setTimeout(() => {
@@ -228,8 +233,8 @@
       _saveTimers.set(rowId, timer);
       return;
     }
-
-    // ── Existing row — debounced update ──────────────────────────────────────
+ 
+    // ── Existing row ──────────────────────────────────────────────────────
     if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
     _setRowStatus(tr, 'saving');
     const timer = setTimeout(() => {
@@ -319,46 +324,58 @@
       const badge = e.target.closest('.release-status-badge');
       if (!badge) return;
       e.stopPropagation();
-
+ 
       const td    = badge.closest('td');
-      const tr    = td.closest('tr[data-row-id]');
+      const tr    = td?.closest('tr[data-row-id]');
       const rowId = tr?.dataset.rowId;
       if (!rowId) return;
-
+ 
       const currentValue = badge.getAttribute('data-release-value') === '—'
-        ? '' : badge.getAttribute('data-release-value');
+        ? '' : (badge.getAttribute('data-release-value') || '');
+ 
       const dropdown = createReleaseDropdown(currentValue);
       td.innerHTML = '';
       td.appendChild(dropdown);
       dropdown.focus();
-
+ 
       const saveAndRestore = async () => {
         const newValue = dropdown.value;
-
-        // Always update in-memory + hidden input regardless of whether changed
+ 
+        // ── FIX 1: update hidden input and in-memory data BEFORE any save ──
+        const hiddenInput = tr.querySelector('input[type=hidden][name="release_status"]');
+        if (hiddenInput) hiddenInput.value = newValue;
+ 
         const dataRow = allRows.find(r => String(r.id) === rowId);
         if (dataRow) dataRow.release_status = newValue;
         tr.dataset.release = newValue || '—';
-
-        const hiddenInput = tr.querySelector('input[type=hidden][name="release_status"]');
-        if (hiddenInput) hiddenInput.value = newValue;
-
-        // Restore badge immediately so the user sees the new value
-        td.innerHTML = getReleaseBadgeHtml(newValue);
-
-        // Only save if the value actually changed
-        if (newValue !== currentValue) {
-          markDirtyFromRow(tr);
-          // FIX: saveRow now handles new_ rows too (delegates to _saveNewRow)
-          await saveRow(tr);
+ 
+        // Restore badge immediately
+        td.innerHTML = `<input type="hidden" name="release_status" value="${_esc(newValue)}"/>`
+                     + getReleaseBadgeHtml(newValue);
+ 
+        // ── FIX 2: cancel any pending focusout-triggered save for this row ──
+        // so THIS save (with the correct release_status) is the one that fires.
+        if (_saveTimers.has(rowId)) {
+          clearTimeout(_saveTimers.get(rowId));
+          _saveTimers.delete(rowId);
         }
+        // Also clear _savingNew so _saveNewRow won't be blocked
+        _savingNew.delete(rowId);
+ 
+        // Always save — the hidden input now has the correct value
+        markDirtyFromRow(tr);
+        await saveRow(tr);
       };
-
+ 
       dropdown.addEventListener('change', saveAndRestore);
       dropdown.addEventListener('blur', () => {
+        // Small delay so 'change' fires first if it's going to
         setTimeout(() => {
-          if (document.activeElement !== dropdown) saveAndRestore();
-        }, 100);
+          // Only fire if the dropdown is still the one being removed
+          // (i.e. saveAndRestore hasn't already run via 'change')
+          const stillPresent = td.querySelector('.temp-release-select');
+          if (stillPresent) saveAndRestore();
+        }, 120);
       });
     });
   }
@@ -1019,13 +1036,20 @@
     });
     document.addEventListener('focusout', e => {
       const tr = e.target.closest('tr[data-row-id]');
+ 
       setTimeout(() => {
         const active = document.activeElement?.closest('tr[data-row-id]');
         if (!active) focusedRowId = null;
       }, 50);
-
-      // Trigger auto-save (works for both new and existing rows)
-      if (tr) scheduleAutoSave(tr);
+ 
+      if (!tr) return;
+ 
+      // ── FIX 4: skip auto-save if focus moved INTO the release dropdown ──
+      // relatedTarget is the element receiving focus (null if focus leaves page)
+      const goingTo = e.relatedTarget;
+      if (goingTo && goingTo.classList.contains('temp-release-select')) return;
+ 
+      scheduleAutoSave(tr);
     });
 
     // Checkboxes

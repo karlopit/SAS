@@ -137,6 +137,7 @@ class DeviceMonitor(models.Model):
     assigned_mr         = models.CharField(max_length=100, blank=True, verbose_name="Assigned M.R.")
     ptr                 = models.CharField(max_length=100, blank=True, verbose_name="PTR")
     is_released         = models.BooleanField(default=False, help_text="True if device is currently borrowed/released")
+    release_status      = models.CharField(max_length=20, blank=True, default='')
 
     class Meta:
         ordering = ['id']
