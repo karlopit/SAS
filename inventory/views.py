@@ -429,7 +429,7 @@ def device_monitoring_save(request):
         raise PermissionDenied
 
     # ──────────────────────────────────────────────────────────
-    # 1. JSON request (Save All)
+    # 1. JSON request (Save All / individual row save)
     # ──────────────────────────────────────────────────────────
     if request.content_type == 'application/json':
         try:
@@ -440,6 +440,7 @@ def device_monitoring_save(request):
         rows = data.get('rows', [])
         saved_count = 0
         errors = []
+        new_ids = []   # ← FIX: collect real DB ids for newly created rows
 
         for row_data in rows:
             row_id = row_data.get('row_id')
@@ -447,52 +448,54 @@ def device_monitoring_save(request):
                 continue
 
             fields = {
-                'box_number': row_data.get('box_number', ''),
-                'office_college': row_data.get('office_college', ''),
-                'assigned_mr': row_data.get('assigned_mr', ''),
-                'accountable_person': row_data.get('accountable_person', ''),
-                'borrower_type': row_data.get('borrower_type', ''),
+                'box_number':          row_data.get('box_number', ''),
+                'office_college':      row_data.get('office_college', ''),
+                'assigned_mr':         row_data.get('assigned_mr', ''),
+                'accountable_person':  row_data.get('accountable_person', ''),
+                'borrower_type':       row_data.get('borrower_type', ''),
                 'accountable_officer': row_data.get('accountable_officer', ''),
-                'device': row_data.get('device', 'Tablet'),
-                'serial_number': row_data.get('serial_number', ''),
-                'serviceable': row_data.get('serviceable') == 'on',
-                'non_serviceable': row_data.get('non_serviceable') == 'on',
-                'sealed': row_data.get('sealed') == 'on',
-                'missing': row_data.get('missing') == 'on',
-                'incomplete': row_data.get('incomplete') == 'on',
-                'ptr': row_data.get('ptr', ''),
-                'remarks': row_data.get('remarks', ''),
-                'issue': row_data.get('issue', ''),
+                'device':              row_data.get('device', 'Tablet'),
+                'serial_number':       row_data.get('serial_number', ''),
+                'serviceable':         row_data.get('serviceable')     == 'on',
+                'non_serviceable':     row_data.get('non_serviceable') == 'on',
+                'sealed':              row_data.get('sealed')          == 'on',
+                'missing':             row_data.get('missing')         == 'on',
+                'incomplete':          row_data.get('incomplete')      == 'on',
+                'ptr':                 row_data.get('ptr', ''),
+                'remarks':             row_data.get('remarks', ''),
+                'issue':               row_data.get('issue', ''),
             }
 
             try:
                 if row_id == 'new':
-                    DeviceMonitor.objects.create(**fields)
+                    # FIX: capture the created object so we can return its pk
+                    obj = DeviceMonitor.objects.create(**fields)
+                    new_ids.append(obj.pk)   # ← send real id back to client
                     saved_count += 1
                 else:
                     obj = DeviceMonitor.objects.get(pk=int(row_id))
                     old_date_returned = obj.date_returned
                     for attr, value in fields.items():
                         setattr(obj, attr, value)
-                    obj.date_returned = old_date_returned  # preserve date_returned
+                    obj.date_returned = old_date_returned
                     obj.save()
                     saved_count += 1
             except Exception as e:
                 errors.append(f"Row {row_id}: {str(e)}")
 
-        # Broadcast updates
         b = _broadcasts()
         b.broadcast_device_monitoring()
         b.broadcast_dashboard()
 
         return JsonResponse({
-            'ok': True,
-            'saved': saved_count,
-            'errors': errors
+            'ok':      True,
+            'saved':   saved_count,
+            'errors':  errors,
+            'new_ids': new_ids,   # ← FIX: JS uses this to swap new_123 → real pk
         })
 
     # ──────────────────────────────────────────────────────────
-    # 2. Normal form submission (individual row saves)
+    # 2. Normal form submission (unchanged)
     # ──────────────────────────────────────────────────────────
     ids                  = request.POST.getlist('row_id')
     box_numbers          = request.POST.getlist('box_number')
@@ -552,11 +555,9 @@ def device_monitoring_save(request):
     b.broadcast_device_monitoring()
     b.broadcast_dashboard()
 
-    # If this is an AJAX request (e.g., from the per-row save buttons), return JSON
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'ok': True, 'saved': len(ids)})
 
-    # Otherwise (normal form submit) redirect back to device monitoring page
     return redirect('device_monitoring')
 
 

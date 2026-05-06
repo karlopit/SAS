@@ -1,22 +1,13 @@
 /**
- * device_monitoring.js — Performance-optimized for 4k+ rows
+ * device_monitoring.js — Auto-save edition
  *
- * Key improvements vs original:
- * 1. VIRTUAL SCROLLING — only renders ~50 rows in DOM at a time, not all 4k+
- *    This is the #1 fix for the freeze/hang problem.
- * 2. Debounced filters — search/filter waits 200ms after typing stops
- * 3. Batched DOM saves — dirty row tracking prevents unnecessary re-renders
- * 4. Import progress polling unchanged (already async/Celery-based)
- *
- * FIX (new row saving):
- * - Individual "✓ Save" button now uses JSON POST (same path as Save All)
- *   instead of submitting the HTML form — this avoids the form collecting
- *   ALL rows and also ensures the view's JSON handler receives it.
- * - Both individual save and Save All normalize new row IDs to the string
- *   'new' so the view's `if row_id == 'new'` check actually matches.
- * - After a new row is saved, the server returns the new DB id and the
- *   client updates allRows + the tr's data-row-id so subsequent saves
- *   hit the UPDATE path instead of creating duplicates.
+ * Changes from previous version:
+ * - Save buttons removed from buildRowHtml
+ * - saveRow() is now called automatically after 800ms of inactivity
+ *   on any field change (input, change, checkbox)
+ * - addDmRow() still auto-saves immediately on row creation
+ * - saveAllRows() kept for the top-level "Save All" button if you want it,
+ *   but individual rows no longer need it
  */
 
 (function () {
@@ -26,6 +17,10 @@
   const ROW_HEIGHT     = 64;
   const OVERSCAN       = 10;
   const VISIBLE_BUFFER = 15;
+  const AUTOSAVE_DELAY = 800;   // ms of inactivity before auto-saving a row
+
+  // Per-row debounce timers: rowId → setTimeout handle
+  const _saveTimers = new Map();
 
   async function pollExportTask(taskId) {
     const hide = () => {
@@ -73,7 +68,7 @@
     el._timer = setTimeout(() => {
       el.style.opacity   = '0';
       el.style.transform = 'translateY(12px)';
-    }, 4000);
+    }, 3000);
   }
 
   /* ==================== DEBOUNCE ==================== */
@@ -102,6 +97,40 @@
   /* ==================== CSRF ==================== */
   function getCsrf() {
     return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  }
+
+  /* ==================== SAVING INDICATOR ==================== */
+  // Show a subtle "Saving…" / "Saved" badge inside the row's last cell
+  function _setRowStatus(tr, status) {
+    let badge = tr.querySelector('.dm-row-status');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'dm-row-status';
+      badge.style.cssText = `
+        display:inline-block;font-size:10px;font-weight:600;
+        padding:2px 6px;border-radius:4px;margin-left:4px;
+        transition:opacity .3s;`;
+      // append to the last <td>
+      const lastTd = tr.querySelector('td:last-child');
+      if (lastTd) lastTd.appendChild(badge);
+    }
+    if (status === 'saving') {
+      badge.textContent = 'Saving…';
+      badge.style.background = 'rgba(255,255,255,.12)';
+      badge.style.color = 'var(--muted, #888)';
+      badge.style.opacity = '1';
+    } else if (status === 'saved') {
+      badge.textContent = '✓ Saved';
+      badge.style.background = 'rgba(0,229,160,.15)';
+      badge.style.color = '#00e5a0';
+      badge.style.opacity = '1';
+      setTimeout(() => { badge.style.opacity = '0'; }, 2000);
+    } else if (status === 'error') {
+      badge.textContent = '✕ Error';
+      badge.style.background = 'rgba(255,76,76,.15)';
+      badge.style.color = '#ff4c4c';
+      badge.style.opacity = '1';
+    }
   }
 
   /* ==================== CHECKBOX HELPERS ==================== */
@@ -137,6 +166,7 @@
     }
     applyLockState(row);
     markDirtyFromRow(row);
+    scheduleAutoSave(row);   // ← auto-save on checkbox change
   };
 
   function applyLockState(row) {
@@ -160,6 +190,31 @@
     if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
   }
 
+  /* ==================== AUTO-SAVE SCHEDULER ==================== */
+  /**
+   * Queue a save for a specific row after AUTOSAVE_DELAY ms.
+   * If the user keeps typing the timer resets — only fires once they pause.
+   * New rows (new_xxx) are skipped here because addDmRow() saves them
+   * immediately on creation; once the id is swapped to a real pk the
+   * subsequent edits will be caught normally.
+   */
+  function scheduleAutoSave(tr) {
+    const rowId = tr?.dataset?.rowId;
+    if (!rowId || rowId.startsWith('new_')) return;
+
+    // Clear any pending timer for this row
+    if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
+
+    _setRowStatus(tr, 'saving');
+
+    const timer = setTimeout(() => {
+      _saveTimers.delete(rowId);
+      saveRow(tr);
+    }, AUTOSAVE_DELAY);
+
+    _saveTimers.set(rowId, timer);
+  }
+
   /* ==================== BUILD ROW HTML ==================== */
   function _esc(str) {
     return String(str || '')
@@ -167,6 +222,7 @@
       .replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Save button REMOVED — auto-save handles persistence
   function buildRowHtml(row) {
     const releaseClass = row.release_status === 'Released' ? 'badge-released'
                        : row.release_status === 'Returned' ? 'badge-returned-dm'
@@ -198,8 +254,7 @@
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.remarks)}</textarea></td>
       <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.issue)}</textarea></td>
       <td style="text-align:center;white-space:nowrap">
-        <button type="button" class="btn btn-primary btn-sm dm-save-row">✓ Save</button>
-        <button type="button" class="btn btn-danger btn-sm dm-delete-row" style="margin-left:4px">✕</button>
+        <button type="button" class="btn btn-danger btn-sm dm-delete-row">✕</button>
       </td>`;
   }
 
@@ -227,6 +282,8 @@
     }
     if (focusedRowId) neededIds.add(focusedRowId);
     dirtyRows.forEach(id => neededIds.add(id));
+    // Also keep rows with pending save timers in DOM
+    _saveTimers.forEach((_, id) => neededIds.add(id));
 
     rowIdToElement.forEach((tr, id) => {
       if (!neededIds.has(id)) {
@@ -271,7 +328,6 @@
     }
 
     tbody.insertBefore(fragment, bottomSpacer);
-
     startIdx = newStart;
     endIdx   = newEnd;
 
@@ -304,14 +360,7 @@
     dataRow.incomplete      = cbState('incomplete');
   }
 
-  /* ==================== EXTRACT ROW DATA FROM DOM ==================== */
-  /**
-   * Read the current field values out of a <tr> element and return a
-   * payload object ready to send to the server.
-   *
-   * For new rows (id starts with 'new_') the row_id is sent as the
-   * literal string 'new' so the view's `if row_id == 'new':` branch fires.
-   */
+  /* ==================== EXTRACT ROW PAYLOAD ==================== */
   function extractRowPayload(tr) {
     const rawId = tr.dataset.rowId || '';
     const isNew = rawId.startsWith('new_');
@@ -320,7 +369,7 @@
 
     return {
       row_id:              isNew ? 'new' : rawId,
-      _client_id:          rawId,           // keep original for post-save id swap
+      _client_id:          rawId,
       box_number:          g('box_number'),
       serial_number:       g('serial_number'),
       office_college:      g('office_college'),
@@ -472,10 +521,10 @@
   }
 
   /* ==================== ADD ROW ==================== */
-  function addDmRow() {
-    const newId = 'new_' + Date.now();
+  async function addDmRow() {
+    const newClientId = 'new_' + Date.now();
     const newRow = {
-      id: newId, box_number: '', serial_number: '', office_college: '',
+      id: newClientId, box_number: '', serial_number: '', office_college: '',
       accountable_person: '', borrower_type: '', assigned_mr: '',
       accountable_officer: '', device: 'Tablet', serviceable: false,
       non_serviceable: false, sealed: false, missing: false, incomplete: false,
@@ -487,48 +536,78 @@
     filteredRows.push(newRow);
 
     const tr = document.createElement('tr');
-    tr.dataset.rowId = newId;
+    tr.dataset.rowId = newClientId;
     tr.innerHTML = buildRowHtml(newRow);
     applyLockState(tr);
     tbody.insertBefore(tr, bottomSpacer);
-    rowIdToElement.set(newId, tr);
+    rowIdToElement.set(newClientId, tr);
 
     if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
     tr.querySelector('input[name="box_number"]')?.focus();
 
     const tc = document.getElementById('dm-total-count');
     if (tc) tc.textContent = allRows.length;
+
+    // Auto-save the empty row immediately to get a real DB id
+    const form = document.getElementById('dm-form');
+    if (!form) return;
+
+    _setRowStatus(tr, 'saving');
+
+    try {
+      const resp = await fetch(form.action, {
+        method:  'POST',
+        headers: {
+          'Content-Type':     'application/json',
+          'X-CSRFToken':      getCsrf(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({
+          rows: [{
+            row_id: 'new', _client_id: newClientId,
+            box_number: '', serial_number: '', office_college: '',
+            accountable_person: '', borrower_type: '', assigned_mr: '',
+            accountable_officer: '', device: 'Tablet',
+            serviceable: 'off', non_serviceable: 'off', sealed: 'off',
+            missing: 'off', incomplete: 'off',
+            ptr: '', remarks: '', issue: '',
+          }],
+          save_all: false,
+        }),
+        credentials: 'same-origin',
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const result = await resp.json();
+
+      if (result.ok && result.new_ids?.length > 0) {
+        _swapRowId(tr, newClientId, String(result.new_ids[0]));
+        _setRowStatus(tr, 'saved');
+      } else {
+        _setRowStatus(tr, 'error');
+        showToast('Could not save new row', 'error');
+      }
+    } catch (err) {
+      _setRowStatus(tr, 'error');
+      showToast('Row add failed: ' + err.message, 'error');
+    }
   }
 
-  /* ==================== SAVE SINGLE ROW (JSON) ==================== */
-  /**
-   * FIX: The individual ✓ Save button previously did form.submit() which
-   * POSTed ALL rows at once via the standard form handler — and even then,
-   * 'new_12345' !== 'new' so new rows were silently skipped.
-   *
-   * Now each row saves itself via a targeted JSON POST. The view returns
-   * { ok, new_id } for newly created rows so we can swap the client-side
-   * 'new_…' id for the real DB id, preventing duplicate creates on the
-   * next save.
-   */
-  async function saveRow(btn) {
-    const tr = btn.closest('tr');
+  /* ==================== SAVE ROW (called by auto-save) ==================== */
+  async function saveRow(tr) {
     if (!tr) return;
 
     const clientId = tr.dataset.rowId;
-    const isNew    = clientId.startsWith('new_');
+    // Skip rows still waiting for their initial creation response
+    if (clientId.startsWith('new_')) return;
 
-    // Harvest current DOM values into allRows first
     harvestRowEdits(tr, clientId);
-
     const payload = extractRowPayload(tr);
 
-    const originalHTML = btn.innerHTML;
-    btn.disabled  = true;
-    btn.innerHTML = '…';
-
     const form = document.getElementById('dm-form');
-    if (!form) { btn.disabled = false; btn.innerHTML = originalHTML; return; }
+    if (!form) return;
+
+    _setRowStatus(tr, 'saving');
 
     try {
       const resp = await fetch(form.action, {
@@ -545,62 +624,18 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
 
-      if (!result.ok) {
-        const msg = result.errors?.length ? result.errors[0] : 'Save failed';
-        throw new Error(msg);
-      }
-
-      // ── For newly created rows the server returns the real DB id ──────────
-      // The view's bulk_create path doesn't return per-row ids, so we parse
-      // it out of result.new_ids (see views.py patch below) or fall back to
-      // a page-reload-free refresh via the broadcast.
-      if (isNew && result.new_ids && result.new_ids.length > 0) {
-        const realId = String(result.new_ids[0]);
-        _swapRowId(tr, clientId, realId);
-      }
+      if (!result.ok) throw new Error(result.errors?.[0] || 'Save failed');
 
       dirtyRows.delete(clientId);
-      showToast('✓ Row saved', 'success');
+      _setRowStatus(tr, 'saved');
 
     } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = originalHTML;
+      _setRowStatus(tr, 'error');
+      showToast('Auto-save error: ' + err.message, 'error');
     }
   }
 
-  /**
-   * After the server creates a new row and returns its real id, update:
-   *  - the <tr> data-row-id attribute
-   *  - the hidden row_id input inside the row
-   *  - allRows / filteredRows in memory
-   *  - rowIdToElement map
-   * so the next edit/save hits the UPDATE path.
-   */
-  function _swapRowId(tr, oldId, newId) {
-    tr.dataset.rowId = newId;
-    const hidden = tr.querySelector('input[type=hidden][name="row_id"]');
-    if (hidden) hidden.value = newId;
-
-    rowIdToElement.delete(oldId);
-    rowIdToElement.set(newId, tr);
-
-    const dataRow = allRows.find(r => String(r.id) === oldId);
-    if (dataRow) dataRow.id = newId;
-
-    const fRow = filteredRows.find(r => String(r.id) === oldId);
-    if (fRow) fRow.id = newId;
-
-    dirtyRows.delete(oldId);
-  }
-
-  /* ==================== SAVE ALL ROWS (JSON) ==================== */
-  /**
-   * FIX: New rows are sent with row_id = 'new' (not 'new_123456') so the
-   * view's `if row_id == 'new':` branch fires correctly. After saving,
-   * swap client ids for real DB ids using the returned new_ids list.
-   */
+  /* ==================== SAVE ALL ROWS (top-level button, optional) ========= */
   async function saveAllRows() {
     const form = document.getElementById('dm-form');
     if (!form) return;
@@ -612,12 +647,12 @@
       btn.innerHTML = '<svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Saving…';
     }
 
-    // Harvest all visible DOM edits back into allRows
     rowIdToElement.forEach((tr, id) => harvestRowEdits(tr, id));
 
-    // Build payload — normalize new_ ids to 'new'
+    const newClientIds = [];
     const rowsData = allRows.map(row => {
       const isNew = String(row.id).startsWith('new_');
+      if (isNew) newClientIds.push(String(row.id));
       return {
         row_id:              isNew ? 'new' : String(row.id),
         _client_id:          String(row.id),
@@ -656,20 +691,14 @@
 
       if (result.ok) {
         dirtyRows.clear();
-
-        // Swap client new_ ids for real DB ids returned by the server
-        if (result.new_ids && result.new_ids.length > 0) {
-          const newClientIds = rowsData
-            .filter(r => r.row_id === 'new')
-            .map(r => r._client_id);
-
+        if (result.new_ids?.length > 0) {
           result.new_ids.forEach((realId, i) => {
             if (i >= newClientIds.length) return;
             const clientId = newClientIds[i];
             const tr = rowIdToElement.get(clientId);
-            if (tr) _swapRowId(tr, clientId, String(realId));
-            else {
-              // Row scrolled out of DOM — update in-memory only
+            if (tr) {
+              _swapRowId(tr, clientId, String(realId));
+            } else {
               const dataRow = allRows.find(r => String(r.id) === clientId);
               if (dataRow) dataRow.id = String(realId);
               const fRow = filteredRows.find(r => String(r.id) === clientId);
@@ -677,7 +706,6 @@
             }
           });
         }
-
         showToast(`✓ All rows saved (${result.saved} record${result.saved !== 1 ? 's' : ''})`, 'success');
       } else {
         showToast(result.errors?.length ? `Saved with errors: ${result.errors.slice(0, 2).join('; ')}` : 'Save failed', 'error');
@@ -687,6 +715,25 @@
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
     }
+  }
+
+  /* ==================== ID SWAP HELPER ==================== */
+  function _swapRowId(tr, oldId, newId) {
+    tr.dataset.rowId = newId;
+    const hidden = tr.querySelector('input[type=hidden][name="row_id"]');
+    if (hidden) hidden.value = newId;
+
+    rowIdToElement.delete(oldId);
+    rowIdToElement.set(newId, tr);
+
+    const dataRow = allRows.find(r => String(r.id) === oldId);
+    if (dataRow) dataRow.id = newId;
+
+    const fRow = filteredRows.find(r => String(r.id) === oldId);
+    if (fRow) fRow.id = newId;
+
+    dirtyRows.delete(oldId);
+    _saveTimers.delete(oldId);
   }
 
   /* ==================== DELETE ROW ==================== */
@@ -710,6 +757,7 @@
       allRows      = allRows.filter(r => String(r.id) !== rowId);
       filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
       rowIdToElement.delete(rowId);
+      if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
       tr.remove();
       const tc = document.getElementById('dm-total-count');
       if (tc) tc.textContent = allRows.length;
@@ -724,11 +772,11 @@
 
     for (let i = 0; i < allRows.length; i++) {
       const id = String(allRows[i].id);
-      if (incoming.has(id) && !dirtyRows.has(id)) {
+      if (incoming.has(id) && !dirtyRows.has(id) && !_saveTimers.has(id)) {
         const inc = normalizeDmRow(incoming.get(id));
         allRows[i] = { ...allRows[i], ...inc };
         const tr = rowIdToElement.get(id);
-        if (tr && id !== focusedRowId && !dirtyRows.has(id)) {
+        if (tr && id !== focusedRowId) {
           const row = allRows[i];
           const badge = tr.querySelector('.release-status-badge');
           if (badge) {
@@ -751,8 +799,6 @@
   }
 
   /* ==================== IMPORT MODAL ==================== */
-  function _getCsrf() { return getCsrf(); }
-
   function openImportModal() {
     const modal = document.getElementById('importModal');
     if (!modal) return;
@@ -792,14 +838,10 @@
       const resp = await fetch(`/device-monitoring/import/status/${taskId}/`, { credentials: 'same-origin' });
       const data = await resp.json().catch(() => null);
       if (!data) { _stopPolling(); showToast('Import polling failed', 'error'); return; }
-
       if (data.state === 'SUCCESS') {
         _stopPolling(); _setImportProgress(100, 'Done!');
         const sucEl = document.getElementById('import-success');
-        if (sucEl) {
-          sucEl.textContent = `✓ Import complete: ${data.created} created, ${data.updated} updated.`;
-          sucEl.style.display = 'flex';
-        }
+        if (sucEl) { sucEl.textContent = `✓ Import complete: ${data.created} created, ${data.updated} updated.`; sucEl.style.display = 'flex'; }
         const btn = document.getElementById('import-confirm-btn');
         if (btn) { btn.disabled = false; btn.textContent = 'Import'; }
         showToast(`✓ Import finished — ${data.created + data.updated} rows processed`, 'success');
@@ -842,7 +884,6 @@
       const resp = await fetch('/device-monitoring/import/', { method: 'POST', body: formData, credentials: 'same-origin' });
       const data = await resp.json();
       if (!resp.ok || !data.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-
       if (data.done === true) {
         _setImportProgress(100, 'Done!');
         sucEl.textContent = `✓ Import complete: ${data.created} created, ${data.updated} updated.`;
@@ -852,7 +893,6 @@
         setTimeout(() => { closeImportModal(); window.location.reload(); }, 1800);
         return;
       }
-
       if (!data.task_id) {
         _setImportProgress(100, 'Done!');
         sucEl.textContent = data.message || 'No data rows found.';
@@ -860,7 +900,6 @@
         btn.disabled = false; btn.textContent = 'Import';
         return;
       }
-
       _currentTask = data.task_id;
       _setImportProgress(15, `Queued ${data.total} rows…`);
       btn.innerHTML = '<svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Processing…';
@@ -909,36 +948,50 @@
       }, 50);
     });
 
+    // Checkboxes — sync hidden input then schedule auto-save
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
       if (cb?.type === 'checkbox') {
         syncCheck(cb);
         handleDmCheck(cb, cb.getAttribute('data-field'));
+        // handleDmCheck already calls scheduleAutoSave
+        return;
+      }
+      // Select dropdowns (borrower_type) — schedule auto-save
+      const tr = e.target.closest('tr[data-row-id]');
+      if (tr) {
+        const rowId = tr.dataset.rowId;
+        if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
+        scheduleAutoSave(tr);
       }
     });
 
+    // Text inputs & textareas — update in-memory + schedule auto-save
     document.addEventListener('input', e => {
-      const row = e.target.closest('tr[data-row-id]');
-      if (!row) return;
-      const rowId = row.dataset.rowId;
+      const tr = e.target.closest('tr[data-row-id]');
+      if (!tr) return;
+      const rowId = tr.dataset.rowId;
       if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
 
       const dataRow = allRows.find(r => String(r.id) === String(rowId));
       if (dataRow) {
-        if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; row.dataset.box = e.target.value.toLowerCase(); }
-        if (e.target.name === 'office_college')       { dataRow.office_college = e.target.value; row.dataset.college = e.target.value.toLowerCase(); }
+        if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; tr.dataset.box = e.target.value.toLowerCase(); }
+        if (e.target.name === 'office_college')       { dataRow.office_college = e.target.value; tr.dataset.college = e.target.value.toLowerCase(); }
         if (e.target.name === 'accountable_person')   dataRow.accountable_person = e.target.value;
-        if (e.target.name === 'borrower_type')        { dataRow.borrower_type = e.target.value; row.dataset.borrowerType = e.target.value; }
-        if (e.target.name === 'accountable_officer')  { dataRow.accountable_officer = e.target.value; row.dataset.officer = e.target.value.toLowerCase(); }
+        if (e.target.name === 'borrower_type')        { dataRow.borrower_type = e.target.value; tr.dataset.borrowerType = e.target.value; }
+        if (e.target.name === 'accountable_officer')  { dataRow.accountable_officer = e.target.value; tr.dataset.officer = e.target.value.toLowerCase(); }
         if (e.target.name === 'device')               dataRow.device = e.target.value;
         if (e.target.name === 'serial_number')        dataRow.serial_number = e.target.value;
-        if (e.target.name === 'assigned_mr')          { dataRow.assigned_mr = e.target.value; row.dataset.mr = e.target.value; }
-        if (e.target.name === 'ptr')                  { dataRow.ptr = e.target.value; row.dataset.ptr = e.target.value; }
+        if (e.target.name === 'assigned_mr')          { dataRow.assigned_mr = e.target.value; tr.dataset.mr = e.target.value; }
+        if (e.target.name === 'ptr')                  { dataRow.ptr = e.target.value; tr.dataset.ptr = e.target.value; }
         if (e.target.name === 'remarks')              dataRow.remarks = e.target.value;
         if (e.target.name === 'issue')                dataRow.issue = e.target.value;
       }
+
+      scheduleAutoSave(tr);
     });
 
+    // Filters
     const si = document.getElementById('dm-search');
     if (si) si.addEventListener('input', debouncedFilter);
     ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
@@ -957,12 +1010,8 @@
     document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
     document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
 
-    // ── Individual row save (delegated) ──────────────────────────────────────
-    // Uses JSON POST instead of form submit so new rows are handled correctly.
+    // Delete only — no save button handler needed anymore
     document.addEventListener('click', e => {
-      const saveBtn = e.target.closest('.dm-save-row');
-      if (saveBtn) { e.preventDefault(); e.stopPropagation(); saveRow(saveBtn); return; }
-
       const db = e.target.closest('.dm-delete-row');
       if (db) { e.preventDefault(); deleteRow(db); }
     });
@@ -995,8 +1044,7 @@
 
     initDragScroll(document.querySelector('.table-container'));
 
-    // ── Export Excel button (Celery async) ───────────────────────────────────
-    const exportBtn = document.querySelector('a[href*="export_device_monitoring"]');
+    const exportBtn = document.querySelector('.export-btn');
     if (exportBtn) {
       exportBtn.addEventListener('click', async function(e) {
         e.preventDefault();
@@ -1049,11 +1097,8 @@
       initVirtualScroll(DM_ROWS.map(normalizeDmRow));
     } else {
       fetch(dmUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then((r) => {
-          if (!r.ok) throw new Error('load failed');
-          return r.json();
-        })
-        .then((data) => startRows(data.rows || []))
+        .then(r => { if (!r.ok) throw new Error('load failed'); return r.json(); })
+        .then(data => startRows(data.rows || []))
         .catch(() => {
           loadingRow.innerHTML = '<td colspan="19" style="text-align:center;padding:48px;color:var(--muted)">Could not load device monitoring data.</td>';
           showToast('Could not load device monitoring', 'error');
