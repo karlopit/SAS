@@ -364,11 +364,11 @@
           {% if borrow_form.student_last_name.errors %}<span class="form-error">{{ borrow_form.student_last_name.errors.0 }}</span>{% endif %}
         </div>
         <div class="form-group">
-          <label class="form-label">Year Level &amp; Section <span style="color:red">*</span></label>
+          <label class="form-label">Year Level<span style="color:red">*</span></label>
           <div class="year-section-row">
             <div>
               <select name="year_level" class="form-control" id="year-level-select">
-                <option value="">— Year Level —</option>
+                <option value="">——</option>
                 <option value="1st Year" {% if borrow_form.year_level.value == '1st Year' %}selected{% endif %}>1st Year</option>
                 <option value="2nd Year" {% if borrow_form.year_level.value == '2nd Year' %}selected{% endif %}>2nd Year</option>
                 <option value="3rd Year" {% if borrow_form.year_level.value == '3rd Year' %}selected{% endif %}>3rd Year</option>
@@ -378,7 +378,7 @@
               {% if borrow_form.year_level.errors %}<span class="form-error">{{ borrow_form.year_level.errors.0 }}</span>{% endif %}
             </div>
             <div>
-              <input type="text" name="section" class="form-control" placeholder="Section (e.g. A, BSIT-3A)" value="{{ borrow_form.section.value|default:'' }}">
+              <input type="text" name="section" class="form-control" placeholder="BSCS-A" value="{{ borrow_form.section.value|default:'' }}">
               {% if borrow_form.section.errors %}<span class="form-error">{{ borrow_form.section.errors.0 }}</span>{% endif %}
             </div>
           </div>
