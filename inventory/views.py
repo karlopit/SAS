@@ -662,11 +662,6 @@ def _parse_excel_date(raw):
 @login_required
 @require_http_methods(["POST"])
 def device_monitoring_import(request):
-    """
-    Accepts an Excel file, parses it synchronously (fast — just reading cells),
-    then hands the parsed row-dicts to a Celery task for the slow DB work.
-    Returns JSON immediately with a task_id the frontend can poll.
-    """
     if request.user.role != 'staff':
         return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
 
@@ -676,14 +671,13 @@ def device_monitoring_import(request):
     if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
         return JsonResponse({'ok': False, 'error': 'Invalid file. Please upload .xlsx or .xls.'}, status=400)
 
-    # ── Read workbook ────────────────────────────────────────────────────────
     try:
         wb = openpyxl.load_workbook(excel_file, data_only=True)
         ws = wb.active
     except Exception as exc:
         return JsonResponse({'ok': False, 'error': f'Could not read Excel file: {exc}'}, status=400)
 
-    # ── Detect header row (first row with ≥ 3 non-empty cells) ───────────────
+    # ── Detect header row ────────────────────────────────────────────────────
     header_row_num = None
     all_rows = list(ws.iter_rows(min_row=1, max_row=15, values_only=True))
     for row_idx, row in enumerate(all_rows, start=1):
@@ -697,59 +691,52 @@ def device_monitoring_import(request):
 
     header_row = all_rows[header_row_num - 1]
 
-        # ── Map normalized header text → field name ──────────────────────────────
     ALIASES = {
-        'box number':           'box_number',
-        'box no':               'box_number',
-        'box':                  'box_number',
-        'serial number':        'serial_number',
-        'serial no':            'serial_number',
-        'serial':               'serial_number',
-        'sn':                   'serial_number',
-        'college office':       'office_college',    # "college / office" → "college office"
-        'college':              'office_college',
-        'office':               'office_college',
-        'name of student':      'accountable_person',
-        'student name':         'accountable_person',
-        'name':                 'accountable_person',
-        'accountable person':   'accountable_person',
-        'borrower type':        'borrower_type',
-        'type':                 'borrower_type',
-        'accountable officer':  'accountable_officer',
-        'officer':              'accountable_officer',
-        'assigned mr':          'assigned_mr',
-        'mr':                   'assigned_mr',
-        'assigned m r':         'assigned_mr',
-        'device':               'device',
-        'ptr':                  'ptr',
-        # ── Release/Return column — all slash variants become spaces ──────
-        'status':               'release_status_import',
-        'release return':       'release_status_import',   # RELEASE/RETURN
-        'release  return':      'release_status_import',   # RELEASE / RETURN
-        'released return':      'release_status_import',   # RELEASED/RETURN  ← your column
-        'released  return':     'release_status_import',   # RELEASED / RETURN
-        'released returned':    'release_status_import',   # RELEASED/RETURNED
-        'released  returned':   'release_status_import',   # RELEASED / RETURNED
-        'release status':       'release_status_import',
-        'return status':        'release_status_import',
-        # ─────────────────────────────────────────────────────────────────
-        'date returned':        'date_returned',
-        'date released':        'date_returned',
-        'remarks':              'remarks',
-        'issue':                'issue',
+        'box number':          'box_number',
+        'box no':              'box_number',
+        'box':                 'box_number',
+        'serial number':       'serial_number',
+        'serial no':           'serial_number',
+        'serial':              'serial_number',
+        'sn':                  'serial_number',
+        'college office':      'office_college',
+        'college':             'office_college',
+        'office':              'office_college',
+        'name of student':     'accountable_person',
+        'student name':        'accountable_person',
+        'name':                'accountable_person',
+        'accountable person':  'accountable_person',
+        'borrower type':       'borrower_type',
+        'type':                'borrower_type',
+        'accountable officer': 'accountable_officer',
+        'officer':             'accountable_officer',
+        'assigned mr':         'assigned_mr',
+        'mr':                  'assigned_mr',
+        'assigned m r':        'assigned_mr',
+        'device':              'device',
+        'ptr':                 'ptr',
+        'status':              'release_status_import',
+        'release return':      'release_status_import',
+        'release  return':     'release_status_import',
+        'released return':     'release_status_import',
+        'released  return':    'release_status_import',
+        'released returned':   'release_status_import',
+        'released  returned':  'release_status_import',
+        'release status':      'release_status_import',
+        'return status':       'release_status_import',
+        'date returned':       'date_returned',
+        'date released':       'date_returned',
+        'remarks':             'remarks',
+        'issue':               'issue',
     }
 
     def _norm(h):
-        """Lowercase, replace punctuation/slashes with spaces, collapse whitespace."""
-        import re as _re
         h = str(h or '').strip().lower()
-        h = _re.sub(r'[.#/\\\-_]', ' ', h)   # replace delimiters with space
-        h = _re.sub(r'\s+', ' ', h).strip()   # collapse multiple spaces
+        h = re.sub(r'[.#/\\\-_]', ' ', h)
+        h = re.sub(r'\s+', ' ', h).strip()
         return h
 
-    # Map headers → fields. Defer generic "Status" → release_status_import until after
-    # explicit RELEASED/RETURN-style headers, so a leftmost "Status" column does not
-    # steal the mapping from the real release/return column.
+    # ── Map columns to field names ───────────────────────────────────────────
     ALIASES_PRIMARY = {k: v for k, v in ALIASES.items() if k != 'status'}
     col_map = {}
     for col_idx, cell_val in enumerate(header_row):
@@ -757,21 +744,20 @@ def device_monitoring_import(request):
         field = ALIASES_PRIMARY.get(norm)
         if field and field not in col_map.values():
             col_map[col_idx] = field
+
     if 'release_status_import' not in col_map.values():
         for col_idx, cell_val in enumerate(header_row):
             if _norm(cell_val) == 'status' and col_idx not in col_map:
                 col_map[col_idx] = 'release_status_import'
                 break
 
-    # --- Fallback: if release_status_import is still missing,
-    #     use any header that contains "release" in its raw (lowered) text ---
+    # FIX: renamed 'raw' → 'hdr_raw' and 'norm' → 'hdr_norm' to avoid
+    # conflicting with the same variable names used in the data row loop below.
     if 'release_status_import' not in col_map.values():
         for col_idx, cell_val in enumerate(header_row):
-            # check original, trimmed, lowercase header *before* normalising
-            raw = str(cell_val).strip().lower()
-            # also check against norm for partial match
-            norm = _norm(cell_val)
-            if 'release' in raw or 'release' in norm:
+            hdr_raw  = str(cell_val).strip().lower()
+            hdr_norm = _norm(cell_val)
+            if 'release' in hdr_raw or 'release' in hdr_norm:
                 if col_idx not in col_map:
                     col_map[col_idx] = 'release_status_import'
                     break
@@ -785,9 +771,10 @@ def device_monitoring_import(request):
             )
         }, status=400)
 
-    # ── Parse data rows into plain dicts (no DB calls here) ─────────────────
+    # ── Parse data rows ──────────────────────────────────────────────────────
     rows_data = []
     data_rows = list(ws.iter_rows(min_row=header_row_num + 1, values_only=True))
+
     for row in data_rows:
         if all(c is None or str(c).strip() == '' for c in row):
             continue
@@ -795,46 +782,41 @@ def device_monitoring_import(request):
         str_data = {}
         raw_data = {}
         for col_idx, field_name in col_map.items():
-            raw = row[col_idx] if col_idx < len(row) else None
-            raw_data[field_name] = raw
-            str_data[field_name] = str(raw).strip() if raw is not None else ''
-
-        # ── Replace this block inside the data row loop in device_monitoring_import ──
-        # Find the box_number cleaning section and replace with this:
+            # FIX: renamed loop var from 'raw' → 'cell_raw' so it doesn't
+            # conflict with 'raw' used in the header fallback block above.
+            cell_raw = row[col_idx] if col_idx < len(row) else None
+            raw_data[field_name] = cell_raw
+            str_data[field_name] = str(cell_raw).strip() if cell_raw is not None else ''
 
         serial = str_data.get('serial_number', '').strip()
         if not serial:
             continue
 
         release_norm = _norm(str_data.get('release_status_import', ''))
-
-        is_returned = False
-        is_released = False
-
+        is_returned  = False
+        is_released  = False
         if release_norm:
             if 'return' in release_norm:
                 is_returned = True
-                is_released = False
             elif any(k in release_norm for k in ['release', 'borrow', 'out']):
                 is_released = True
-                is_returned = False
 
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
 
-        raw_date = raw_data.get('date_returned')
-        if raw_date is not None and not isinstance(raw_date, str):
-            raw_date = str(raw_date)
+        # FIX: renamed 'raw_date' source from raw_data to avoid any
+        # ambiguity — use a fresh local name 'date_cell_raw'.
+        date_cell_raw = raw_data.get('date_returned')
+        if date_cell_raw is not None and not isinstance(date_cell_raw, str):
+            date_cell_raw = str(date_cell_raw)
 
-        # FIX: initialize box_number_raw unconditionally first,
-        # then clean it — avoids Python 3.14 "cannot access local variable" error
-        box_number_raw = str_data.get('box_number', '').strip()
-        if box_number_raw.endswith('.0') and box_number_raw[:-2].isdigit():
-            box_number_raw = box_number_raw[:-2]
+        box_num = str_data.get('box_number', '').strip()
+        if box_num.endswith('.0') and box_num[:-2].isdigit():
+            box_num = box_num[:-2]
 
         rows_data.append({
             'serial_number':       serial,
-            'box_number':          box_number_raw,
+            'box_number':          box_num,
             'office_college':      str_data.get('office_college', ''),
             'accountable_person':  str_data.get('accountable_person', ''),
             'borrower_type':       borrower_type,
@@ -844,11 +826,10 @@ def device_monitoring_import(request):
             'ptr':                 str_data.get('ptr', ''),
             'remarks':             str_data.get('remarks', ''),
             'issue':               str_data.get('issue', ''),
-            'date_returned_raw':   raw_date or '',
+            'date_returned_raw':   date_cell_raw or '',
             'is_returned':         is_returned,
             'is_released':         is_released,
         })
-    
 
     if not rows_data:
         return JsonResponse({
@@ -863,20 +844,18 @@ def device_monitoring_import(request):
         task = process_excel_import.delay(rows_data, request.user.id)
         task_id = task.id
     except Exception as exc:
-        # Celery unavailable — fall back to running synchronously
-        import traceback as _tb
         try:
             from inventory.tasks import process_excel_import
             result = process_excel_import(rows_data, request.user.id)
             return JsonResponse({
                 'ok':      True,
-                'task_id': None,   # no task — ran inline
+                'task_id': None,
                 'total':   len(rows_data),
                 'created': result.get('created', 0),
                 'updated': result.get('updated', 0),
                 'errors':  result.get('errors', []),
                 'message': 'Import complete (ran synchronously — Celery unavailable).',
-                'done':    True,   # tell the frontend it's already finished
+                'done':    True,
             })
         except Exception as exc2:
             return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
