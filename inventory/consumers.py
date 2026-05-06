@@ -214,20 +214,14 @@ def _build_borrow_requests_payload():
 
 
 def _build_device_monitoring_payload():
-    """
-    Only sends fields the frontend actually uses — skips heavy text fields
-    (remarks, issue) in the live-update path since those are rarely changed
-    simultaneously by multiple users.
-    """
     from inventory.models import DeviceMonitor, BorrowRequest
 
-    # Use values() to avoid loading model instances for 4k+ rows
     rows_qs = DeviceMonitor.objects.values(
         'id', 'box_number', 'office_college', 'accountable_person',
         'borrower_type', 'accountable_officer', 'assigned_mr', 'device',
         'serial_number', 'ptr', 'serviceable', 'non_serviceable',
         'sealed', 'missing', 'incomplete', 'remarks', 'issue',
-        'is_released', 'date_returned',
+        'is_released', 'release_status', 'date_returned',   # ← added release_status
     ).order_by('box_number', 'id')
 
     rows = []
@@ -235,7 +229,12 @@ def _build_device_monitoring_payload():
         if r['date_returned']:
             release_status    = 'Returned'
             date_returned_str = _fmt_ph(r['date_returned'])
+        elif r['release_status']:
+            # Use the stored release_status field first (set by the user via badge)
+            release_status    = r['release_status']
+            date_returned_str = '—'
         elif r['is_released']:
+            # Fall back to is_released boolean for legacy rows
             release_status    = 'Released'
             date_returned_str = '—'
         else:
@@ -262,6 +261,7 @@ def _build_device_monitoring_payload():
             'issue':               r['issue'],
             'release_status':      release_status,
             'date_returned':       date_returned_str,
+            'date_returned_display': date_returned_str,  # JS normalizeDmRow expects this
         })
 
     pending_count = BorrowRequest.objects.filter(status='pending').count()

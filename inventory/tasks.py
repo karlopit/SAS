@@ -128,6 +128,9 @@ def process_excel_import(self, rows_data, user_id):
         if not serial:
             continue
 
+        # FIX: Extract box_number from the row data before using it
+        box_number = (d.get('box_number') or '').strip()
+
         is_returned   = bool(d.get('is_returned'))
         is_released   = bool(d.get('is_released'))
         date_returned = _parse_excel_date(d.get('date_returned_raw'))
@@ -139,6 +142,7 @@ def process_excel_import(self, rows_data, user_id):
         if is_released:
             date_returned = None
 
+        # Clean up .0 suffix that sometimes appears when Excel stores numbers as floats
         if box_number.endswith('.0') and box_number[:-2].isdigit():
             box_number = box_number[:-2]
 
