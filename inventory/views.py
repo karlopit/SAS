@@ -483,7 +483,11 @@ def device_monitoring_save(request):
                     new_ids.append(obj.pk)
                     saved_count += 1
                 else:
-                    obj = DeviceMonitor.objects.get(pk=int(row_id))
+                    try:
+                        obj = DeviceMonitor.objects.get(pk=int(row_id))
+                    except DeviceMonitor.DoesNotExist:
+                        # Row was deleted before this save arrived — silently skip
+                        continue
                     old_date_returned = obj.date_returned
                     for attr, value in fields.items():
                         setattr(obj, attr, value)
@@ -491,8 +495,7 @@ def device_monitoring_save(request):
                     obj.save()
                     saved_count += 1
             except Exception as e:
-                import traceback
-                errors.append(f"Row {row_id}: {str(e)} | {traceback.format_exc()}")
+                errors.append(f"Row {row_id}: {str(e)}")
 
         b = _broadcasts()
         b.broadcast_device_monitoring()

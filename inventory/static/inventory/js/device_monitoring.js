@@ -42,6 +42,8 @@
   // Track new rows that are currently being saved (prevent double-fire)
   const _savingNew  = new Set();
 
+  const _deletedRows = new Set();
+
   async function pollExportTask(taskId) {
     const hide = () => {
       const overlay = document.getElementById('invsys-loading-overlay');
@@ -743,20 +745,22 @@
   async function saveRow(tr) {
     if (!tr) return;
     const clientId = tr.dataset.rowId;
-
-    // FIX: delegate to _saveNewRow instead of silently returning
+ 
+    // Skip if this row was deleted while a save was in flight
+    if (_deletedRows.has(clientId)) return;
+ 
     if (clientId.startsWith('new_')) {
       return _saveNewRow(tr);
     }
-
+ 
     harvestRowEdits(tr, clientId);
     const payload = extractRowPayload(tr);
-
+ 
     const form = document.getElementById('dm-form');
     if (!form) return;
-
+ 
     _setRowStatus(tr, 'saving');
-
+ 
     try {
       const resp = await fetch(form.action, {
         method:  'POST',
@@ -768,15 +772,17 @@
         body:        JSON.stringify({ rows: [payload], save_all: false }),
         credentials: 'same-origin',
       });
-
+ 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
-
+ 
       if (!result.ok) throw new Error(result.errors?.[0] || 'Save failed');
-
+ 
       dirtyRows.delete(clientId);
       _setRowStatus(tr, 'saved');
     } catch (err) {
+      // Don't show error if the row was deleted while save was in flight
+      if (_deletedRows.has(clientId)) return;
       _setRowStatus(tr, 'error');
       showToast('Auto-save error: ' + err.message, 'error');
     }
@@ -807,7 +813,7 @@
     const tr    = btn.closest('tr');
     const rowId = tr?.dataset?.rowId;
     if (!rowId) return;
-
+ 
     if (rowId.startsWith('new_')) {
       allRows      = allRows.filter(r => String(r.id) !== rowId);
       filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
@@ -819,9 +825,17 @@
       if (tc) tc.textContent = allRows.length;
       return;
     }
-
+ 
     if (!confirm('Delete this row? This cannot be undone.')) return;
-
+ 
+    // ── Mark as deleted BEFORE the fetch so any in-flight auto-save
+    // that completes after this point silently skips the update ──
+    _deletedRows.add(rowId);
+ 
+    // Cancel any pending debounce timer for this row
+    if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
+    dirtyRows.delete(rowId);
+ 
     const overlay = document.getElementById('invsys-loading-overlay');
     const label   = overlay?.querySelector('.loader-label');
     if (overlay) {
@@ -829,9 +843,7 @@
       overlay.classList.add('is-active');
       overlay.setAttribute('aria-hidden', 'false');
     }
-
-    if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
-
+ 
     fetch(`/device-monitoring/${rowId}/delete/`, {
       method:      'POST',
       credentials: 'same-origin',
@@ -850,7 +862,11 @@
         if (tc) tc.textContent = allRows.length;
         showToast('Row deleted', 'success');
       })
-      .catch(err => showToast('Delete failed: ' + err.message, 'error'))
+      .catch(err => {
+        // Delete failed — remove from deleted set so auto-save can resume
+        _deletedRows.delete(rowId);
+        showToast('Delete failed: ' + err.message, 'error');
+      })
       .finally(() => {
         if (overlay) {
           if (label) label.textContent = 'Loading…';
