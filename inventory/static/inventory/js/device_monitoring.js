@@ -635,88 +635,6 @@
     }
   }
 
-  /* ==================== SAVE ALL ROWS (top-level button, optional) ========= */
-  async function saveAllRows() {
-    const form = document.getElementById('dm-form');
-    if (!form) return;
-
-    const btn = document.getElementById('saveAllBtn');
-    const originalHTML = btn ? btn.innerHTML : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Saving…';
-    }
-
-    rowIdToElement.forEach((tr, id) => harvestRowEdits(tr, id));
-
-    const newClientIds = [];
-    const rowsData = allRows.map(row => {
-      const isNew = String(row.id).startsWith('new_');
-      if (isNew) newClientIds.push(String(row.id));
-      return {
-        row_id:              isNew ? 'new' : String(row.id),
-        _client_id:          String(row.id),
-        box_number:          row.box_number          || '',
-        serial_number:       row.serial_number       || '',
-        office_college:      row.office_college      || '',
-        accountable_person:  row.accountable_person  || '',
-        borrower_type:       row.borrower_type       || '',
-        assigned_mr:         row.assigned_mr         || '',
-        accountable_officer: row.accountable_officer || '',
-        device:              row.device              || 'Tablet',
-        serviceable:         row.serviceable     ? 'on' : 'off',
-        non_serviceable:     row.non_serviceable ? 'on' : 'off',
-        sealed:              row.sealed          ? 'on' : 'off',
-        missing:             row.missing         ? 'on' : 'off',
-        incomplete:          row.incomplete      ? 'on' : 'off',
-        ptr:                 row.ptr                 || '',
-        remarks:             row.remarks             || '',
-        issue:               row.issue               || '',
-      };
-    });
-
-    try {
-      const resp = await fetch(form.action, {
-        method:  'POST',
-        headers: {
-          'Content-Type':     'application/json',
-          'X-CSRFToken':      getCsrf(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body:        JSON.stringify({ rows: rowsData, save_all: true }),
-        credentials: 'same-origin',
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const result = await resp.json();
-
-      if (result.ok) {
-        dirtyRows.clear();
-        if (result.new_ids?.length > 0) {
-          result.new_ids.forEach((realId, i) => {
-            if (i >= newClientIds.length) return;
-            const clientId = newClientIds[i];
-            const tr = rowIdToElement.get(clientId);
-            if (tr) {
-              _swapRowId(tr, clientId, String(realId));
-            } else {
-              const dataRow = allRows.find(r => String(r.id) === clientId);
-              if (dataRow) dataRow.id = String(realId);
-              const fRow = filteredRows.find(r => String(r.id) === clientId);
-              if (fRow) fRow.id = String(realId);
-            }
-          });
-        }
-        showToast(`✓ All rows saved (${result.saved} record${result.saved !== 1 ? 's' : ''})`, 'success');
-      } else {
-        showToast(result.errors?.length ? `Saved with errors: ${result.errors.slice(0, 2).join('; ')}` : 'Save failed', 'error');
-      }
-    } catch (err) {
-      showToast('Network error: ' + err.message, 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = originalHTML; }
-    }
-  }
-
   /* ==================== ID SWAP HELPER ==================== */
   function _swapRowId(tr, oldId, newId) {
     tr.dataset.rowId = newId;
@@ -742,18 +660,8 @@
     const rowId = tr?.dataset?.rowId;
     if (!rowId) return;
 
-    if (!rowId.startsWith('new_')) {
-      if (!confirm('Delete this row?')) return;
-      const form  = document.createElement('form');
-      form.method = 'post';
-      form.action = `/device-monitoring/${rowId}/delete/`;
-      const csrf  = document.createElement('input');
-      csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
-      csrf.value = getCsrf();
-      form.appendChild(csrf);
-      document.body.appendChild(form);
-      form.submit();
-    } else {
+    if (rowId.startsWith('new_')) {
+      // New rows that haven't been saved yet — remove from DOM and memory only
       allRows      = allRows.filter(r => String(r.id) !== rowId);
       filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
       rowIdToElement.delete(rowId);
@@ -761,7 +669,58 @@
       tr.remove();
       const tc = document.getElementById('dm-total-count');
       if (tc) tc.textContent = allRows.length;
+      return;
     }
+
+    // Persisted rows — confirm then show loading overlay while the server request runs
+    if (!confirm('Delete this row? This cannot be undone.')) return;
+
+    const overlay = document.getElementById('invsys-loading-overlay');
+    const label   = overlay?.querySelector('.loader-label');
+    if (overlay) {
+      if (label) label.textContent = 'Deleting…';
+      overlay.classList.add('is-active');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    // Cancel any pending auto-save for this row so it doesn't fire after deletion
+    if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
+
+    // POST to the delete endpoint
+    fetch(`/device-monitoring/${rowId}/delete/`, {
+      method:      'POST',
+      credentials: 'same-origin',
+      headers:     { 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+    })
+      .then(resp => {
+        // Server redirects on success (302) — fetch follows it, so any 2xx is fine.
+        // Remove row from DOM and memory without a full page reload.
+        allRows      = allRows.filter(r => String(r.id) !== rowId);
+        filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
+        rowIdToElement.delete(rowId);
+        dirtyRows.delete(rowId);
+        tr.remove();
+
+        // Update bottom spacer height so virtual scroll stays accurate
+        if (bottomSpacer) {
+          bottomSpacer.style.height = (Math.max(0, filteredRows.length - endIdx) * ROW_HEIGHT) + 'px';
+        }
+
+        const tc = document.getElementById('dm-total-count');
+        if (tc) tc.textContent = allRows.length;
+
+        showToast('Row deleted', 'success');
+      })
+      .catch(err => {
+        showToast('Delete failed: ' + err.message, 'error');
+      })
+      .finally(() => {
+        if (overlay) {
+          if (label) label.textContent = 'Loading…';   // restore default label
+          overlay.classList.remove('is-active');
+          overlay.setAttribute('aria-hidden', 'true');
+        }
+      });
   }
 
   /* ==================== WEBSOCKET REALTIME ==================== */

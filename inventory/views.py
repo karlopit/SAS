@@ -571,6 +571,12 @@ def device_monitoring_delete(request, row_id):
     b = _broadcasts()
     b.broadcast_device_monitoring()
     b.broadcast_dashboard()
+
+    # AJAX delete (from JS fetch) — return JSON so no page reload needed
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'ok': True})
+
+    # Regular form POST fallback (shouldn't be reached anymore)
     return redirect('device_monitoring')
 
 
