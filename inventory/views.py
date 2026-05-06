@@ -664,211 +664,212 @@ def _parse_excel_date(raw):
 
 @login_required
 @require_http_methods(["POST"])
+@csrf_exempt
 def device_monitoring_import(request):
-    if request.user.role != 'staff':
-        return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
-
-    excel_file = request.FILES.get('excel_file')
-    if not excel_file:
-        return JsonResponse({'ok': False, 'error': 'No file uploaded.'}, status=400)
-    if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
-        return JsonResponse({'ok': False, 'error': 'Invalid file. Please upload .xlsx or .xls.'}, status=400)
-
     try:
-        wb = openpyxl.load_workbook(excel_file, data_only=True)
-        ws = wb.active
-    except Exception as exc:
-        return JsonResponse({'ok': False, 'error': f'Could not read Excel file: {exc}'}, status=400)
+        if request.user.role != 'staff':
+            return JsonResponse({'ok': False, 'error': 'Forbidden'}, status=403)
 
-    # ── Detect header row ────────────────────────────────────────────────────
-    header_row_num = None
-    all_rows = list(ws.iter_rows(min_row=1, max_row=15, values_only=True))
-    for row_idx, row in enumerate(all_rows, start=1):
-        non_empty = [c for c in row if c is not None and str(c).strip()]
-        if len(non_empty) >= 3:
-            header_row_num = row_idx
-            break
+        excel_file = request.FILES.get('excel_file')
+        if not excel_file:
+            return JsonResponse({'ok': False, 'error': 'No file uploaded.'}, status=400)
+        if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
+            return JsonResponse({'ok': False, 'error': 'Invalid file. Please upload .xlsx or .xls.'}, status=400)
 
-    if header_row_num is None:
-        return JsonResponse({'ok': False, 'error': 'Could not find a header row (need ≥ 3 filled cells).'}, status=400)
+        try:
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+            ws = wb.active
+        except Exception as exc:
+            return JsonResponse({'ok': False, 'error': f'Could not read Excel file: {exc}'}, status=400)
 
-    header_row = all_rows[header_row_num - 1]
-
-    ALIASES = {
-        'box number':          'box_number',
-        'box no':              'box_number',
-        'box':                 'box_number',
-        'serial number':       'serial_number',
-        'serial no':           'serial_number',
-        'serial':              'serial_number',
-        'sn':                  'serial_number',
-        'college office':      'office_college',
-        'college':             'office_college',
-        'office':              'office_college',
-        'name of student':     'accountable_person',
-        'student name':        'accountable_person',
-        'name':                'accountable_person',
-        'accountable person':  'accountable_person',
-        'borrower type':       'borrower_type',
-        'type':                'borrower_type',
-        'accountable officer': 'accountable_officer',
-        'officer':             'accountable_officer',
-        'assigned mr':         'assigned_mr',
-        'mr':                  'assigned_mr',
-        'assigned m r':        'assigned_mr',
-        'device':              'device',
-        'ptr':                 'ptr',
-        'status':              'release_status_import',
-        'release return':      'release_status_import',
-        'release  return':     'release_status_import',
-        'released return':     'release_status_import',
-        'released  return':    'release_status_import',
-        'released returned':   'release_status_import',
-        'released  returned':  'release_status_import',
-        'release status':      'release_status_import',
-        'return status':       'release_status_import',
-        'date returned':       'date_returned',
-        'date released':       'date_returned',
-        'remarks':             'remarks',
-        'issue':               'issue',
-    }
-
-    def _norm(h):
-        h = str(h or '').strip().lower()
-        h = re.sub(r'[.#/\\\-_]', ' ', h)
-        h = re.sub(r'\s+', ' ', h).strip()
-        return h
-
-    # ── Map columns to field names ───────────────────────────────────────────
-    ALIASES_PRIMARY = {k: v for k, v in ALIASES.items() if k != 'status'}
-    col_map = {}
-    for col_idx, cell_val in enumerate(header_row):
-        norm = _norm(cell_val)
-        field = ALIASES_PRIMARY.get(norm)
-        if field and field not in col_map.values():
-            col_map[col_idx] = field
-
-    if 'release_status_import' not in col_map.values():
-        for col_idx, cell_val in enumerate(header_row):
-            if _norm(cell_val) == 'status' and col_idx not in col_map:
-                col_map[col_idx] = 'release_status_import'
+        # ── Detect header row ────────────────────────────────────────────────
+        header_row_num = None
+        all_rows = list(ws.iter_rows(min_row=1, max_row=15, values_only=True))
+        for row_idx, row in enumerate(all_rows, start=1):
+            non_empty = [c for c in row if c is not None and str(c).strip()]
+            if len(non_empty) >= 3:
+                header_row_num = row_idx
                 break
 
-    # FIX: renamed 'raw' → 'hdr_raw' and 'norm' → 'hdr_norm' to avoid
-    # conflicting with the same variable names used in the data row loop below.
-    if 'release_status_import' not in col_map.values():
+        if header_row_num is None:
+            return JsonResponse({'ok': False, 'error': 'Could not find a header row (need ≥ 3 filled cells).'}, status=400)
+
+        header_row = all_rows[header_row_num - 1]
+
+        ALIASES = {
+            'box number':          'box_number',
+            'box no':              'box_number',
+            'box':                 'box_number',
+            'serial number':       'serial_number',
+            'serial no':           'serial_number',
+            'serial':              'serial_number',
+            'sn':                  'serial_number',
+            'college office':      'office_college',
+            'college':             'office_college',
+            'office':              'office_college',
+            'name of student':     'accountable_person',
+            'student name':        'accountable_person',
+            'name':                'accountable_person',
+            'accountable person':  'accountable_person',
+            'borrower type':       'borrower_type',
+            'type':                'borrower_type',
+            'accountable officer': 'accountable_officer',
+            'officer':             'accountable_officer',
+            'assigned mr':         'assigned_mr',
+            'mr':                  'assigned_mr',
+            'assigned m r':        'assigned_mr',
+            'device':              'device',
+            'ptr':                 'ptr',
+            'status':              'release_status_import',
+            'release return':      'release_status_import',
+            'release  return':     'release_status_import',
+            'released return':     'release_status_import',
+            'released  return':    'release_status_import',
+            'released returned':   'release_status_import',
+            'released  returned':  'release_status_import',
+            'release status':      'release_status_import',
+            'return status':       'release_status_import',
+            'date returned':       'date_returned',
+            'date released':       'date_returned',
+            'remarks':             'remarks',
+            'issue':               'issue',
+        }
+
+        def _norm(h):
+            h = str(h or '').strip().lower()
+            h = re.sub(r'[.#/\\\-_]', ' ', h)
+            h = re.sub(r'\s+', ' ', h).strip()
+            return h
+
+        # ── Map columns to field names ───────────────────────────────────────
+        ALIASES_PRIMARY = {k: v for k, v in ALIASES.items() if k != 'status'}
+        col_map = {}
         for col_idx, cell_val in enumerate(header_row):
-            hdr_raw  = str(cell_val).strip().lower()
-            hdr_norm = _norm(cell_val)
-            if 'release' in hdr_raw or 'release' in hdr_norm:
-                if col_idx not in col_map:
+            norm = _norm(cell_val)
+            field = ALIASES_PRIMARY.get(norm)
+            if field and field not in col_map.values():
+                col_map[col_idx] = field
+
+        if 'release_status_import' not in col_map.values():
+            for col_idx, cell_val in enumerate(header_row):
+                if _norm(cell_val) == 'status' and col_idx not in col_map:
                     col_map[col_idx] = 'release_status_import'
                     break
 
-    if 'serial_number' not in col_map.values():
-        return JsonResponse({
-            'ok': False,
-            'error': (
-                'Could not find a "Serial Number" column. '
-                f'Headers detected: {[str(h) for h in header_row if h]}'
-            )
-        }, status=400)
+        if 'release_status_import' not in col_map.values():
+            for col_idx, cell_val in enumerate(header_row):
+                hdr_raw  = str(cell_val).strip().lower()
+                hdr_norm = _norm(cell_val)
+                if 'release' in hdr_raw or 'release' in hdr_norm:
+                    if col_idx not in col_map:
+                        col_map[col_idx] = 'release_status_import'
+                        break
 
-    # ── Parse data rows ──────────────────────────────────────────────────────
-    rows_data = []
-    data_rows = list(ws.iter_rows(min_row=header_row_num + 1, values_only=True))
+        if 'serial_number' not in col_map.values():
+            return JsonResponse({
+                'ok': False,
+                'error': (
+                    'Could not find a "Serial Number" column. '
+                    f'Headers detected: {[str(h) for h in header_row if h]}'
+                )
+            }, status=400)
 
-    for row in data_rows:
-        if all(c is None or str(c).strip() == '' for c in row):
-            continue
+        # ── Parse data rows ──────────────────────────────────────────────────
+        rows_data = []
+        data_rows = list(ws.iter_rows(min_row=header_row_num + 1, values_only=True))
 
-        str_data = {}
-        raw_data = {}
-        for col_idx, field_name in col_map.items():
-            # FIX: renamed loop var from 'raw' → 'cell_raw' so it doesn't
-            # conflict with 'raw' used in the header fallback block above.
-            cell_raw = row[col_idx] if col_idx < len(row) else None
-            raw_data[field_name] = cell_raw
-            str_data[field_name] = str(cell_raw).strip() if cell_raw is not None else ''
+        for row in data_rows:
+            if all(c is None or str(c).strip() == '' for c in row):
+                continue
 
-        serial = str_data.get('serial_number', '').strip()
-        if not serial:
-            continue
+            str_data = {}
+            raw_data = {}
+            for col_idx, field_name in col_map.items():
+                cell_raw = row[col_idx] if col_idx < len(row) else None
+                raw_data[field_name] = cell_raw
+                str_data[field_name] = str(cell_raw).strip() if cell_raw is not None else ''
 
-        release_norm = _norm(str_data.get('release_status_import', ''))
-        is_returned  = False
-        is_released  = False
-        if release_norm:
-            if 'return' in release_norm:
-                is_returned = True
-            elif any(k in release_norm for k in ['release', 'borrow', 'out']):
-                is_released = True
+            serial = str_data.get('serial_number', '').strip()
+            if not serial:
+                continue
 
-        bt = str_data.get('borrower_type', '').strip().lower()
-        borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
+            release_norm = _norm(str_data.get('release_status_import', ''))
+            is_returned  = False
+            is_released  = False
+            if release_norm:
+                if 'return' in release_norm:
+                    is_returned = True
+                elif any(k in release_norm for k in ['release', 'borrow', 'out']):
+                    is_released = True
 
-        # FIX: renamed 'raw_date' source from raw_data to avoid any
-        # ambiguity — use a fresh local name 'date_cell_raw'.
-        date_cell_raw = raw_data.get('date_returned')
-        if date_cell_raw is not None and not isinstance(date_cell_raw, str):
-            date_cell_raw = str(date_cell_raw)
+            bt = str_data.get('borrower_type', '').strip().lower()
+            borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
 
-        box_num = str_data.get('box_number', '').strip()
-        if box_num.endswith('.0') and box_num[:-2].isdigit():
-            box_num = box_num[:-2]
+            date_cell_raw = raw_data.get('date_returned')
+            if date_cell_raw is not None and not isinstance(date_cell_raw, str):
+                date_cell_raw = str(date_cell_raw)
 
-        rows_data.append({
-            'serial_number':       serial,
-            'box_number':          box_num,
-            'office_college':      str_data.get('office_college', ''),
-            'accountable_person':  str_data.get('accountable_person', ''),
-            'borrower_type':       borrower_type,
-            'accountable_officer': str_data.get('accountable_officer', ''),
-            'assigned_mr':         str_data.get('assigned_mr', ''),
-            'device':              str_data.get('device', '') or 'Tablet',
-            'ptr':                 str_data.get('ptr', ''),
-            'remarks':             str_data.get('remarks', ''),
-            'issue':               str_data.get('issue', ''),
-            'date_returned_raw':   date_cell_raw or '',
-            'is_returned':         is_returned,
-            'is_released':         is_released,
-        })
+            box_num = str_data.get('box_number', '').strip()
+            if box_num.endswith('.0') and box_num[:-2].isdigit():
+                box_num = box_num[:-2]
 
-    if not rows_data:
-        return JsonResponse({
-            'ok': True, 'task_id': None,
-            'total': 0, 'created': 0, 'updated': 0,
-            'message': 'No data rows found in the file.',
-        })
+            rows_data.append({
+                'serial_number':       serial,
+                'box_number':          box_num,
+                'office_college':      str_data.get('office_college', ''),
+                'accountable_person':  str_data.get('accountable_person', ''),
+                'borrower_type':       borrower_type,
+                'accountable_officer': str_data.get('accountable_officer', ''),
+                'assigned_mr':         str_data.get('assigned_mr', ''),
+                'device':              str_data.get('device', '') or 'Tablet',
+                'ptr':                 str_data.get('ptr', ''),
+                'remarks':             str_data.get('remarks', ''),
+                'issue':               str_data.get('issue', ''),
+                'date_returned_raw':   date_cell_raw or '',
+                'is_returned':         is_returned,
+                'is_released':         is_released,
+            })
 
-    # ── Dispatch to Celery ───────────────────────────────────────────────────
-    try:
-        from inventory.tasks import process_excel_import
-        task = process_excel_import.delay(rows_data, request.user.id)
-        task_id = task.id
-    except Exception as exc:
+        if not rows_data:
+            return JsonResponse({
+                'ok': True, 'task_id': None,
+                'total': 0, 'created': 0, 'updated': 0,
+                'message': 'No data rows found in the file.',
+            })
+
+        # ── Dispatch to Celery ───────────────────────────────────────────────
         try:
             from inventory.tasks import process_excel_import
-            result = process_excel_import(rows_data, request.user.id)
-            return JsonResponse({
-                'ok':      True,
-                'task_id': None,
-                'total':   len(rows_data),
-                'created': result.get('created', 0),
-                'updated': result.get('updated', 0),
-                'errors':  result.get('errors', []),
-                'message': 'Import complete (ran synchronously — Celery unavailable).',
-                'done':    True,
-            })
-        except Exception as exc2:
-            return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
+            task = process_excel_import.delay(rows_data, request.user.id)
+            task_id = task.id
+        except Exception as exc:
+            try:
+                from inventory.tasks import process_excel_import
+                result = process_excel_import(rows_data, request.user.id)
+                return JsonResponse({
+                    'ok':      True,
+                    'task_id': None,
+                    'total':   len(rows_data),
+                    'created': result.get('created', 0),
+                    'updated': result.get('updated', 0),
+                    'errors':  result.get('errors', []),
+                    'message': 'Import complete (ran synchronously — Celery unavailable).',
+                    'done':    True,
+                })
+            except Exception as exc2:
+                return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
 
-    return JsonResponse({
-        'ok':      True,
-        'task_id': task_id,
-        'total':   len(rows_data),
-        'message': f'Import started for {len(rows_data)} row(s).',
-    })
+        return JsonResponse({
+            'ok':      True,
+            'task_id': task_id,
+            'total':   len(rows_data),
+            'message': f'Import started for {len(rows_data)} row(s).',
+        })
+
+    except Exception as e:
+        # Log the full traceback for debugging
+        traceback.print_exc()
+        return JsonResponse({'ok': False, 'error': f'Server error: {str(e)}'}, status=500)
 
 
 @login_required
