@@ -169,41 +169,20 @@
   }
 
   window.handleDmCheck = function (cb, field) {
-    const row = cb.closest('tr');
-    if (!row) return;
-    const c = getChecksInRow(row);
-    if (cb.checked) {
-      if (['non_serviceable', 'missing', 'incomplete'].includes(field)) {
-        Object.keys(c).forEach(k => {
-          if (k !== field) { if (c[k].cb) c[k].cb.checked = false; if (c[k].hidden) c[k].hidden.value = 'off'; }
-        });
-      }
-      if (field === 'serviceable' || field === 'sealed') {
-        ['non_serviceable', 'missing', 'incomplete'].forEach(k => {
-          if (c[k].cb) c[k].cb.checked = false; if (c[k].hidden) c[k].hidden.value = 'off';
-        });
-      }
-    }
-    applyLockState(row);
-    markDirtyFromRow(row);
-    scheduleAutoSave(row);
-  };
+  const row = cb.closest('tr');
+  if (!row) return;
+  // No mutual exclusion – just mark dirty and schedule save
+  markDirtyFromRow(row);
+  scheduleAutoSave(row);
+};
 
   function applyLockState(row) {
-    const c = getChecksInRow(row);
-    if (!c.serviceable.cb) return;
-    const exclusiveOn = c.non_serviceable.cb?.checked || c.missing.cb?.checked || c.incomplete.cb?.checked;
-    const safeOn      = c.serviceable.cb?.checked || c.sealed.cb?.checked;
-    if (exclusiveOn) {
-      Object.values(c).forEach(x => { if (x.cb) x.cb.disabled = !x.cb.checked; });
-    } else if (safeOn) {
-      ['non_serviceable', 'missing', 'incomplete'].forEach(k => { if (c[k].cb) c[k].cb.disabled = true; });
-      if (c.serviceable.cb) c.serviceable.cb.disabled = false;
-      if (c.sealed.cb)      c.sealed.cb.disabled      = false;
-    } else {
-      Object.values(c).forEach(x => { if (x.cb) x.cb.disabled = false; });
-    }
-  }
+  // All checkboxes are always enabled – no locking logic
+  const c = getChecksInRow(row);
+  Object.values(c).forEach(x => {
+    if (x.cb) x.cb.disabled = false;
+  });
+}
 
   function markDirtyFromRow(row) {
     const rowId = row?.dataset?.rowId;
