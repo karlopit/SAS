@@ -1,13 +1,11 @@
 /**
- * device_monitoring.js — Auto-save edition
+ * device_monitoring.js — Auto-save edition with editable Release/Return dropdown
  *
- * Changes from previous version:
- * - Save buttons removed from buildRowHtml
- * - saveRow() is now called automatically after 800ms of inactivity
- *   on any field change (input, change, checkbox)
- * - addDmRow() still auto-saves immediately on row creation
- * - saveAllRows() kept for the top-level "Save All" button if you want it,
- *   but individual rows no longer need it
+ * Changes from original:
+ * - buildRowHtml now uses a <select> for release_status (options: Released, Returned)
+ * - extractRowPayload, harvestRowEdits, and addDmRow include release_status
+ * - Change event listener updates row.release_status and dataset.release
+ * - The static badge span has been completely removed.
  */
 
 (function () {
@@ -17,9 +15,8 @@
   const ROW_HEIGHT     = 64;
   const OVERSCAN       = 10;
   const VISIBLE_BUFFER = 15;
-  const AUTOSAVE_DELAY = 800;   // ms of inactivity before auto-saving a row
+  const AUTOSAVE_DELAY = 800;
 
-  // Per-row debounce timers: rowId → setTimeout handle
   const _saveTimers = new Map();
 
   async function pollExportTask(taskId) {
@@ -100,7 +97,6 @@
   }
 
   /* ==================== SAVING INDICATOR ==================== */
-  // Show a subtle "Saving…" / "Saved" badge inside the row's last cell
   function _setRowStatus(tr, status) {
     let badge = tr.querySelector('.dm-row-status');
     if (!badge) {
@@ -110,7 +106,6 @@
         display:inline-block;font-size:10px;font-weight:600;
         padding:2px 6px;border-radius:4px;margin-left:4px;
         transition:opacity .3s;`;
-      // append to the last <td>
       const lastTd = tr.querySelector('td:last-child');
       if (lastTd) lastTd.appendChild(badge);
     }
@@ -166,7 +161,7 @@
     }
     applyLockState(row);
     markDirtyFromRow(row);
-    scheduleAutoSave(row);   // ← auto-save on checkbox change
+    scheduleAutoSave(row);
   };
 
   function applyLockState(row) {
@@ -191,18 +186,10 @@
   }
 
   /* ==================== AUTO-SAVE SCHEDULER ==================== */
-  /**
-   * Queue a save for a specific row after AUTOSAVE_DELAY ms.
-   * If the user keeps typing the timer resets — only fires once they pause.
-   * New rows (new_xxx) are skipped here because addDmRow() saves them
-   * immediately on creation; once the id is swapped to a real pk the
-   * subsequent edits will be caught normally.
-   */
   function scheduleAutoSave(tr) {
     const rowId = tr?.dataset?.rowId;
     if (!rowId || rowId.startsWith('new_')) return;
 
-    // Clear any pending timer for this row
     if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
 
     _setRowStatus(tr, 'saving');
@@ -222,12 +209,9 @@
       .replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // Save button REMOVED — auto-save handles persistence
+  // ----- RELEASE / RETURN DROPDOWN replaces the static badge -----
   function buildRowHtml(row) {
-    const releaseClass = row.release_status === 'Released' ? 'badge-released'
-                       : row.release_status === 'Returned' ? 'badge-returned-dm'
-                       : 'badge-none';
-
+    const releaseValue = row.release_status || '';
     return `<input type="hidden" name="row_id" value="${row.id}"/>
       <td style="text-align:center"><input type="text" name="box_number" value="${_esc((row.box_number || '').replace(/\.0$/, ''))}" class="form-control dm-box-input" placeholder="Box #" style="width:80px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="serial_number" value="${_esc(row.serial_number)}" class="form-control dm-serial-input" placeholder="S/N" style="width:110px;text-align:center;margin:0 auto"/></td>
@@ -249,7 +233,13 @@
       <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="ptr" value="${_esc(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR" style="width:100px;text-align:center;margin:0 auto"/></td>
-      <td style="text-align:center"><span class="release-status-badge ${releaseClass}">${_esc(row.release_status)}</span></td>
+      <td style="text-align:center">
+        <select name="release_status" class="form-control dm-release-select" style="width:100px;text-align:center;margin:0 auto">
+          <option value="">—</option>
+          <option value="Released" ${releaseValue === 'Released' ? 'selected' : ''}>Released</option>
+          <option value="Returned" ${releaseValue === 'Returned' ? 'selected' : ''}>Returned</option>
+        </select>
+      </td>
       <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${_esc(row.date_returned_display || '—')}</td>
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.remarks)}</textarea></td>
       <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.issue)}</textarea></td>
@@ -282,7 +272,6 @@
     }
     if (focusedRowId) neededIds.add(focusedRowId);
     dirtyRows.forEach(id => neededIds.add(id));
-    // Also keep rows with pending save timers in DOM
     _saveTimers.forEach((_, id) => neededIds.add(id));
 
     rowIdToElement.forEach((tr, id) => {
@@ -352,6 +341,8 @@
     dataRow.ptr                 = g('ptr');
     dataRow.remarks             = tr.querySelector('textarea[name="remarks"]')?.value ?? dataRow.remarks;
     dataRow.issue               = tr.querySelector('textarea[name="issue"]')?.value ?? dataRow.issue;
+    // Capture release/return dropdown
+    dataRow.release_status      = tr.querySelector('select[name="release_status"]')?.value ?? dataRow.release_status;
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
     dataRow.serviceable     = cbState('serviceable');
     dataRow.non_serviceable = cbState('non_serviceable');
@@ -386,6 +377,7 @@
       ptr:                 g('ptr'),
       remarks:             tr.querySelector('textarea[name="remarks"]')?.value ?? '',
       issue:               tr.querySelector('textarea[name="issue"]')?.value ?? '',
+      release_status:      tr.querySelector('select[name="release_status"]')?.value ?? '',
     };
   }
 
@@ -528,7 +520,7 @@
       accountable_person: '', borrower_type: '', assigned_mr: '',
       accountable_officer: '', device: 'Tablet', serviceable: false,
       non_serviceable: false, sealed: false, missing: false, incomplete: false,
-      ptr: '', remarks: '', issue: '', release_status: '—',
+      ptr: '', remarks: '', issue: '', release_status: '',
       date_returned_display: '—',
     };
 
@@ -548,13 +540,14 @@
     const tc = document.getElementById('dm-total-count');
     if (tc) tc.textContent = allRows.length;
 
-    // Auto-save the empty row immediately to get a real DB id
     const form = document.getElementById('dm-form');
     if (!form) return;
 
     _setRowStatus(tr, 'saving');
 
     try {
+      // Capture the current release_status from the dropdown (may be empty initially)
+      const releaseStatus = tr.querySelector('select[name="release_status"]')?.value || '';
       const resp = await fetch(form.action, {
         method:  'POST',
         headers: {
@@ -571,6 +564,7 @@
             serviceable: 'off', non_serviceable: 'off', sealed: 'off',
             missing: 'off', incomplete: 'off',
             ptr: '', remarks: '', issue: '',
+            release_status: releaseStatus,
           }],
           save_all: false,
         }),
@@ -593,12 +587,11 @@
     }
   }
 
-  /* ==================== SAVE ROW (called by auto-save) ==================== */
+  /* ==================== SAVE ROW (auto‑save) ==================== */
   async function saveRow(tr) {
     if (!tr) return;
 
     const clientId = tr.dataset.rowId;
-    // Skip rows still waiting for their initial creation response
     if (clientId.startsWith('new_')) return;
 
     harvestRowEdits(tr, clientId);
@@ -661,7 +654,6 @@
     if (!rowId) return;
 
     if (rowId.startsWith('new_')) {
-      // New rows that haven't been saved yet — remove from DOM and memory only
       allRows      = allRows.filter(r => String(r.id) !== rowId);
       filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
       rowIdToElement.delete(rowId);
@@ -672,7 +664,6 @@
       return;
     }
 
-    // Persisted rows — confirm then show loading overlay while the server request runs
     if (!confirm('Delete this row? This cannot be undone.')) return;
 
     const overlay = document.getElementById('invsys-loading-overlay');
@@ -683,25 +674,20 @@
       overlay.setAttribute('aria-hidden', 'false');
     }
 
-    // Cancel any pending auto-save for this row so it doesn't fire after deletion
     if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
 
-    // POST to the delete endpoint
     fetch(`/device-monitoring/${rowId}/delete/`, {
       method:      'POST',
       credentials: 'same-origin',
       headers:     { 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
     })
       .then(resp => {
-        // Server redirects on success (302) — fetch follows it, so any 2xx is fine.
-        // Remove row from DOM and memory without a full page reload.
         allRows      = allRows.filter(r => String(r.id) !== rowId);
         filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
         rowIdToElement.delete(rowId);
         dirtyRows.delete(rowId);
         tr.remove();
 
-        // Update bottom spacer height so virtual scroll stays accurate
         if (bottomSpacer) {
           bottomSpacer.style.height = (Math.max(0, filteredRows.length - endIdx) * ROW_HEIGHT) + 'px';
         }
@@ -716,7 +702,7 @@
       })
       .finally(() => {
         if (overlay) {
-          if (label) label.textContent = 'Loading…';   // restore default label
+          if (label) label.textContent = 'Loading…';
           overlay.classList.remove('is-active');
           overlay.setAttribute('aria-hidden', 'true');
         }
@@ -736,14 +722,10 @@
         allRows[i] = { ...allRows[i], ...inc };
         const tr = rowIdToElement.get(id);
         if (tr && id !== focusedRowId) {
-          const row = allRows[i];
-          const badge = tr.querySelector('.release-status-badge');
-          if (badge) {
-            const cls = row.release_status === 'Released' ? 'badge-released'
-                       : row.release_status === 'Returned' ? 'badge-returned-dm'
-                       : 'badge-none';
-            badge.className = `release-status-badge ${cls}`;
-            badge.textContent = row.release_status || '—';
+          // Update the release dropdown value if changed externally
+          const releaseSelect = tr.querySelector('select[name="release_status"]');
+          if (releaseSelect && inc.release_status !== undefined) {
+            releaseSelect.value = inc.release_status || '';
           }
           const dateTd = tr.querySelector('.dm-date-returned');
           if (dateTd) dateTd.textContent = row.date_returned_display || '—';
@@ -757,7 +739,7 @@
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
   }
 
-  /* ==================== IMPORT MODAL ==================== */
+  /* ==================== IMPORT MODAL (unchanged) ==================== */
   function openImportModal() {
     const modal = document.getElementById('importModal');
     if (!modal) return;
@@ -907,25 +889,37 @@
       }, 50);
     });
 
-    // Checkboxes — sync hidden input then schedule auto-save
+    // Generic change listener for checkboxes, selects, etc.
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
       if (cb?.type === 'checkbox') {
         syncCheck(cb);
         handleDmCheck(cb, cb.getAttribute('data-field'));
-        // handleDmCheck already calls scheduleAutoSave
         return;
       }
-      // Select dropdowns (borrower_type) — schedule auto-save
+
       const tr = e.target.closest('tr[data-row-id]');
-      if (tr) {
-        const rowId = tr.dataset.rowId;
-        if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
-        scheduleAutoSave(tr);
+      if (!tr) return;
+      const rowId = tr.dataset.rowId;
+      if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
+
+      const dataRow = allRows.find(r => String(r.id) === String(rowId));
+      if (dataRow) {
+        // Handle release/return dropdown change
+        if (e.target.matches('select[name="release_status"]')) {
+          dataRow.release_status = e.target.value;
+          tr.dataset.release = e.target.value || '—';
+        }
+        // Handle borrower_type dropdown
+        if (e.target.matches('select[name="borrower_type"]')) {
+          dataRow.borrower_type = e.target.value;
+        }
       }
+
+      scheduleAutoSave(tr);
     });
 
-    // Text inputs & textareas — update in-memory + schedule auto-save
+    // Input listener for text fields and textareas
     document.addEventListener('input', e => {
       const tr = e.target.closest('tr[data-row-id]');
       if (!tr) return;
@@ -937,7 +931,6 @@
         if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; tr.dataset.box = e.target.value.toLowerCase(); }
         if (e.target.name === 'office_college')       { dataRow.office_college = e.target.value; tr.dataset.college = e.target.value.toLowerCase(); }
         if (e.target.name === 'accountable_person')   dataRow.accountable_person = e.target.value;
-        if (e.target.name === 'borrower_type')        { dataRow.borrower_type = e.target.value; tr.dataset.borrowerType = e.target.value; }
         if (e.target.name === 'accountable_officer')  { dataRow.accountable_officer = e.target.value; tr.dataset.officer = e.target.value.toLowerCase(); }
         if (e.target.name === 'device')               dataRow.device = e.target.value;
         if (e.target.name === 'serial_number')        dataRow.serial_number = e.target.value;
@@ -969,7 +962,7 @@
     document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
     document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
 
-    // Delete only — no save button handler needed anymore
+    // Delete button
     document.addEventListener('click', e => {
       const db = e.target.closest('.dm-delete-row');
       if (db) { e.preventDefault(); deleteRow(db); }
@@ -1024,6 +1017,22 @@
         }
       });
     }
+  }
+
+  /* ==================== SAVE ALL ROWS ==================== */
+  async function saveAllRows() {
+    const allTrs = [...rowIdToElement.values()];
+    if (allTrs.length === 0) return;
+
+    const promises = [];
+    for (const tr of allTrs) {
+      const id = tr.dataset.rowId;
+      if (id && !id.startsWith('new_') && dirtyRows.has(id)) {
+        promises.push(saveRow(tr));
+      }
+    }
+    await Promise.all(promises);
+    showToast(`Saved ${promises.length} row(s)`, 'success');
   }
 
   /* ==================== INIT ==================== */
