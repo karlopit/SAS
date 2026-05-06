@@ -440,13 +440,14 @@ def device_monitoring_save(request):
         rows = data.get('rows', [])
         saved_count = 0
         errors = []
-        new_ids = []   # ← FIX: collect real DB ids for newly created rows
+        new_ids = []
 
         for row_data in rows:
             row_id = row_data.get('row_id')
             if not row_id:
                 continue
 
+            # Build fields dict exactly as before
             fields = {
                 'box_number':          row_data.get('box_number', ''),
                 'office_college':      row_data.get('office_college', ''),
@@ -469,16 +470,26 @@ def device_monitoring_save(request):
 
             try:
                 if row_id == 'new':
-                    # FIX: capture the created object so we can return its pk
+                    # --- NEW ROW: create with all fields, including release_status
                     obj = DeviceMonitor.objects.create(**fields)
-                    new_ids.append(obj.pk)   # ← send real id back to client
+                    new_ids.append(obj.pk)
                     saved_count += 1
                 else:
+                    # --- EXISTING ROW: update while preserving date_returned
                     obj = DeviceMonitor.objects.get(pk=int(row_id))
                     old_date_returned = obj.date_returned
+
+                    # Update every field from the payload
                     for attr, value in fields.items():
                         setattr(obj, attr, value)
+
+                    # Restore date_returned (only if it wasn't intentionally changed)
                     obj.date_returned = old_date_returned
+
+                    # ✅ CRITICAL FIX: ensure release_status is taken from payload,
+                    #    not from any model logic that might override it.
+                    obj.release_status = fields['release_status']
+
                     obj.save()
                     saved_count += 1
             except Exception as e:
@@ -492,7 +503,7 @@ def device_monitoring_save(request):
             'ok':      True,
             'saved':   saved_count,
             'errors':  errors,
-            'new_ids': new_ids,   # ← FIX: JS uses this to swap new_123 → real pk
+            'new_ids': new_ids,
         })
 
     # ──────────────────────────────────────────────────────────

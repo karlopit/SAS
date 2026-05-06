@@ -1,11 +1,30 @@
 /**
  * device_monitoring.js — Release/Return badge with inline dropdown edit
- * FIXED: hidden input stores release_status so the server receives it
  *
- * - Release/Return column shows a colored badge (original design)
- * - Click on badge to open a dropdown with values "Released" / "Returned"
- * - On change, badge updates, hidden input updates, value saved via auto-save
- * - New rows default to "—" badge, click to select
+ * FIX: release_status was not being saved on new rows.
+ *
+ * Root causes and changes:
+ *
+ * 1. addDmRow() was firing an immediate fetch with a hardcoded
+ *    `release_status: ''` payload. This locked in an empty value in DB
+ *    before the user could pick anything. FIXED: removed the immediate
+ *    fetch from addDmRow(). The row is now created in DB only when the
+ *    user blurs a field — same behaviour as all other columns.
+ *
+ * 2. scheduleAutoSave() skipped rows whose id starts with 'new_'. FIXED:
+ *    it now calls _saveNewRow(tr) for unsaved rows, which does the
+ *    create + id-swap using extractRowPayload() so ALL current field
+ *    values (including release_status) are captured at save time.
+ *
+ * 3. saveRow() had an early return for 'new_' rows, so the badge dropdown
+ *    change handler (saveAndRestore) was silently dropping the save if the
+ *    row hadn't been committed yet. FIXED: saveRow now delegates to
+ *    _saveNewRow() for 'new_' rows instead of returning early.
+ *
+ * 4. saveAndRestore() in attachReleaseEditListener was only calling
+ *    saveRow(tr). That is now correct because saveRow handles new_ rows too.
+ *
+ * No changes to views.py are needed.
  */
 
 (function () {
@@ -17,7 +36,11 @@
   const VISIBLE_BUFFER = 15;
   const AUTOSAVE_DELAY = 800;
 
+  // Per-row debounce timers (existing rows only — new rows use _saveNewRow)
   const _saveTimers = new Map();
+
+  // Track new rows that are currently being saved (prevent double-fire)
+  const _savingNew  = new Set();
 
   async function pollExportTask(taskId) {
     const hide = () => {
@@ -186,20 +209,84 @@
   }
 
   /* ==================== AUTO-SAVE SCHEDULER ==================== */
+  /**
+   * FIX: now handles new_ rows by calling _saveNewRow() instead of skipping.
+   */
   function scheduleAutoSave(tr) {
     const rowId = tr?.dataset?.rowId;
-    if (!rowId || rowId.startsWith('new_')) return;
+    if (!rowId) return;
 
+    // ── New (unsaved) row — create in DB ─────────────────────────────────────
+    if (rowId.startsWith('new_')) {
+      if (_savingNew.has(rowId)) return;   // already in flight
+      if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
+      _setRowStatus(tr, 'saving');
+      const timer = setTimeout(() => {
+        _saveTimers.delete(rowId);
+        _saveNewRow(tr);
+      }, AUTOSAVE_DELAY);
+      _saveTimers.set(rowId, timer);
+      return;
+    }
+
+    // ── Existing row — debounced update ──────────────────────────────────────
     if (_saveTimers.has(rowId)) clearTimeout(_saveTimers.get(rowId));
-
     _setRowStatus(tr, 'saving');
-
     const timer = setTimeout(() => {
       _saveTimers.delete(rowId);
       saveRow(tr);
     }, AUTOSAVE_DELAY);
-
     _saveTimers.set(rowId, timer);
+  }
+
+  /* ==================== SAVE NEW ROW (CREATE) ==================== */
+  /**
+   * FIX: reads ALL current field values via extractRowPayload() — including
+   * the release_status hidden input — so whatever the user has set is captured.
+   * Previously addDmRow() sent a hardcoded payload with release_status: ''.
+   */
+  async function _saveNewRow(tr) {
+    const clientId = tr?.dataset?.rowId;
+    if (!clientId || !clientId.startsWith('new_')) return;
+    if (_savingNew.has(clientId)) return;
+
+    _savingNew.add(clientId);
+    harvestRowEdits(tr, clientId);
+    const payload = extractRowPayload(tr);   // ← reads release_status from hidden input
+
+    const form = document.getElementById('dm-form');
+    if (!form) { _savingNew.delete(clientId); return; }
+
+    _setRowStatus(tr, 'saving');
+
+    try {
+      const resp = await fetch(form.action, {
+        method:  'POST',
+        headers: {
+          'Content-Type':     'application/json',
+          'X-CSRFToken':      getCsrf(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body:        JSON.stringify({ rows: [payload], save_all: false }),
+        credentials: 'same-origin',
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const result = await resp.json();
+
+      if (result.ok && result.new_ids?.length > 0) {
+        _swapRowId(tr, clientId, String(result.new_ids[0]));
+        _setRowStatus(tr, 'saved');
+      } else {
+        _setRowStatus(tr, 'error');
+        showToast('Could not save new row', 'error');
+      }
+    } catch (err) {
+      _setRowStatus(tr, 'error');
+      showToast('Row save failed: ' + err.message, 'error');
+    } finally {
+      _savingNew.delete(clientId);
+    }
   }
 
   /* ==================== RELEASE BADGE + INLINE EDIT ==================== */
@@ -215,21 +302,15 @@
     const select = document.createElement('select');
     select.className = 'form-control dm-release-select temp-release-select';
     select.style.cssText = 'width:100px;text-align:center;margin:0 auto;padding:2px;';
-    const emptyOpt = document.createElement('option');
-    emptyOpt.value = '';
-    emptyOpt.textContent = '—';
+    const emptyOpt    = document.createElement('option'); emptyOpt.value    = ''; emptyOpt.textContent    = '—';
+    const releasedOpt = document.createElement('option'); releasedOpt.value = 'Released'; releasedOpt.textContent = 'Released';
+    const returnedOpt = document.createElement('option'); returnedOpt.value = 'Returned'; returnedOpt.textContent = 'Returned';
     select.appendChild(emptyOpt);
-    const releasedOpt = document.createElement('option');
-    releasedOpt.value = 'Released';
-    releasedOpt.textContent = 'Released';
-    const returnedOpt = document.createElement('option');
-    returnedOpt.value = 'Returned';
-    returnedOpt.textContent = 'Returned';
     select.appendChild(releasedOpt);
     select.appendChild(returnedOpt);
-    if (currentValue === 'Released') select.value = 'Released';
+    if (currentValue === 'Released')      select.value = 'Released';
     else if (currentValue === 'Returned') select.value = 'Returned';
-    else select.value = '';
+    else                                  select.value = '';
     return select;
   }
 
@@ -239,12 +320,13 @@
       if (!badge) return;
       e.stopPropagation();
 
-      const td = badge.closest('td');
-      const tr = td.closest('tr[data-row-id]');
+      const td    = badge.closest('td');
+      const tr    = td.closest('tr[data-row-id]');
       const rowId = tr?.dataset.rowId;
       if (!rowId) return;
 
-      const currentValue = badge.getAttribute('data-release-value') === '—' ? '' : badge.getAttribute('data-release-value');
+      const currentValue = badge.getAttribute('data-release-value') === '—'
+        ? '' : badge.getAttribute('data-release-value');
       const dropdown = createReleaseDropdown(currentValue);
       td.innerHTML = '';
       td.appendChild(dropdown);
@@ -252,22 +334,24 @@
 
       const saveAndRestore = async () => {
         const newValue = dropdown.value;
+
+        // Always update in-memory + hidden input regardless of whether changed
+        const dataRow = allRows.find(r => String(r.id) === rowId);
+        if (dataRow) dataRow.release_status = newValue;
+        tr.dataset.release = newValue || '—';
+
+        const hiddenInput = tr.querySelector('input[type=hidden][name="release_status"]');
+        if (hiddenInput) hiddenInput.value = newValue;
+
+        // Restore badge immediately so the user sees the new value
+        td.innerHTML = getReleaseBadgeHtml(newValue);
+
+        // Only save if the value actually changed
         if (newValue !== currentValue) {
-          // Update row data in allRows
-          const dataRow = allRows.find(r => String(r.id) === rowId);
-          if (dataRow) dataRow.release_status = newValue;
-          tr.dataset.release = newValue || '—';
-          // Update hidden input so server receives the value
-          const hiddenInput = tr.querySelector('input[type=hidden][name="release_status"]');
-          if (hiddenInput) hiddenInput.value = newValue;
           markDirtyFromRow(tr);
+          // FIX: saveRow now handles new_ rows too (delegates to _saveNewRow)
           await saveRow(tr);
         }
-        // Restore badge
-        const finalValue = newValue || '';
-        td.innerHTML = getReleaseBadgeHtml(finalValue);
-        // Restore hidden input inside the new TD? The hidden input is placed in the row, not inside this TD.
-        // Actually the hidden input is in the row (outside the TD). We don't need to re-add it.
       };
 
       dropdown.addEventListener('change', saveAndRestore);
@@ -340,12 +424,12 @@
     bottomSpacer.style.height = (Math.max(0, filteredRows.length - newEnd) * ROW_HEIGHT) + 'px';
 
     const neededIds = new Set();
-    for (let i = newStart; i < newEnd; i++) {
-      neededIds.add(String(filteredRows[i].id));
-    }
+    for (let i = newStart; i < newEnd; i++) neededIds.add(String(filteredRows[i].id));
     if (focusedRowId) neededIds.add(focusedRowId);
     dirtyRows.forEach(id => neededIds.add(id));
     _saveTimers.forEach((_, id) => neededIds.add(id));
+    // Always keep unsaved new rows in DOM
+    allRows.forEach(r => { if (String(r.id).startsWith('new_')) neededIds.add(String(r.id)); });
 
     rowIdToElement.forEach((tr, id) => {
       if (!neededIds.has(id)) {
@@ -356,9 +440,8 @@
     });
 
     const fragment = document.createDocumentFragment();
-
     for (let i = newStart; i < newEnd; i++) {
-      const row = filteredRows[i];
+      const row   = filteredRows[i];
       const strId = String(row.id);
       if (rowIdToElement.has(strId)) continue;
 
@@ -414,7 +497,7 @@
     dataRow.ptr                 = g('ptr');
     dataRow.remarks             = tr.querySelector('textarea[name="remarks"]')?.value ?? dataRow.remarks;
     dataRow.issue               = tr.querySelector('textarea[name="issue"]')?.value ?? dataRow.issue;
-    // Update release_status from hidden input if exists
+    // Always harvest release_status from the hidden input
     const releaseHidden = tr.querySelector('input[type=hidden][name="release_status"]');
     if (releaseHidden) dataRow.release_status = releaseHidden.value;
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
@@ -431,8 +514,8 @@
     const isNew = rawId.startsWith('new_');
     const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? '';
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
-
-    // Get release_status from hidden input (ensures server receives it)
+    // Read release_status directly from the hidden input — catches any value
+    // the user set via the badge dropdown before the save fires
     const releaseStatus = tr.querySelector('input[type=hidden][name="release_status"]')?.value || '';
 
     return {
@@ -590,7 +673,13 @@
   }
 
   /* ==================== ADD ROW ==================== */
-  async function addDmRow() {
+  /**
+   * FIX: removed the immediate fetch that was hardcoding release_status: ''.
+   * The row is now only saved to DB when the user actually fills a field and
+   * blurs away from it — at that point, scheduleAutoSave → _saveNewRow reads
+   * all current values including the release_status hidden input.
+   */
+  function addDmRow() {
     const newClientId = 'new_' + Date.now();
     const newRow = {
       id: newClientId, box_number: '', serial_number: '', office_college: '',
@@ -617,58 +706,23 @@
     const tc = document.getElementById('dm-total-count');
     if (tc) tc.textContent = allRows.length;
 
-    const form = document.getElementById('dm-form');
-    if (!form) return;
-
-    _setRowStatus(tr, 'saving');
-
-    try {
-      // Release status is empty initially; hidden input already has value ''
-      const resp = await fetch(form.action, {
-        method:  'POST',
-        headers: {
-          'Content-Type':     'application/json',
-          'X-CSRFToken':      getCsrf(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify({
-          rows: [{
-            row_id: 'new', _client_id: newClientId,
-            box_number: '', serial_number: '', office_college: '',
-            accountable_person: '', borrower_type: '', assigned_mr: '',
-            accountable_officer: '', device: 'Tablet',
-            serviceable: 'off', non_serviceable: 'off', sealed: 'off',
-            missing: 'off', incomplete: 'off',
-            ptr: '', remarks: '', issue: '',
-            release_status: '',
-          }],
-          save_all: false,
-        }),
-        credentials: 'same-origin',
-      });
-
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const result = await resp.json();
-
-      if (result.ok && result.new_ids?.length > 0) {
-        _swapRowId(tr, newClientId, String(result.new_ids[0]));
-        _setRowStatus(tr, 'saved');
-      } else {
-        _setRowStatus(tr, 'error');
-        showToast('Could not save new row', 'error');
-      }
-    } catch (err) {
-      _setRowStatus(tr, 'error');
-      showToast('Row add failed: ' + err.message, 'error');
-    }
+    // No immediate save here — _saveNewRow fires via scheduleAutoSave on blur
   }
 
-  /* ==================== SAVE ROW ==================== */
+  /* ==================== SAVE EXISTING ROW ==================== */
+  /**
+   * FIX: removed `if (clientId.startsWith('new_')) return;` — instead
+   * delegates to _saveNewRow so the release badge dropdown's saveAndRestore()
+   * correctly saves even before the first blur has committed the row.
+   */
   async function saveRow(tr) {
     if (!tr) return;
-
     const clientId = tr.dataset.rowId;
-    if (clientId.startsWith('new_')) return;
+
+    // FIX: delegate to _saveNewRow instead of silently returning
+    if (clientId.startsWith('new_')) {
+      return _saveNewRow(tr);
+    }
 
     harvestRowEdits(tr, clientId);
     const payload = extractRowPayload(tr);
@@ -697,7 +751,6 @@
 
       dirtyRows.delete(clientId);
       _setRowStatus(tr, 'saved');
-
     } catch (err) {
       _setRowStatus(tr, 'error');
       showToast('Auto-save error: ' + err.message, 'error');
@@ -721,11 +774,7 @@
 
     dirtyRows.delete(oldId);
     _saveTimers.delete(oldId);
-
-    const releaseHidden = tr.querySelector('input[name="release_status"]');
-    if (releaseHidden && releaseHidden.value) {
-      scheduleAutoSave(tr);
-    }
+    _savingNew.delete(oldId);
   }
 
   /* ==================== DELETE ROW ==================== */
@@ -739,6 +788,7 @@
       filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
       rowIdToElement.delete(rowId);
       if (_saveTimers.has(rowId)) { clearTimeout(_saveTimers.get(rowId)); _saveTimers.delete(rowId); }
+      _savingNew.delete(rowId);
       tr.remove();
       const tc = document.getElementById('dm-total-count');
       if (tc) tc.textContent = allRows.length;
@@ -762,25 +812,20 @@
       credentials: 'same-origin',
       headers:     { 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
     })
-      .then(resp => {
+      .then(() => {
         allRows      = allRows.filter(r => String(r.id) !== rowId);
         filteredRows = filteredRows.filter(r => String(r.id) !== rowId);
         rowIdToElement.delete(rowId);
         dirtyRows.delete(rowId);
         tr.remove();
-
         if (bottomSpacer) {
           bottomSpacer.style.height = (Math.max(0, filteredRows.length - endIdx) * ROW_HEIGHT) + 'px';
         }
-
         const tc = document.getElementById('dm-total-count');
         if (tc) tc.textContent = allRows.length;
-
         showToast('Row deleted', 'success');
       })
-      .catch(err => {
-        showToast('Delete failed: ' + err.message, 'error');
-      })
+      .catch(err => showToast('Delete failed: ' + err.message, 'error'))
       .finally(() => {
         if (overlay) {
           if (label) label.textContent = 'Loading…';
@@ -803,13 +848,14 @@
         allRows[i] = { ...allRows[i], ...inc };
         const tr = rowIdToElement.get(id);
         if (tr && id !== focusedRowId) {
-          const badge = tr.querySelector('.release-status-badge');
+          const badge  = tr.querySelector('.release-status-badge');
           const hidden = tr.querySelector('input[type=hidden][name="release_status"]');
           if (inc.release_status !== undefined) {
             const newValue = inc.release_status || '';
             if (hidden) hidden.value = newValue;
             if (badge) {
-              const cls = newValue === 'Released' ? 'badge-released' : (newValue === 'Returned' ? 'badge-returned-dm' : 'badge-none');
+              const cls = newValue === 'Released' ? 'badge-released'
+                        : newValue === 'Returned'  ? 'badge-returned-dm' : 'badge-none';
               badge.className = `release-status-badge ${cls}`;
               badge.textContent = newValue || '—';
               badge.setAttribute('data-release-value', newValue || '—');
@@ -828,7 +874,7 @@
       window.dispatchEvent(new CustomEvent('invsys:grad_warning_count', { detail: data.graduation_warning_count }));
   }
 
-  /* ==================== IMPORT MODAL (unchanged) ==================== */
+  /* ==================== IMPORT MODAL ==================== */
   function openImportModal() {
     const modal = document.getElementById('importModal');
     if (!modal) return;
@@ -971,11 +1017,15 @@
       const tr = e.target.closest('tr[data-row-id]');
       focusedRowId = tr?.dataset?.rowId || null;
     });
-    document.addEventListener('focusout', () => {
+    document.addEventListener('focusout', e => {
+      const tr = e.target.closest('tr[data-row-id]');
       setTimeout(() => {
         const active = document.activeElement?.closest('tr[data-row-id]');
         if (!active) focusedRowId = null;
       }, 50);
+
+      // Trigger auto-save (works for both new and existing rows)
+      if (tr) scheduleAutoSave(tr);
     });
 
     // Checkboxes
@@ -986,7 +1036,7 @@
         handleDmCheck(cb, cb.getAttribute('data-field'));
         return;
       }
-      // Other selects (borrower_type)
+      // borrower_type select
       const tr = e.target.closest('tr[data-row-id]');
       if (tr && e.target.matches('select[name="borrower_type"]')) {
         const rowId = tr.dataset.rowId;
@@ -1018,7 +1068,9 @@
         if (e.target.name === 'issue')                dataRow.issue = e.target.value;
       }
 
-      scheduleAutoSave(tr);
+      // For existing rows, schedule a debounced save on input.
+      // For new rows, save is triggered by focusout, not by every keystroke.
+      if (rowId && !rowId.startsWith('new_')) scheduleAutoSave(tr);
     });
 
     // Filters
@@ -1040,7 +1092,6 @@
     document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
     document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
 
-    // Delete button
     document.addEventListener('click', e => {
       const db = e.target.closest('.dm-delete-row');
       if (db) { e.preventDefault(); deleteRow(db); }
@@ -1096,25 +1147,32 @@
       });
     }
 
-    // Attach the release badge inline edit listener after rows are rendered (delegation)
     const tableContainer = document.querySelector('.table-container');
     if (tableContainer) attachReleaseEditListener(tableContainer);
   }
 
   /* ==================== SAVE ALL ROWS ==================== */
   async function saveAllRows() {
-    const allTrs = [...rowIdToElement.values()];
-    if (allTrs.length === 0) return;
-
-    const promises = [];
-    for (const tr of allTrs) {
-      const id = tr.dataset.rowId;
-      if (id && !id.startsWith('new_') && dirtyRows.has(id)) {
-        promises.push(saveRow(tr));
+    // Save unsaved new rows first
+    const newRowPromises = [];
+    for (const [id, tr] of rowIdToElement) {
+      if (id.startsWith('new_') && !_savingNew.has(id)) {
+        newRowPromises.push(_saveNewRow(tr));
       }
     }
-    await Promise.all(promises);
-    showToast(`Saved ${promises.length} row(s)`, 'success');
+
+    // Then save dirty existing rows
+    const existingPromises = [];
+    for (const [id, tr] of rowIdToElement) {
+      if (!id.startsWith('new_') && dirtyRows.has(id)) {
+        existingPromises.push(saveRow(tr));
+      }
+    }
+
+    await Promise.all([...newRowPromises, ...existingPromises]);
+    const total = newRowPromises.length + existingPromises.length;
+    if (total > 0) showToast(`Saved ${total} row(s)`, 'success');
+    else showToast('Nothing to save', 'success');
   }
 
   /* ==================== INIT ==================== */
@@ -1134,7 +1192,7 @@
 
     attachEventListeners();
 
-    const dmUrl = window.INVSYS_DM_AJAX || '/ajax/device-monitoring/';
+    const dmUrl    = window.INVSYS_DM_AJAX || '/ajax/device-monitoring/';
     const embedded = typeof DM_ROWS !== 'undefined' && DM_ROWS.length > 0;
 
     const startRows = (rows) => {
