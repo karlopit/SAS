@@ -461,6 +461,7 @@ def device_monitoring_save(request):
                 'sealed':              row_data.get('sealed')          == 'on',
                 'missing':             row_data.get('missing')         == 'on',
                 'incomplete':          row_data.get('incomplete')      == 'on',
+                'release_status':      row_data.get('release_status', '') or '',
                 'ptr':                 row_data.get('ptr', ''),
                 'remarks':             row_data.get('remarks', ''),
                 'issue':               row_data.get('issue', ''),
@@ -533,6 +534,7 @@ def device_monitoring_save(request):
             sealed              = get(sealeds)          == 'on',
             missing             = get(missings)         == 'on',
             incomplete          = get(incompletes)      == 'on',
+            release_status      = request.POST.getlist('release_status')[i] if i < len(request.POST.getlist('release_status')) else '',
             ptr                 = get(ptr_list),
             remarks             = get(remarks_list),
             issue               = get(issue_list),
@@ -775,19 +777,21 @@ def device_monitoring_import(request):
 
         # Normalize like headers so "Released/Return", "RELEASED", etc. match.
         release_norm = _norm(str_data.get('release_status_import', ''))
-        is_returned = (
-            release_norm in ('returned', 'return')
-            or release_norm.startswith('returned')
-        )
-        is_released = (
-            bool(release_norm)
-            and not is_returned
-            and (
-                release_norm in ('released', 'release', 'borrowed', 'out')
-                or release_norm.startswith('released')
-                or release_norm.startswith('release return')
-            )
-        )
+
+        # 🔥 FIXED LOGIC — handles messy Excel values reliably
+        is_returned = False
+        is_released = False
+
+        if release_norm:
+            # Priority: anything containing "return" → Returned
+            if 'return' in release_norm:
+                is_returned = True
+                is_released = False
+
+            # Otherwise, treat as Released if it matches common release terms
+            elif any(k in release_norm for k in ['release', 'borrow', 'out']):
+                is_released = True
+                is_returned = False
 
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'

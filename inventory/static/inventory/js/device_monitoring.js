@@ -721,6 +721,11 @@
 
     dirtyRows.delete(oldId);
     _saveTimers.delete(oldId);
+
+    const releaseHidden = tr.querySelector('input[name="release_status"]');
+    if (releaseHidden && releaseHidden.value) {
+      scheduleAutoSave(tr);
+    }
   }
 
   /* ==================== DELETE ROW ==================== */
