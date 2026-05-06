@@ -479,6 +479,9 @@ def device_monitoring_save(request):
 
             try:
                 if row_id == 'new':
+                    # Set accountable_officer to the current staff user's name
+                    staff_name = request.user.get_full_name().strip() or request.user.username
+                    fields['accountable_officer'] = staff_name
                     obj = DeviceMonitor.objects.create(**fields)
                     new_ids.append(obj.pk)
                     saved_count += 1

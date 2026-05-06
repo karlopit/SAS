@@ -95,6 +95,9 @@ def process_excel_import(self, rows_data, user_id):
     except User.DoesNotExist:
         return {'ok': False, 'error': f'User {user_id} not found'}
 
+    # ── Get the staff's full name for accountable_officer column ────────────
+    staff_name = user.get_full_name().strip() or user.username
+
     # ── Wake up Neon free tier before heavy queries ──────────────────────────
     try:
         from django.db import connection
@@ -151,7 +154,7 @@ def process_excel_import(self, rows_data, user_id):
             'office_college':      (d.get('office_college')      or 'Unknown').strip(),
             'accountable_person':  (d.get('accountable_person')  or '').strip(),
             'borrower_type':       (d.get('borrower_type')       or '').strip().lower(),
-            'accountable_officer': (d.get('accountable_officer') or '').strip(),
+            'accountable_officer': staff_name,   # ← OVERRIDE: always use importing staff's name
             'assigned_mr':         (d.get('assigned_mr')         or '').strip(),
             'device':              (d.get('device')              or 'Tablet').strip(),
             'ptr':                 (d.get('ptr')                 or '').strip(),
