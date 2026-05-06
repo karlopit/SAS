@@ -521,7 +521,7 @@ def device_monitoring_save(request):
     # ──────────────────────────────────────────────────────────
     # 2. Normal form submission
     # ──────────────────────────────────────────────────────────
-    
+
     ids                  = request.POST.getlist('row_id')
     box_numbers          = request.POST.getlist('box_number')
     offices              = request.POST.getlist('office_college')
@@ -799,24 +799,22 @@ def device_monitoring_import(request):
             raw_data[field_name] = raw
             str_data[field_name] = str(raw).strip() if raw is not None else ''
 
+        # ── Replace this block inside the data row loop in device_monitoring_import ──
+        # Find the box_number cleaning section and replace with this:
+
         serial = str_data.get('serial_number', '').strip()
         if not serial:
             continue
 
-        # Normalize like headers so "Released/Return", "RELEASED", etc. match.
         release_norm = _norm(str_data.get('release_status_import', ''))
 
-        # 🔥 FIXED LOGIC — handles messy Excel values reliably
         is_returned = False
         is_released = False
 
         if release_norm:
-            # Priority: anything containing "return" → Returned
             if 'return' in release_norm:
                 is_returned = True
                 is_released = False
-
-            # Otherwise, treat as Released if it matches common release terms
             elif any(k in release_norm for k in ['release', 'borrow', 'out']):
                 is_released = True
                 is_returned = False
@@ -824,17 +822,15 @@ def device_monitoring_import(request):
         bt = str_data.get('borrower_type', '').strip().lower()
         borrower_type = 'employee' if any(k in bt for k in ('employee', 'emp', 'staff')) else 'student'
 
-        # Serialize the raw date as string so Celery can receive it via JSON
         raw_date = raw_data.get('date_returned')
         if raw_date is not None and not isinstance(raw_date, str):
             raw_date = str(raw_date)
 
-        # Clean box number: remove ".0" when the cell was numeric
+        # FIX: initialize box_number_raw unconditionally first,
+        # then clean it — avoids Python 3.14 "cannot access local variable" error
         box_number_raw = str_data.get('box_number', '').strip()
-        if box_number_raw.endswith('.0') and '.' in box_number_raw[:-2]:  # still has a dot → not "1.0"
-            pass  # leave as is (e.g., "1.5")
-        elif box_number_raw.endswith('.0'):
-            box_number_raw = box_number_raw[:-2]      # "1.0" → "1"
+        if box_number_raw.endswith('.0') and box_number_raw[:-2].isdigit():
+            box_number_raw = box_number_raw[:-2]
 
         rows_data.append({
             'serial_number':       serial,
