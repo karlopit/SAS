@@ -1,5 +1,6 @@
 /**
  * device_monitoring.js — Release/Return badge with inline dropdown edit
+ * FIXED: release_status now saved correctly by reading from allRows in extractRowPayload
  *
  * - Release/Return column shows a colored badge (original design)
  * - Click on badge to open a dropdown with values "Released" / "Returned"
@@ -252,12 +253,12 @@
       const saveAndRestore = async () => {
         const newValue = dropdown.value;
         if (newValue !== currentValue) {
-          // Update row data
+          // Update row data in allRows (the source of truth)
           const dataRow = allRows.find(r => String(r.id) === rowId);
           if (dataRow) dataRow.release_status = newValue;
           tr.dataset.release = newValue || '—';
           markDirtyFromRow(tr);
-          // Save
+          // Save the updated row
           await saveRow(tr);
         }
         // Restore badge
@@ -296,7 +297,7 @@
           <option value="student"  ${row.borrower_type === 'student'  ? 'selected' : ''}>Student</option>
           <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
         </select>
-      </table>
+      </td>
       <td style="text-align:center"><input type="text" name="assigned_mr" value="${_esc(row.assigned_mr)}" class="form-control dm-mr-input" placeholder="M.R." style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="accountable_officer" value="${_esc(row.accountable_officer)}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="device" value="${_esc(row.device)}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
@@ -408,9 +409,7 @@
     dataRow.ptr                 = g('ptr');
     dataRow.remarks             = tr.querySelector('textarea[name="remarks"]')?.value ?? dataRow.remarks;
     dataRow.issue               = tr.querySelector('textarea[name="issue"]')?.value ?? dataRow.issue;
-    // release_status is not in an input; we rely on the badge's data attribute; but we also have a hidden? No. So we keep current.
-    // Actually release_status is in the dataRow; we don't overwrite from DOM because it's a badge.
-    // We'll trust the dataRow value.
+    // release_status is not in an input; we rely on the dataRow value (already up-to-date)
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
     dataRow.serviceable     = cbState('serviceable');
     dataRow.non_serviceable = cbState('non_serviceable');
@@ -420,16 +419,16 @@
   }
 
   /* ==================== EXTRACT ROW PAYLOAD ==================== */
+  // FIXED: read release_status directly from the in‑memory row object
   function extractRowPayload(tr) {
     const rawId = tr.dataset.rowId || '';
     const isNew = rawId.startsWith('new_');
     const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? '';
     const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
 
-    // Get release_status from the badge's data attribute or from the row's dataset
-    const badge = tr.querySelector('.release-status-badge');
-    let releaseStatus = badge ? badge.getAttribute('data-release-value') : tr.dataset.release;
-    if (releaseStatus === '—') releaseStatus = '';
+    // Get the live row data from our in-memory array (source of truth)
+    const dataRow = allRows.find(r => String(r.id) === rawId);
+    let releaseStatus = dataRow ? dataRow.release_status : '';
 
     return {
       row_id:              isNew ? 'new' : rawId,
@@ -659,21 +658,24 @@
     }
   }
 
-  /* ==================== SAVE ROW ==================== */
+  /* ==================== SAVE ROW (fixed) ==================== */
   async function saveRow(tr) {
     if (!tr) return;
 
     const clientId = tr.dataset.rowId;
     if (clientId.startsWith('new_')) return;
 
-    // Important: harvest edits before saving, but note that release_status is already in dataRow.
+    // Harvest other fields (box_number, etc.) but keep release_status from dataRow
     harvestRowEdits(tr, clientId);
-    const payload = extractRowPayload(tr);
+    const payload = extractRowPayload(tr);  // now uses the corrected extractor
 
     const form = document.getElementById('dm-form');
     if (!form) return;
 
     _setRowStatus(tr, 'saving');
+
+    // Optional: log what we're sending (remove in production)
+    // console.log('Saving row', clientId, 'release_status =', payload.release_status);
 
     try {
       const resp = await fetch(form.action, {

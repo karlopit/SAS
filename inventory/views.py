@@ -873,7 +873,7 @@ def import_task_status(request, task_id):
     try:
         from celery.result import AsyncResult
         result = AsyncResult(task_id)
-        state  = result.state   # PENDING | STARTED | SUCCESS | FAILURE | RETRY | REVOKED
+        state  = result.state   
     except Exception as exc:
         return JsonResponse({'state': 'FAILURE', 'error': str(exc)})
 
