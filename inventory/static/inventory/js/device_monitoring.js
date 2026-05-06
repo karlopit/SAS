@@ -7,15 +7,47 @@
  * 2. Debounced filters — search/filter waits 200ms after typing stops
  * 3. Batched DOM saves — dirty row tracking prevents unnecessary re-renders
  * 4. Import progress polling unchanged (already async/Celery-based)
+ *
+ * FIX (new row saving):
+ * - Individual "✓ Save" button now uses JSON POST (same path as Save All)
+ *   instead of submitting the HTML form — this avoids the form collecting
+ *   ALL rows and also ensures the view's JSON handler receives it.
+ * - Both individual save and Save All normalize new row IDs to the string
+ *   'new' so the view's `if row_id == 'new'` check actually matches.
+ * - After a new row is saved, the server returns the new DB id and the
+ *   client updates allRows + the tr's data-row-id so subsequent saves
+ *   hit the UPDATE path instead of creating duplicates.
  */
 
 (function () {
   'use strict';
 
   /* ==================== CONSTANTS ==================== */
-  const ROW_HEIGHT     = 64;   // px — must match actual rendered row height
-  const OVERSCAN       = 10;   // extra rows above/below visible area
-  const VISIBLE_BUFFER = 15;   // rows kept outside viewport for smooth scroll
+  const ROW_HEIGHT     = 64;
+  const OVERSCAN       = 10;
+  const VISIBLE_BUFFER = 15;
+
+  async function pollExportTask(taskId) {
+    const hide = () => {
+      const overlay = document.getElementById('invsys-loading-overlay');
+      if (overlay) overlay.classList.remove('is-active');
+    };
+    try {
+      const resp = await fetch(`/export-task-status/${taskId}/`);
+      const data = await resp.json();
+      if (data.state === 'SUCCESS') {
+        window.location.href = `/download-export/${data.token}/`;
+        hide();
+      } else if (data.state === 'FAILURE') {
+        alert('Export failed.');
+        hide();
+      } else {
+        setTimeout(() => pollExportTask(taskId), 2000);
+      }
+    } catch (err) {
+      hide();
+    }
+  }
 
   /* ==================== TOAST ==================== */
   function showToast(message, type) {
@@ -50,7 +82,6 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
-  /** Align WebSocket / AJAX row shape with table (date label vs raw). */
   function normalizeDmRow(r) {
     const o = { ...r };
     o.date_returned_display = o.date_returned_display ?? o.date_returned ?? '—';
@@ -58,20 +89,20 @@
   }
 
   /* ==================== STATE ==================== */
-  // allRows = full dataset from DM_ROWS (never mutated)
-  // filteredRows = after filters/search (rebuilt on filter change)
-  // dirtyRows = Set of row IDs with unsaved user edits
   let allRows      = [];
   let filteredRows = [];
   const dirtyRows  = new Set();
 
-  // Virtual scroll state
-  let scrollTop      = 0;
+  let scrollTop       = 0;
   let containerHeight = 600;
   let startIdx = 0, endIdx = 0;
 
-  // DOM references (set after DOMContentLoaded)
   let tbody, scrollContainer, topSpacer, bottomSpacer;
+
+  /* ==================== CSRF ==================== */
+  function getCsrf() {
+    return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  }
 
   /* ==================== CHECKBOX HELPERS ==================== */
   window.syncCheck = function (cb) {
@@ -153,7 +184,7 @@
           <option value="employee" ${row.borrower_type === 'employee' ? 'selected' : ''}>Employee</option>
         </select>
       </td>
-      <td style="text-align:center"><input type="text" name="assigned_mr" value="${_esc(row.assigned_mr)}" class="form-control dm-mr-input" placeholder="M.R. #" style="width:110px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="assigned_mr" value="${_esc(row.assigned_mr)}" class="form-control dm-mr-input" placeholder="M.R." style="width:110px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="accountable_officer" value="${_esc(row.accountable_officer)}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="device" value="${_esc(row.device)}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="serviceable" ${row.serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
@@ -161,21 +192,19 @@
       <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="sealed" ${row.sealed ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="text" name="ptr" value="${_esc(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR #" style="width:100px;text-align:center;margin:0 auto"/></td>
+      <td style="text-align:center"><input type="text" name="ptr" value="${_esc(row.ptr)}" class="form-control dm-ptr-input" placeholder="PTR" style="width:100px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><span class="release-status-badge ${releaseClass}">${_esc(row.release_status)}</span></td>
       <td style="text-align:center;color:var(--muted);font-size:12px" class="dm-date-returned">${_esc(row.date_returned_display || '—')}</td>
       <td style="text-align:center"><textarea name="remarks" class="form-control dm-remarks-input" rows="2" placeholder="Remarks…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.remarks)}</textarea></td>
       <td style="text-align:center"><textarea name="issue" class="form-control dm-issue-input" rows="2" placeholder="Issue…" style="width:155px;font-size:12px;resize:vertical;margin:0 auto">${_esc(row.issue)}</textarea></td>
       <td style="text-align:center;white-space:nowrap">
-        <button type="submit" class="btn btn-primary btn-sm">✓ Save</button>
+        <button type="button" class="btn btn-primary btn-sm dm-save-row">✓ Save</button>
         <button type="button" class="btn btn-danger btn-sm dm-delete-row" style="margin-left:4px">✕</button>
       </td>`;
   }
 
   /* ==================== VIRTUAL SCROLL ENGINE ==================== */
-  // rowIdToElement: maps rowId → tr (for dirty/focused rows kept in DOM)
   const rowIdToElement = new Map();
-  // focusedRowId: row the user is currently editing — never remove from DOM
   let focusedRowId = null;
 
   function getVisibleRange() {
@@ -189,40 +218,31 @@
     if (!tbody) return;
     const [newStart, newEnd] = getVisibleRange();
 
-    // Update spacers so scrollbar is accurate
     topSpacer.style.height    = (newStart * ROW_HEIGHT) + 'px';
     bottomSpacer.style.height = (Math.max(0, filteredRows.length - newEnd) * ROW_HEIGHT) + 'px';
 
-    // Build set of IDs that should be rendered
     const neededIds = new Set();
     for (let i = newStart; i < newEnd; i++) {
       neededIds.add(String(filteredRows[i].id));
     }
-    // Always keep focused/dirty rows in DOM
     if (focusedRowId) neededIds.add(focusedRowId);
     dirtyRows.forEach(id => neededIds.add(id));
 
-    // Remove rows no longer needed
     rowIdToElement.forEach((tr, id) => {
       if (!neededIds.has(id)) {
-        // Harvest edits back to allRows data before removing
         harvestRowEdits(tr, id);
         tr.remove();
         rowIdToElement.delete(id);
       }
     });
 
-    // Build fragment for new rows (in order)
     const fragment = document.createDocumentFragment();
-    const insertedIds = new Set();
 
     for (let i = newStart; i < newEnd; i++) {
       const row = filteredRows[i];
       const strId = String(row.id);
-      if (rowIdToElement.has(strId)) {
-        insertedIds.add(strId);
-        continue; // already in DOM
-      }
+      if (rowIdToElement.has(strId)) continue;
+
       const tr = document.createElement('tr');
       tr.dataset.rowId        = strId;
       tr.dataset.box          = (row.box_number          || '').toLowerCase();
@@ -247,17 +267,14 @@
       tr.innerHTML = buildRowHtml(row);
       applyLockState(tr);
       rowIdToElement.set(strId, tr);
-      insertedIds.add(strId);
       fragment.appendChild(tr);
     }
 
-    // Insert fragment before bottomSpacer
     tbody.insertBefore(fragment, bottomSpacer);
 
     startIdx = newStart;
     endIdx   = newEnd;
 
-    // Update filter count
     const vc = document.getElementById('dm-visible-count');
     const tc = document.getElementById('dm-total-count');
     if (vc) vc.textContent = filteredRows.length;
@@ -265,7 +282,6 @@
   }
 
   function harvestRowEdits(tr, id) {
-    // Write DOM values back to allRows so they survive a virtual scroll cycle
     const dataRow = allRows.find(r => String(r.id) === String(id));
     if (!dataRow) return;
     const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? dataRow[name];
@@ -286,6 +302,42 @@
     dataRow.sealed          = cbState('sealed');
     dataRow.missing         = cbState('missing');
     dataRow.incomplete      = cbState('incomplete');
+  }
+
+  /* ==================== EXTRACT ROW DATA FROM DOM ==================== */
+  /**
+   * Read the current field values out of a <tr> element and return a
+   * payload object ready to send to the server.
+   *
+   * For new rows (id starts with 'new_') the row_id is sent as the
+   * literal string 'new' so the view's `if row_id == 'new':` branch fires.
+   */
+  function extractRowPayload(tr) {
+    const rawId = tr.dataset.rowId || '';
+    const isNew = rawId.startsWith('new_');
+    const g = (name) => tr.querySelector(`[name="${name}"]`)?.value ?? '';
+    const cbState = (name) => tr.querySelector(`input[type=hidden][name="${name}"]`)?.value === 'on';
+
+    return {
+      row_id:              isNew ? 'new' : rawId,
+      _client_id:          rawId,           // keep original for post-save id swap
+      box_number:          g('box_number'),
+      serial_number:       g('serial_number'),
+      office_college:      g('office_college'),
+      accountable_person:  g('accountable_person'),
+      borrower_type:       tr.querySelector('select[name="borrower_type"]')?.value ?? '',
+      assigned_mr:         g('assigned_mr'),
+      accountable_officer: g('accountable_officer'),
+      device:              g('device') || 'Tablet',
+      serviceable:         cbState('serviceable')     ? 'on' : 'off',
+      non_serviceable:     cbState('non_serviceable') ? 'on' : 'off',
+      sealed:              cbState('sealed')          ? 'on' : 'off',
+      missing:             cbState('missing')         ? 'on' : 'off',
+      incomplete:          cbState('incomplete')      ? 'on' : 'off',
+      ptr:                 g('ptr'),
+      remarks:             tr.querySelector('textarea[name="remarks"]')?.value ?? '',
+      issue:               tr.querySelector('textarea[name="issue"]')?.value ?? '',
+    };
   }
 
   /* ==================== FILTER / SEARCH ==================== */
@@ -319,11 +371,9 @@
       return true;
     });
 
-    // Flush rendered rows so virtual scroll rebuilds with filtered set
     rowIdToElement.forEach(tr => { harvestRowEdits(tr, tr.dataset.rowId); tr.remove(); });
     rowIdToElement.clear();
 
-    // Reset scroll and re-render
     if (scrollContainer) scrollContainer.scrollTop = 0;
     scrollTop = 0;
     renderVisibleRows();
@@ -390,7 +440,6 @@
     allRows      = sortByBoxNumber(rowsData);
     filteredRows = allRows;
 
-    // Create spacer rows
     topSpacer    = document.createElement('tr');
     bottomSpacer = document.createElement('tr');
     topSpacer.style.height    = '0px';
@@ -408,7 +457,6 @@
       renderVisibleRows();
     }, { passive: true });
 
-    // Resize observer for responsive containers
     if (window.ResizeObserver) {
       new ResizeObserver(entries => {
         containerHeight = entries[0].contentRect.height;
@@ -435,11 +483,9 @@
       date_returned_display: '—',
     };
 
-    // Add to data arrays
     allRows.push(newRow);
     filteredRows.push(newRow);
 
-    // Build and append TR directly — new rows always visible at bottom
     const tr = document.createElement('tr');
     tr.dataset.rowId = newId;
     tr.innerHTML = buildRowHtml(newRow);
@@ -447,7 +493,6 @@
     tbody.insertBefore(tr, bottomSpacer);
     rowIdToElement.set(newId, tr);
 
-    // Scroll to bottom
     if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
     tr.querySelector('input[name="box_number"]')?.focus();
 
@@ -455,7 +500,107 @@
     if (tc) tc.textContent = allRows.length;
   }
 
+  /* ==================== SAVE SINGLE ROW (JSON) ==================== */
+  /**
+   * FIX: The individual ✓ Save button previously did form.submit() which
+   * POSTed ALL rows at once via the standard form handler — and even then,
+   * 'new_12345' !== 'new' so new rows were silently skipped.
+   *
+   * Now each row saves itself via a targeted JSON POST. The view returns
+   * { ok, new_id } for newly created rows so we can swap the client-side
+   * 'new_…' id for the real DB id, preventing duplicate creates on the
+   * next save.
+   */
+  async function saveRow(btn) {
+    const tr = btn.closest('tr');
+    if (!tr) return;
+
+    const clientId = tr.dataset.rowId;
+    const isNew    = clientId.startsWith('new_');
+
+    // Harvest current DOM values into allRows first
+    harvestRowEdits(tr, clientId);
+
+    const payload = extractRowPayload(tr);
+
+    const originalHTML = btn.innerHTML;
+    btn.disabled  = true;
+    btn.innerHTML = '…';
+
+    const form = document.getElementById('dm-form');
+    if (!form) { btn.disabled = false; btn.innerHTML = originalHTML; return; }
+
+    try {
+      const resp = await fetch(form.action, {
+        method:  'POST',
+        headers: {
+          'Content-Type':     'application/json',
+          'X-CSRFToken':      getCsrf(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body:        JSON.stringify({ rows: [payload], save_all: false }),
+        credentials: 'same-origin',
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const result = await resp.json();
+
+      if (!result.ok) {
+        const msg = result.errors?.length ? result.errors[0] : 'Save failed';
+        throw new Error(msg);
+      }
+
+      // ── For newly created rows the server returns the real DB id ──────────
+      // The view's bulk_create path doesn't return per-row ids, so we parse
+      // it out of result.new_ids (see views.py patch below) or fall back to
+      // a page-reload-free refresh via the broadcast.
+      if (isNew && result.new_ids && result.new_ids.length > 0) {
+        const realId = String(result.new_ids[0]);
+        _swapRowId(tr, clientId, realId);
+      }
+
+      dirtyRows.delete(clientId);
+      showToast('✓ Row saved', 'success');
+
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = originalHTML;
+    }
+  }
+
+  /**
+   * After the server creates a new row and returns its real id, update:
+   *  - the <tr> data-row-id attribute
+   *  - the hidden row_id input inside the row
+   *  - allRows / filteredRows in memory
+   *  - rowIdToElement map
+   * so the next edit/save hits the UPDATE path.
+   */
+  function _swapRowId(tr, oldId, newId) {
+    tr.dataset.rowId = newId;
+    const hidden = tr.querySelector('input[type=hidden][name="row_id"]');
+    if (hidden) hidden.value = newId;
+
+    rowIdToElement.delete(oldId);
+    rowIdToElement.set(newId, tr);
+
+    const dataRow = allRows.find(r => String(r.id) === oldId);
+    if (dataRow) dataRow.id = newId;
+
+    const fRow = filteredRows.find(r => String(r.id) === oldId);
+    if (fRow) fRow.id = newId;
+
+    dirtyRows.delete(oldId);
+  }
+
   /* ==================== SAVE ALL ROWS (JSON) ==================== */
+  /**
+   * FIX: New rows are sent with row_id = 'new' (not 'new_123456') so the
+   * view's `if row_id == 'new':` branch fires correctly. After saving,
+   * swap client ids for real DB ids using the returned new_ids list.
+   */
   async function saveAllRows() {
     const form = document.getElementById('dm-form');
     if (!form) return;
@@ -467,36 +612,40 @@
       btn.innerHTML = '<svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Saving…';
     }
 
-    // Harvest all in-DOM edits back to allRows before building payload
+    // Harvest all visible DOM edits back into allRows
     rowIdToElement.forEach((tr, id) => harvestRowEdits(tr, id));
 
-    // Build payload from in-memory data (includes all rows, not just visible ones)
-    const rowsData = allRows.map(row => ({
-      row_id:              String(row.id),
-      box_number:          row.box_number          || '',
-      serial_number:       row.serial_number       || '',
-      office_college:      row.office_college      || '',
-      accountable_person:  row.accountable_person  || '',
-      borrower_type:       row.borrower_type       || '',
-      assigned_mr:         row.assigned_mr         || '',
-      accountable_officer: row.accountable_officer || '',
-      device:              row.device              || 'Tablet',
-      serviceable:         row.serviceable     ? 'on' : 'off',
-      non_serviceable:     row.non_serviceable ? 'on' : 'off',
-      sealed:              row.sealed          ? 'on' : 'off',
-      missing:             row.missing         ? 'on' : 'off',
-      incomplete:          row.incomplete      ? 'on' : 'off',
-      ptr:                 row.ptr                 || '',
-      remarks:             row.remarks             || '',
-      issue:               row.issue               || '',
-    }));
+    // Build payload — normalize new_ ids to 'new'
+    const rowsData = allRows.map(row => {
+      const isNew = String(row.id).startsWith('new_');
+      return {
+        row_id:              isNew ? 'new' : String(row.id),
+        _client_id:          String(row.id),
+        box_number:          row.box_number          || '',
+        serial_number:       row.serial_number       || '',
+        office_college:      row.office_college      || '',
+        accountable_person:  row.accountable_person  || '',
+        borrower_type:       row.borrower_type       || '',
+        assigned_mr:         row.assigned_mr         || '',
+        accountable_officer: row.accountable_officer || '',
+        device:              row.device              || 'Tablet',
+        serviceable:         row.serviceable     ? 'on' : 'off',
+        non_serviceable:     row.non_serviceable ? 'on' : 'off',
+        sealed:              row.sealed          ? 'on' : 'off',
+        missing:             row.missing         ? 'on' : 'off',
+        incomplete:          row.incomplete      ? 'on' : 'off',
+        ptr:                 row.ptr                 || '',
+        remarks:             row.remarks             || '',
+        issue:               row.issue               || '',
+      };
+    });
 
     try {
       const resp = await fetch(form.action, {
         method:  'POST',
         headers: {
           'Content-Type':     'application/json',
-          'X-CSRFToken':      document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+          'X-CSRFToken':      getCsrf(),
           'X-Requested-With': 'XMLHttpRequest',
         },
         body:        JSON.stringify({ rows: rowsData, save_all: true }),
@@ -504,8 +653,31 @@
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
+
       if (result.ok) {
         dirtyRows.clear();
+
+        // Swap client new_ ids for real DB ids returned by the server
+        if (result.new_ids && result.new_ids.length > 0) {
+          const newClientIds = rowsData
+            .filter(r => r.row_id === 'new')
+            .map(r => r._client_id);
+
+          result.new_ids.forEach((realId, i) => {
+            if (i >= newClientIds.length) return;
+            const clientId = newClientIds[i];
+            const tr = rowIdToElement.get(clientId);
+            if (tr) _swapRowId(tr, clientId, String(realId));
+            else {
+              // Row scrolled out of DOM — update in-memory only
+              const dataRow = allRows.find(r => String(r.id) === clientId);
+              if (dataRow) dataRow.id = String(realId);
+              const fRow = filteredRows.find(r => String(r.id) === clientId);
+              if (fRow) fRow.id = String(realId);
+            }
+          });
+        }
+
         showToast(`✓ All rows saved (${result.saved} record${result.saved !== 1 ? 's' : ''})`, 'success');
       } else {
         showToast(result.errors?.length ? `Saved with errors: ${result.errors.slice(0, 2).join('; ')}` : 'Save failed', 'error');
@@ -530,7 +702,7 @@
       form.action = `/device-monitoring/${rowId}/delete/`;
       const csrf  = document.createElement('input');
       csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
-      csrf.value = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+      csrf.value = getCsrf();
       form.appendChild(csrf);
       document.body.appendChild(form);
       form.submit();
@@ -548,10 +720,8 @@
   function handleMessage(data) {
     if (data.type !== 'device_monitoring.update') return;
 
-    // Update in-memory data (don't touch dirty/focused rows in DOM)
     const incoming = new Map(data.rows.map(r => [String(r.id), r]));
 
-    // Update allRows in place
     for (let i = 0; i < allRows.length; i++) {
       const id = String(allRows[i].id);
       if (incoming.has(id) && !dirtyRows.has(id)) {
@@ -581,7 +751,7 @@
   }
 
   /* ==================== IMPORT MODAL ==================== */
-  function _getCsrf() { return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || ''; }
+  function _getCsrf() { return getCsrf(); }
 
   function openImportModal() {
     const modal = document.getElementById('importModal');
@@ -661,7 +831,7 @@
     errEl.style.display = 'none'; sucEl.style.display = 'none';
     const formData = new FormData();
     formData.append('excel_file', fileInput.files[0]);
-    formData.append('csrfmiddlewaretoken', _getCsrf());
+    formData.append('csrfmiddlewaretoken', getCsrf());
 
     btn.disabled = true;
     btn.innerHTML = '<svg style="width:14px;height:14px;animation:spin .7s linear infinite" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Uploading…';
@@ -728,7 +898,6 @@
 
   /* ==================== EVENT LISTENERS ==================== */
   function attachEventListeners() {
-    // Focus/blur tracking for virtual scroll protection
     document.addEventListener('focusin', e => {
       const tr = e.target.closest('tr[data-row-id]');
       focusedRowId = tr?.dataset?.rowId || null;
@@ -740,7 +909,6 @@
       }, 50);
     });
 
-    // Checkboxes
     document.addEventListener('change', e => {
       const cb = e.target.closest('.dm-checkbox');
       if (cb?.type === 'checkbox') {
@@ -749,14 +917,12 @@
       }
     });
 
-    // Input changes — update in-memory data + mark dirty
     document.addEventListener('input', e => {
       const row = e.target.closest('tr[data-row-id]');
       if (!row) return;
       const rowId = row.dataset.rowId;
       if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
 
-      // Update in-memory row immediately
       const dataRow = allRows.find(r => String(r.id) === String(rowId));
       if (dataRow) {
         if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; row.dataset.box = e.target.value.toLowerCase(); }
@@ -773,7 +939,6 @@
       }
     });
 
-    // Filters — debounced
     const si = document.getElementById('dm-search');
     if (si) si.addEventListener('input', debouncedFilter);
     ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
@@ -791,7 +956,13 @@
 
     document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
     document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
+
+    // ── Individual row save (delegated) ──────────────────────────────────────
+    // Uses JSON POST instead of form submit so new rows are handled correctly.
     document.addEventListener('click', e => {
+      const saveBtn = e.target.closest('.dm-save-row');
+      if (saveBtn) { e.preventDefault(); e.stopPropagation(); saveRow(saveBtn); return; }
+
       const db = e.target.closest('.dm-delete-row');
       if (db) { e.preventDefault(); deleteRow(db); }
     });
@@ -823,6 +994,29 @@
     }
 
     initDragScroll(document.querySelector('.table-container'));
+
+    // ── Export Excel button (Celery async) ───────────────────────────────────
+    const exportBtn = document.querySelector('a[href*="export_device_monitoring"]');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        const overlay = document.getElementById('invsys-loading-overlay');
+        if (overlay) overlay.classList.add('is-active');
+        try {
+          const resp = await fetch(this.href);
+          const data = await resp.json();
+          if (data.ok && data.task_id) {
+            pollExportTask(data.task_id);
+          } else {
+            if (overlay) overlay.classList.remove('is-active');
+            alert('Export failed to start.');
+          }
+        } catch (err) {
+          if (overlay) overlay.classList.remove('is-active');
+          alert('Export failed to start.');
+        }
+      });
+    }
   }
 
   /* ==================== INIT ==================== */
