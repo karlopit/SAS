@@ -519,8 +519,9 @@ def device_monitoring_save(request):
         })
 
     # ──────────────────────────────────────────────────────────
-    # 2. Normal form submission (unchanged)
+    # 2. Normal form submission
     # ──────────────────────────────────────────────────────────
+    
     ids                  = request.POST.getlist('row_id')
     box_numbers          = request.POST.getlist('box_number')
     offices              = request.POST.getlist('office_college')
@@ -538,31 +539,35 @@ def device_monitoring_save(request):
     incompletes          = request.POST.getlist('incomplete')
     remarks_list         = request.POST.getlist('remarks')
     issue_list           = request.POST.getlist('issue')
-
+    release_status_list  = request.POST.getlist('release_status')
+ 
+    def _get(lst, idx):
+        """Safe list getter — avoids the closure-scoping bug with def get() inside a loop."""
+        return lst[idx] if idx < len(lst) else ''
+ 
     for i, row_id in enumerate(ids):
-        def get(lst, idx=i):
-            return lst[idx] if idx < len(lst) else ''
-
-        fields = dict(
-            box_number          = get(box_numbers),
-            office_college      = get(offices),
-            assigned_mr         = get(assigned_mr_list),
-            accountable_person  = get(accountables),
-            borrower_type       = get(borrower_types),
-            accountable_officer = get(accountable_officers),
-            device              = get(devices) or 'Tablet',
-            serial_number       = get(serials),
-            serviceable         = get(serviceables)     == 'on',
-            non_serviceable     = get(non_serviceables) == 'on',
-            sealed              = get(sealeds)          == 'on',
-            missing             = get(missings)         == 'on',
-            incomplete          = get(incompletes)      == 'on',
-            release_status      = request.POST.getlist('release_status')[i] if i < len(request.POST.getlist('release_status')) else '',
-            ptr                 = get(ptr_list),
-            remarks             = get(remarks_list),
-            issue               = get(issue_list),
-        )
-
+        release_status = _get(release_status_list, i)
+        fields = {
+            'box_number':          _get(box_numbers, i),
+            'office_college':      _get(offices, i),
+            'assigned_mr':         _get(assigned_mr_list, i),
+            'accountable_person':  _get(accountables, i),
+            'borrower_type':       _get(borrower_types, i) or None,
+            'accountable_officer': _get(accountable_officers, i),
+            'device':              _get(devices, i) or 'Tablet',
+            'serial_number':       _get(serials, i),
+            'serviceable':         _get(serviceables, i)     == 'on',
+            'non_serviceable':     _get(non_serviceables, i) == 'on',
+            'sealed':              _get(sealeds, i)          == 'on',
+            'missing':             _get(missings, i)         == 'on',
+            'incomplete':          _get(incompletes, i)      == 'on',
+            'release_status':      release_status,
+            'is_released':         release_status == 'Released',
+            'ptr':                 _get(ptr_list, i),
+            'remarks':             _get(remarks_list, i),
+            'issue':               _get(issue_list, i),
+        }
+ 
         if row_id == 'new':
             DeviceMonitor.objects.create(**fields)
         else:
@@ -575,14 +580,14 @@ def device_monitoring_save(request):
                 obj.save()
             except DeviceMonitor.DoesNotExist:
                 pass
-
+ 
     b = _broadcasts()
     b.broadcast_device_monitoring()
     b.broadcast_dashboard()
-
+ 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'ok': True, 'saved': len(ids)})
-
+ 
     return redirect('device_monitoring')
 
 
