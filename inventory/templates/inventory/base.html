@@ -423,11 +423,8 @@
 </div>
 <script>
 (function () {
-  var overlay   = document.getElementById('invsys-loading-overlay');
+  var overlay = document.getElementById('invsys-loading-overlay');
   if (!overlay) return;
-
-  var cookieCheckInterval = null;
-  var exportProgressBar   = document.getElementById('export-progress-bar');
 
   function showOverlay() {
     overlay.classList.add('is-active');
@@ -439,52 +436,7 @@
     overlay.setAttribute('aria-hidden', 'true');
   }
 
-  function showExportProgress() {
-    if (!exportProgressBar) return;
-    exportProgressBar.style.transition = 'none';
-    exportProgressBar.style.transform  = 'scaleX(0)';
-    exportProgressBar.style.opacity    = '1';
-    exportProgressBar.classList.add('active');
-    requestAnimationFrame(function () {
-      exportProgressBar.style.transition = 'transform 1.8s cubic-bezier(0.1, 0.6, 0.4, 1)';
-      exportProgressBar.style.transform  = 'scaleX(0.82)';
-    });
-  }
-
-  function finishExportProgress() {
-    if (!exportProgressBar) return;
-    exportProgressBar.style.transition = 'transform 0.2s ease';
-    exportProgressBar.style.transform  = 'scaleX(1)';
-    setTimeout(function () {
-      exportProgressBar.style.transition = 'opacity 0.4s ease';
-      exportProgressBar.style.opacity    = '0';
-      setTimeout(function () {
-        exportProgressBar.classList.remove('active');
-        exportProgressBar.style.opacity    = '';
-        exportProgressBar.style.transform  = 'scaleX(0)';
-        exportProgressBar.style.transition = '';
-      }, 400);
-    }, 200);
-  }
-
-  function startCookieMonitor(onFinish) {
-    document.cookie = 'download_finished=; max-age=0; path=/';
-    clearInterval(cookieCheckInterval);
-    var timeout = setTimeout(function () {
-      // Fallback: if cookie never arrives, hide progress after 5 seconds
-      clearInterval(cookieCheckInterval);
-      if (typeof onFinish === 'function') onFinish();
-    }, 5000);
-    cookieCheckInterval = setInterval(function () {
-      if (document.cookie.indexOf('download_finished=1') !== -1) {
-        clearInterval(cookieCheckInterval);
-        clearTimeout(timeout);
-        document.cookie = 'download_finished=; max-age=0; path=/';
-        if (typeof onFinish === 'function') onFinish();
-      }
-    }, 100);
-  }
-
+  // Only show overlay for normal navigation (non‑export links)
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
@@ -497,44 +449,15 @@
       if (u.origin !== location.origin) return;
     } catch (err) {}
 
-    // ── Detect export / download links ──────────────────────────────────────
-    // 1. Explicit attribute
-    // 2. Class export-btn or no-loading-overlay
-    // 3. Path contains "export" (case-insensitive)
-    // 4. File extension .xlsx/.xls/.csv/.pdf/.zip
-    var isExport = a.hasAttribute('download') ||
-                   a.classList.contains('export-btn') ||
-                   a.classList.contains('no-loading-overlay') ||
-                   a.getAttribute('data-no-overlay') === 'true' ||
-                   /export/i.test(u.pathname) ||
-                   /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname);
+    // Let the export button's own handler take over
+    if (a.classList.contains('export-btn')) return;
 
-    if (isExport) {
-      e.preventDefault();  // Prevent immediate navigation (we'll navigate manually to show bar)
-      showExportProgress();
-      startCookieMonitor(function () {
-        // After cookie is set (or timeout), navigate to the export URL
-        window.location.href = a.href;
-      });
-      return; // Do NOT show the tablet overlay
-    }
-
-    // Normal page navigation — show the tablet overlay
     showOverlay();
   }, true);
 
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (form && form.tagName === 'FORM') {
-      var action = form.getAttribute('action') || '';
-      if (/export/i.test(action)) {
-        e.preventDefault();
-        showExportProgress();
-        startCookieMonitor(function () {
-          form.submit();
-        });
-        return;
-      }
       showOverlay();
     }
   }, true);
@@ -542,7 +465,6 @@
   window.addEventListener('pageshow', hideOverlay);
   window.addEventListener('pagehide', hideOverlay);
 })();
-</script>
 </script>
 
 <script src="{% static 'inventory/js/script.js' %}"></script>

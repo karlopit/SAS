@@ -1033,142 +1033,183 @@
 
   /* ==================== EVENT LISTENERS ==================== */
   function attachEventListeners() {
-    document.addEventListener('focusin', e => {
-      const tr = e.target.closest('tr[data-row-id]');
-      focusedRowId = tr?.dataset?.rowId || null;
-    });
-    document.addEventListener('focusout', e => {
-      const tr = e.target.closest('tr[data-row-id]');
- 
-      setTimeout(() => {
-        const active = document.activeElement?.closest('tr[data-row-id]');
-        if (!active) focusedRowId = null;
-      }, 50);
- 
-      if (!tr) return;
- 
-      // ── FIX 4: skip auto-save if focus moved INTO the release dropdown ──
-      // relatedTarget is the element receiving focus (null if focus leaves page)
-      const goingTo = e.relatedTarget;
-      if (goingTo && goingTo.classList.contains('temp-release-select')) return;
- 
-      scheduleAutoSave(tr);
-    });
+  document.addEventListener('focusin', e => {
+    const tr = e.target.closest('tr[data-row-id]');
+    focusedRowId = tr?.dataset?.rowId || null;
+  });
+  document.addEventListener('focusout', e => {
+    const tr = e.target.closest('tr[data-row-id]');
+    setTimeout(() => {
+      const active = document.activeElement?.closest('tr[data-row-id]');
+      if (!active) focusedRowId = null;
+    }, 50);
+    if (!tr) return;
+    const goingTo = e.relatedTarget;
+    if (goingTo && goingTo.classList.contains('temp-release-select')) return;
+    scheduleAutoSave(tr);
+  });
 
-    // Checkboxes
-    document.addEventListener('change', e => {
-      const cb = e.target.closest('.dm-checkbox');
-      if (cb?.type === 'checkbox') {
-        syncCheck(cb);
-        handleDmCheck(cb, cb.getAttribute('data-field'));
-        return;
-      }
-      // borrower_type select
-      const tr = e.target.closest('tr[data-row-id]');
-      if (tr && e.target.matches('select[name="borrower_type"]')) {
-        const rowId = tr.dataset.rowId;
-        if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
-        const dataRow = allRows.find(r => String(r.id) === String(rowId));
-        if (dataRow) dataRow.borrower_type = e.target.value;
-        scheduleAutoSave(tr);
-      }
-    });
-
-    // Text inputs / textareas
-    document.addEventListener('input', e => {
-      const tr = e.target.closest('tr[data-row-id]');
-      if (!tr) return;
+  // Checkboxes
+  document.addEventListener('change', e => {
+    const cb = e.target.closest('.dm-checkbox');
+    if (cb?.type === 'checkbox') {
+      syncCheck(cb);
+      handleDmCheck(cb, cb.getAttribute('data-field'));
+      return;
+    }
+    const tr = e.target.closest('tr[data-row-id]');
+    if (tr && e.target.matches('select[name="borrower_type"]')) {
       const rowId = tr.dataset.rowId;
       if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
-
       const dataRow = allRows.find(r => String(r.id) === String(rowId));
-      if (dataRow) {
-        if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; tr.dataset.box = e.target.value.toLowerCase(); }
-        if (e.target.name === 'office_college')       { dataRow.office_college = e.target.value; tr.dataset.college = e.target.value.toLowerCase(); }
-        if (e.target.name === 'accountable_person')   dataRow.accountable_person = e.target.value;
-        if (e.target.name === 'accountable_officer')  { dataRow.accountable_officer = e.target.value; tr.dataset.officer = e.target.value.toLowerCase(); }
-        if (e.target.name === 'device')               dataRow.device = e.target.value;
-        if (e.target.name === 'serial_number')        dataRow.serial_number = e.target.value;
-        if (e.target.name === 'assigned_mr')          { dataRow.assigned_mr = e.target.value; tr.dataset.mr = e.target.value; }
-        if (e.target.name === 'ptr')                  { dataRow.ptr = e.target.value; tr.dataset.ptr = e.target.value; }
-        if (e.target.name === 'remarks')              dataRow.remarks = e.target.value;
-        if (e.target.name === 'issue')                dataRow.issue = e.target.value;
-      }
+      if (dataRow) dataRow.borrower_type = e.target.value;
+      scheduleAutoSave(tr);
+    }
+  });
 
-      // For existing rows, schedule a debounced save on input.
-      // For new rows, save is triggered by focusout, not by every keystroke.
-      if (rowId && !rowId.startsWith('new_')) scheduleAutoSave(tr);
-    });
+  // Text inputs / textareas
+  document.addEventListener('input', e => {
+    const tr = e.target.closest('tr[data-row-id]');
+    if (!tr) return;
+    const rowId = tr.dataset.rowId;
+    if (rowId && !rowId.startsWith('new_')) dirtyRows.add(rowId);
+    const dataRow = allRows.find(r => String(r.id) === String(rowId));
+    if (dataRow) {
+      if (e.target.name === 'box_number')          { dataRow.box_number = e.target.value; tr.dataset.box = e.target.value.toLowerCase(); }
+      if (e.target.name === 'office_college')       { dataRow.office_college = e.target.value; tr.dataset.college = e.target.value.toLowerCase(); }
+      if (e.target.name === 'accountable_person')   dataRow.accountable_person = e.target.value;
+      if (e.target.name === 'accountable_officer')  { dataRow.accountable_officer = e.target.value; tr.dataset.officer = e.target.value.toLowerCase(); }
+      if (e.target.name === 'device')               dataRow.device = e.target.value;
+      if (e.target.name === 'serial_number')        dataRow.serial_number = e.target.value;
+      if (e.target.name === 'assigned_mr')          { dataRow.assigned_mr = e.target.value; tr.dataset.mr = e.target.value; }
+      if (e.target.name === 'ptr')                  { dataRow.ptr = e.target.value; tr.dataset.ptr = e.target.value; }
+      if (e.target.name === 'remarks')              dataRow.remarks = e.target.value;
+      if (e.target.name === 'issue')                dataRow.issue = e.target.value;
+    }
+    if (rowId && !rowId.startsWith('new_')) scheduleAutoSave(tr);
+  });
 
-    // Filters
-    const si = document.getElementById('dm-search');
-    if (si) si.addEventListener('input', debouncedFilter);
+  // Filters
+  const si = document.getElementById('dm-search');
+  if (si) si.addEventListener('input', debouncedFilter);
+  ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
+   'dm-filter-mr','dm-filter-ptr','dm-filter-release','dm-filter-status'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', applyFilters);
+  });
+  document.getElementById('dm-clear-filters')?.addEventListener('click', () => {
+    if (si) si.value = '';
     ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
      'dm-filter-mr','dm-filter-ptr','dm-filter-release','dm-filter-status'].forEach(id => {
-      document.getElementById(id)?.addEventListener('change', applyFilters);
+      const el = document.getElementById(id); if (el) el.selectedIndex = 0;
     });
-    document.getElementById('dm-clear-filters')?.addEventListener('click', () => {
-      if (si) si.value = '';
-      ['dm-filter-college','dm-filter-borrower-type','dm-filter-officer',
-       'dm-filter-mr','dm-filter-ptr','dm-filter-release','dm-filter-status'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.selectedIndex = 0;
-      });
-      applyFilters();
+    applyFilters();
+  });
+
+  document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
+  document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
+
+  document.addEventListener('click', e => {
+    const db = e.target.closest('.dm-delete-row');
+    if (db) { e.preventDefault(); deleteRow(db); }
+  });
+
+  document.getElementById('openImportModalBtn')?.addEventListener('click', openImportModal);
+  document.getElementById('closeImportModalBtn')?.addEventListener('click', closeImportModal);
+  document.getElementById('cancelImportBtn')?.addEventListener('click', closeImportModal);
+  document.getElementById('import-confirm-btn')?.addEventListener('click', confirmImport);
+
+  const fileInput = document.getElementById('import-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', function () {
+      const errEl = document.getElementById('import-error');
+      const prevEl = document.getElementById('import-preview');
+      const btn    = document.getElementById('import-confirm-btn');
+      if (errEl)  errEl.style.display  = 'none';
+      if (prevEl) prevEl.style.display = 'none';
+      if (btn)    btn.disabled = true;
+      if (!this.files?.[0]) return;
+      if (!this.files[0].name.match(/\.(xlsx|xls)$/i)) {
+        if (errEl) { errEl.textContent = 'Please select a valid .xlsx or .xls file.'; errEl.style.display = 'flex'; }
+        return;
+      }
+      const previewText = document.getElementById('import-preview-text');
+      if (previewText) previewText.textContent = `File: ${this.files[0].name}\nSize: ${(this.files[0].size/1024).toFixed(1)} KB\nReady to import.`;
+      if (prevEl) prevEl.style.display = 'block';
+      if (btn)    btn.disabled = false;
     });
-
-    document.getElementById('addDmRowBtn')?.addEventListener('click', addDmRow);
-    document.getElementById('saveAllBtn')?.addEventListener('click', saveAllRows);
-
-    document.addEventListener('click', e => {
-      const db = e.target.closest('.dm-delete-row');
-      if (db) { e.preventDefault(); deleteRow(db); }
-    });
-
-    document.getElementById('openImportModalBtn')?.addEventListener('click', openImportModal);
-    document.getElementById('closeImportModalBtn')?.addEventListener('click', closeImportModal);
-    document.getElementById('cancelImportBtn')?.addEventListener('click', closeImportModal);
-    document.getElementById('import-confirm-btn')?.addEventListener('click', confirmImport);
-
-    const fileInput = document.getElementById('import-file-input');
-    if (fileInput) {
-      fileInput.addEventListener('change', function () {
-        const errEl = document.getElementById('import-error');
-        const prevEl = document.getElementById('import-preview');
-        const btn    = document.getElementById('import-confirm-btn');
-        if (errEl)  errEl.style.display  = 'none';
-        if (prevEl) prevEl.style.display = 'none';
-        if (btn)    btn.disabled = true;
-        if (!this.files?.[0]) return;
-        if (!this.files[0].name.match(/\.(xlsx|xls)$/i)) {
-          if (errEl) { errEl.textContent = 'Please select a valid .xlsx or .xls file.'; errEl.style.display = 'flex'; }
-          return;
-        }
-        const previewText = document.getElementById('import-preview-text');
-        if (previewText) previewText.textContent = `File: ${this.files[0].name}\nSize: ${(this.files[0].size/1024).toFixed(1)} KB\nReady to import.`;
-        if (prevEl) prevEl.style.display = 'block';
-        if (btn)    btn.disabled = false;
-      });
-    }
-
-    initDragScroll(document.querySelector('.table-container'));
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // EXPORT BUTTON – SIMPLE REDIRECT (no fetch)
-    // The global click handler in base.html prevents the tablet overlay
-    // and shows only the thin progress bar for exports.
-    // ─────────────────────────────────────────────────────────────────────────
-    const exportBtn = document.querySelector('.export-btn');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        // Direct navigation – browser will download the file.
-        window.location.href = this.href;
-      });
-    }
-
-    const tableContainer = document.querySelector('.table-container');
-    if (tableContainer) attachReleaseEditListener(tableContainer);
   }
+
+  initDragScroll(document.querySelector('.table-container'));
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EXPORT BUTTON – fetch + blob (progress bar hides exactly when download finishes)
+  // ─────────────────────────────────────────────────────────────────────────
+  const exportBtn = document.querySelector('.export-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async function(e) {
+      e.preventDefault();
+      const url = this.href;
+      const bar = document.getElementById('export-progress-bar');
+
+      // Show progress bar
+      if (bar) {
+        bar.style.transition = 'none';
+        bar.style.transform = 'scaleX(0)';
+        bar.style.opacity = '1';
+        bar.classList.add('active');
+        requestAnimationFrame(() => {
+          bar.style.transition = 'transform 1.8s cubic-bezier(0.1, 0.6, 0.4, 1)';
+          bar.style.transform = 'scaleX(0.82)';
+        });
+      }
+
+      try {
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        const blob = await resp.blob();
+        const contentDisposition = resp.headers.get('Content-Disposition') || '';
+        const match = contentDisposition.match(/filename[^;=\n]*=["']?([^"';\n]+)/);
+        const filename = match ? match[1] : 'device_monitoring.xlsx';
+
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+
+        // Hide progress bar NOW (download succeeded)
+        if (bar) {
+          bar.style.transition = 'opacity 0.4s ease';
+          bar.style.opacity = '0';
+          setTimeout(() => {
+            bar.classList.remove('active');
+            bar.style.transform = 'scaleX(0)';
+            bar.style.transition = '';
+          }, 400);
+        }
+      } catch (err) {
+        console.error('Export failed:', err);
+        if (bar) {
+          bar.style.transition = 'opacity 0.4s ease';
+          bar.style.opacity = '0';
+          setTimeout(() => {
+            bar.classList.remove('active');
+            bar.style.transform = 'scaleX(0)';
+            bar.style.transition = '';
+          }, 400);
+        }
+        alert('Export failed: ' + err.message);
+      }
+    });
+  }
+
+  const tableContainer = document.querySelector('.table-container');
+  if (tableContainer) attachReleaseEditListener(tableContainer);
+}
 
   /* ==================== SAVE ALL ROWS ==================== */
   async function saveAllRows() {
