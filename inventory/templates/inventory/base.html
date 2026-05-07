@@ -439,29 +439,29 @@
   }
 
   // Watch for download_finished cookie and hide overlay when it appears
-  function startCookieMonitor() {
+  function startCookieMonitor(onFinish) {
     document.cookie = 'download_finished=; max-age=0; path=/';
-    
+
     var attempts = 0;
     clearInterval(cookieCheckInterval);
     cookieCheckInterval = setInterval(function () {
       if (document.cookie.indexOf('download_finished=1') !== -1) {
         clearInterval(cookieCheckInterval);
-        // Remove the cookie so it doesn't trigger again
         document.cookie = 'download_finished=; max-age=0; path=/';
         hideOverlay();
+        if (typeof onFinish === 'function') onFinish();
       } else {
         attempts++;
         // safety timeout after 5 seconds
         if (attempts > 50) {
           clearInterval(cookieCheckInterval);
           hideOverlay();
+          if (typeof onFinish === 'function') onFinish();
         }
       }
     }, 100);
   }
 
-  // Show overlay on all internal navigations, including export/download links.
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a[href]');
     if (!a || !a.href) return;
@@ -474,17 +474,45 @@
       if (u.origin !== location.origin) return;
     } catch (err) {}
 
-    // It's an internal navigation – show overlay.
-    showOverlay();
+    // ── Export / download links: use the slim progress bar only ──
+    var isExport = a.hasAttribute('download') ||
+        /\/export[\-_\/]/.test(a.pathname) ||
+        /\.(xlsx?|csv|pdf|zip)$/i.test(a.pathname) ||
+        a.classList.contains('export-btn');
 
-    // If it's an export/download link, watch for the cookie instead of waiting
-    // for a page navigation (which never happens).
-    if (a.hasAttribute('download') ||
-        /\/export\//.test(a.pathname) ||
-        /\.(xlsx?|csv|pdf|zip)$/i.test(a.pathname)) {
-      startCookieMonitor();
+    if (isExport) {
+      var bar = document.getElementById('export-progress-bar');
+      if (bar) {
+        bar.style.transition = 'none';
+        bar.style.transform  = 'scaleX(0)';
+        bar.style.opacity    = '1';
+        bar.classList.add('active');
+        requestAnimationFrame(function () {
+          bar.style.transition = 'transform 1.8s cubic-bezier(0.1, 0.6, 0.4, 1)';
+          bar.style.transform  = 'scaleX(0.82)';
+        });
+      }
+      startCookieMonitor(function () {
+        if (bar) {
+          bar.style.transition = 'transform 0.2s ease';
+          bar.style.transform  = 'scaleX(1)';
+          setTimeout(function () {
+            bar.style.transition = 'opacity 0.4s ease';
+            bar.style.opacity    = '0';
+            setTimeout(function () {
+              bar.classList.remove('active');
+              bar.style.opacity    = '';
+              bar.style.transform  = 'scaleX(0)';
+              bar.style.transition = '';
+            }, 400);
+          }, 200);
+        }
+      });
+      return; // don't show the tablet overlay
     }
-    // For normal pages the overlay will hide on 'pageshow'.
+
+    // Normal page navigation — show the tablet overlay
+    showOverlay();
   }, true);
 
   document.addEventListener('submit', function (e) {
