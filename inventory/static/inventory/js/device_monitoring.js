@@ -394,7 +394,7 @@
       <td style="text-align:center"><input type="text" name="accountable_officer" value="${_esc(row.accountable_officer)}" class="form-control dm-officer-input" placeholder="Officer name" style="width:130px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="text" name="device" value="${_esc(row.device)}" class="form-control dm-device-input" style="width:90px;text-align:center;margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="serviceable" value="${row.serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="serviceable" ${row.serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
-      <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="non_serviceable" ${row.non_serviceable ? 'checked' : ''} style="margin:0 auto"/></td>
+      <td style="text-align:center"><input type="hidden" name="non_serviceable" value="${row.non_serviceable ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="non_serviceable" ${row.non_serviceable ? 'checked' : ''} style="margin:0 auto"/><tr>
       <td style="text-align:center"><input type="hidden" name="sealed" value="${row.sealed ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="sealed" ${row.sealed ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="missing" value="${row.missing ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="missing" ${row.missing ? 'checked' : ''} style="margin:0 auto"/></td>
       <td style="text-align:center"><input type="hidden" name="incomplete" value="${row.incomplete ? 'on' : 'off'}"/><input type="checkbox" class="dm-checkbox" data-field="incomplete" ${row.incomplete ? 'checked' : ''} style="margin:0 auto"/></td>
@@ -1152,47 +1152,17 @@
 
     initDragScroll(document.querySelector('.table-container'));
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // EXPORT BUTTON – SIMPLE REDIRECT (no fetch)
+    // The global click handler in base.html prevents the tablet overlay
+    // and shows only the thin progress bar for exports.
+    // ─────────────────────────────────────────────────────────────────────────
     const exportBtn = document.querySelector('.export-btn');
     if (exportBtn) {
-      exportBtn.addEventListener('click', async function(e) {
+      exportBtn.addEventListener('click', function(e) {
         e.preventDefault();
-        const overlay = document.getElementById('invsys-loading-overlay');
-        if (overlay) overlay.classList.add('is-active');
-        try {
-          const resp = await fetch(this.href, { credentials: 'same-origin' });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-          const contentType = resp.headers.get('Content-Type') || '';
-      
-          // If the view returns JSON, it's a task-based export
-          if (contentType.includes('application/json')) {
-            const data = await resp.json();
-            if (data.ok && data.task_id) {
-              pollExportTask(data.task_id);
-            } else {
-              if (overlay) overlay.classList.remove('is-active');
-              alert('Export failed to start.');
-            }
-          } else {
-            // Direct file response — trigger browser download
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            // Try to get filename from Content-Disposition header
-            const disposition = resp.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]+)/);
-            a.download = match ? match[1] : 'device_monitoring.xlsx';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-            if (overlay) overlay.classList.remove('is-active');
-          }
-        } catch (err) {
-          if (overlay) overlay.classList.remove('is-active');
-          alert('Export failed: ' + err.message);
-        }
+        // Direct navigation – browser will download the file.
+        window.location.href = this.href;
       });
     }
 
@@ -1257,7 +1227,7 @@
         .then(r => { if (!r.ok) throw new Error('load failed'); return r.json(); })
         .then(data => startRows(data.rows || []))
         .catch(() => {
-          loadingRow.innerHTML = '<td colspan="19" style="text-align:center;padding:48px;color:var(--muted)">Could not load device monitoring data.</td>';
+          loadingRow.innerHTML = '<td colspan="19" style="text-align:center;padding:48px;color:var(--muted)">Could not load device monitoring data.</tr>';
           showToast('Could not load device monitoring', 'error');
         });
     }

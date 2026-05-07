@@ -467,13 +467,18 @@
     }, 200);
   }
 
-  // Watch for download_finished cookie (set by server after file is ready)
   function startCookieMonitor(onFinish) {
     document.cookie = 'download_finished=; max-age=0; path=/';
     clearInterval(cookieCheckInterval);
+    var timeout = setTimeout(function () {
+      // Fallback: if cookie never arrives, hide progress after 5 seconds
+      clearInterval(cookieCheckInterval);
+      if (typeof onFinish === 'function') onFinish();
+    }, 5000);
     cookieCheckInterval = setInterval(function () {
       if (document.cookie.indexOf('download_finished=1') !== -1) {
         clearInterval(cookieCheckInterval);
+        clearTimeout(timeout);
         document.cookie = 'download_finished=; max-age=0; path=/';
         if (typeof onFinish === 'function') onFinish();
       }
@@ -487,24 +492,31 @@
     if (a.target && a.target !== '_self') return;
     if (a.getAttribute('href') === '#') return;
 
-    // Only consider same‑origin links
     try {
       var u = new URL(a.href, location.href);
       if (u.origin !== location.origin) return;
     } catch (err) {}
 
     // ── Detect export / download links ──────────────────────────────────────
+    // 1. Explicit attribute
+    // 2. Class export-btn or no-loading-overlay
+    // 3. Path contains "export" (case-insensitive)
+    // 4. File extension .xlsx/.xls/.csv/.pdf/.zip
     var isExport = a.hasAttribute('download') ||
                    a.classList.contains('export-btn') ||
                    a.classList.contains('no-loading-overlay') ||
+                   a.getAttribute('data-no-overlay') === 'true' ||
                    /export/i.test(u.pathname) ||
                    /\.(xlsx?|csv|pdf|zip)$/i.test(u.pathname);
 
     if (isExport) {
-      // Show the thin progress bar, but NEVER the tablet overlay
+      e.preventDefault();  // Prevent immediate navigation (we'll navigate manually to show bar)
       showExportProgress();
-      startCookieMonitor(finishExportProgress);
-      return; // do not show overlay
+      startCookieMonitor(function () {
+        // After cookie is set (or timeout), navigate to the export URL
+        window.location.href = a.href;
+      });
+      return; // Do NOT show the tablet overlay
     }
 
     // Normal page navigation — show the tablet overlay
@@ -514,14 +526,13 @@
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (form && form.tagName === 'FORM') {
-      // Skip overlay if the form is targeting an export endpoint?
-      // For simplicity, we keep overlay for all form submits except
-      // those that look like exports. We'll check the action URL.
       var action = form.getAttribute('action') || '';
       if (/export/i.test(action)) {
-        // show progress bar instead?
+        e.preventDefault();
         showExportProgress();
-        startCookieMonitor(finishExportProgress);
+        startCookieMonitor(function () {
+          form.submit();
+        });
         return;
       }
       showOverlay();
@@ -531,6 +542,7 @@
   window.addEventListener('pageshow', hideOverlay);
   window.addEventListener('pagehide', hideOverlay);
 })();
+</script>
 </script>
 
 <script src="{% static 'inventory/js/script.js' %}"></script>
