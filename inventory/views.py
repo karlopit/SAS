@@ -25,6 +25,7 @@ from django.contrib import messages
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from datetime import datetime, date as _date
+from functools import cache
 
 
 # Get Philippine timezone
@@ -1645,6 +1646,28 @@ def export_device_monitoring(request):
     from .tasks import generate_device_monitoring_export
     task = generate_device_monitoring_export.delay(request.user.id)
     return JsonResponse({'ok': True, 'task_id': task.id})
+
+@login_required
+def export_task_status(request, task_id):
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    info = result.result if result.ready() else {}
+    token = info.get('token', '') if isinstance(info, dict) else ''
+    return JsonResponse({'state': result.state, 'token': token})
+
+
+@login_required
+def download_export(request, token):
+    file_data = cache.get(f'export_{token}')
+    filename = cache.get(f'export_{token}_fn', 'export.xlsx')
+    if not file_data:
+        return HttpResponse('Export expired or not found.', status=404)
+    resp = HttpResponse(
+        file_data,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 @csrf_exempt
 def db_keepalive(request):
