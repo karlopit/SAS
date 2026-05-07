@@ -1159,17 +1159,39 @@
         const overlay = document.getElementById('invsys-loading-overlay');
         if (overlay) overlay.classList.add('is-active');
         try {
-          const resp = await fetch(this.href);
-          const data = await resp.json();
-          if (data.ok && data.task_id) {
-            pollExportTask(data.task_id);
+          const resp = await fetch(this.href, { credentials: 'same-origin' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+          const contentType = resp.headers.get('Content-Type') || '';
+      
+          // If the view returns JSON, it's a task-based export
+          if (contentType.includes('application/json')) {
+            const data = await resp.json();
+            if (data.ok && data.task_id) {
+              pollExportTask(data.task_id);
+            } else {
+              if (overlay) overlay.classList.remove('is-active');
+              alert('Export failed to start.');
+            }
           } else {
+            // Direct file response — trigger browser download
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Try to get filename from Content-Disposition header
+            const disposition = resp.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]+)/);
+            a.download = match ? match[1] : 'device_monitoring.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
             if (overlay) overlay.classList.remove('is-active');
-            alert('Export failed to start.');
           }
         } catch (err) {
           if (overlay) overlay.classList.remove('is-active');
-          alert('Export failed to start.');
+          alert('Export failed: ' + err.message);
         }
       });
     }
