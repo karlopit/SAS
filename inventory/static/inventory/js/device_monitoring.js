@@ -1176,12 +1176,12 @@
         const a = document.createElement('a');
         a.href = blobUrl;
         a.download = filename;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        // Use dispatchEvent with bubbles:false so the base.html overlay
-        // listener never sees this synthetic click and shows the dancing tablet.
-        a.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
-        a.remove();
+        // Do NOT append to the DOM. The base.html overlay listener is a
+        // capture-phase handler (addEventListener(..., true)), so bubbles:false
+        // has no effect — capture fires top-down regardless. But capture
+        // listeners only run on elements in the live document tree. A detached
+        // element's .click() never reaches document-level capture listeners.
+        a.click();
         URL.revokeObjectURL(blobUrl);
 
         // Hide progress bar NOW (download succeeded)

@@ -443,6 +443,8 @@
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (a.target && a.target !== '_self') return;
     if (a.getAttribute('href') === '#') return;
+    // Never show the overlay for blob: URLs (e.g. synthetic download anchors)
+    if (a.href && a.href.startsWith('blob:')) return;
 
     try {
       var u = new URL(a.href, location.href);
