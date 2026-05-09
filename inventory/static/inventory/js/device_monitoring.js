@@ -1176,8 +1176,11 @@
         const a = document.createElement('a');
         a.href = blobUrl;
         a.download = filename;
+        a.style.display = 'none';
         document.body.appendChild(a);
-        a.click();
+        // Use dispatchEvent with bubbles:false so the base.html overlay
+        // listener never sees this synthetic click and shows the dancing tablet.
+        a.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
         a.remove();
         URL.revokeObjectURL(blobUrl);
 

@@ -1656,24 +1656,11 @@ def export_device_monitoring(request):
     
     rows.sort(key=box_number_key)
 
-    # Annotate release_status on each row
+    # Use the release_status stored on the model (set by the user via the badge dropdown).
+    # Do NOT re-derive from TransactionDevice — that field is the source of truth.
     for row in rows:
-        if row.date_returned:
-            row.release_status = 'Returned'
-        else:
-            active_td = TransactionDevice.objects.filter(
-                serial_number=row.serial_number,
-                returned=False
-            ).select_related('transaction').first()
-            if active_td and active_td.transaction:
-                tx = active_td.transaction
-                tx_borrower = tx.borrow_request.borrower_name if tx.borrow_request else tx.borrower.username
-                if tx_borrower == row.accountable_person and tx.office_college == row.office_college:
-                    row.release_status = 'Released'
-                else:
-                    row.release_status = '—'
-            else:
-                row.release_status = '—'
+        if not hasattr(row, 'release_status') or row.release_status is None:
+            row.release_status = '—'
 
     # ─── Collect summary statistics ──────────────────────────────────────────
     summary_data = {}
