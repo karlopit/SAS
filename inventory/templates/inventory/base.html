@@ -5,6 +5,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
   <title>{% block title %}InvSys{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{% static 'inventory/images/favicon.png' %}">
+  <link rel="shortcut icon" type="image/png" href="{% static 'inventory/images/favicon.png' %}">
   <link rel="stylesheet" href="{% static 'inventory/css/style.css' %}"/>
   {% if request.user.is_authenticated %}
   <link rel="prefetch" href="{% url 'index' %}" as="document" crossorigin="use-credentials">
