@@ -30,7 +30,7 @@
     </span>
   </div>
 
-  <div class="requests-table-container" style="overflow-x: auto; max-height: 70vh; position: relative;">
+  <div class="requests-table-container" style="overflow-x: auto; overflow-y: auto; max-height: 70vh; position: relative; cursor: grab;">
     <table id="requests-table" style="width:100%;min-width:800px; border-collapse: collapse;">
       <thead>
         <tr>
@@ -93,8 +93,35 @@
   /* Table container for scrolling */
   .requests-table-container {
     overflow-x: auto;
+    overflow-y: auto;
     max-height: 70vh;
     position: relative;
+    cursor: grab;
+  }
+  
+  .requests-table-container:active {
+    cursor: grabbing;
+  }
+  
+  /* Scrollbar styling */
+  .requests-table-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .requests-table-container::-webkit-scrollbar-track {
+    background: var(--surface2, rgba(255,255,255,0.05));
+    border-radius: 4px;
+  }
+  
+  .requests-table-container::-webkit-scrollbar-thumb {
+    background: var(--border, rgba(255,255,255,0.15));
+    border-radius: 4px;
+    transition: background 0.2s ease;
+  }
+  
+  .requests-table-container::-webkit-scrollbar-thumb:hover {
+    background: var(--accent, #00e5a0);
   }
   
   /* Make table headers sticky */

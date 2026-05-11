@@ -54,6 +54,30 @@
     return dateString;
   }
 
+  /* ── Drag-to-scroll ───────────────────────────────────────────────────── */
+  function initDragScroll(container) {
+    if (!container) return;
+    let isDragging = false, startX = 0, startY = 0,
+        scrollLeft = 0, scrollTop = 0, hasDragged = false;
+    container.addEventListener('mousedown', e => {
+      if (e.button !== 0 || ['INPUT','TEXTAREA','SELECT','BUTTON','A','LABEL'].includes(e.target.tagName)) return;
+      isDragging = true; hasDragged = false;
+      startX = e.pageX - container.offsetLeft; startY = e.pageY - container.offsetTop;
+      scrollLeft = container.scrollLeft; scrollTop = container.scrollTop;
+      container.style.cursor = 'grabbing'; e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const walkX = (e.pageX - container.offsetLeft) - startX;
+      const walkY = (e.pageY - container.offsetTop) - startY;
+      if (!hasDragged && (Math.abs(walkX) > 5 || Math.abs(walkY) > 5)) hasDragged = true;
+      container.scrollLeft = scrollLeft - walkX;
+      container.scrollTop  = scrollTop  - walkY;
+    });
+    document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; container.style.cursor = ''; } });
+    container.addEventListener('click', e => { if (hasDragged) { e.stopPropagation(); e.preventDefault(); hasDragged = false; } }, true);
+  }
+
   /* ── Search filter ────────────────────────────────────────────────────── */
   let searchQuery = '';
 
@@ -164,6 +188,8 @@
         applySearchFilter();
       });
     }
+
+    initDragScroll(document.querySelector('.requests-table-container'));
 
     const indicator = document.getElementById('rt-indicator');
     if (typeof InvSysRT !== 'undefined') {
