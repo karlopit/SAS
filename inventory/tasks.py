@@ -70,8 +70,8 @@ def _chunked_bulk_update(model, objects, fields, chunk_size=CHUNK_SIZE):
     return updated
 
 
-@shared_task(bind=True, soft_time_limit=300, time_limit=360)
-def process_excel_import(self, rows_data, user_id):
+@shared_task(soft_time_limit=300, time_limit=360)
+def process_excel_import(rows_data, user_id):
     """
     rows_data : list of dicts already parsed from the Excel file by the view.
     user_id   : PK of the staff user who triggered the import.

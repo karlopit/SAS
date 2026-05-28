@@ -837,34 +837,24 @@ def device_monitoring_import(request):
                 'message': 'No data rows found in the file.',
             })
 
-        # ── Dispatch to Celery ───────────────────────────────────────────────
+        # ── Run Import Synchronously ─────────────────────────────────────────
         try:
             from inventory.tasks import process_excel_import
-            task = process_excel_import.delay(rows_data, request.user.id)
-            task_id = task.id
+            result = process_excel_import(rows_data, request.user.id)
+            if not result.get('ok', True):
+                return JsonResponse({'ok': False, 'error': result.get('error', 'Import failed')}, status=400)
+            return JsonResponse({
+                'ok':      True,
+                'task_id': None,
+                'total':   len(rows_data),
+                'created': result.get('created', 0),
+                'updated': result.get('updated', 0),
+                'errors':  result.get('errors', []),
+                'message': 'Import complete.',
+                'done':    True,
+            })
         except Exception as exc:
-            try:
-                from inventory.tasks import process_excel_import
-                result = process_excel_import(rows_data, request.user.id)
-                return JsonResponse({
-                    'ok':      True,
-                    'task_id': None,
-                    'total':   len(rows_data),
-                    'created': result.get('created', 0),
-                    'updated': result.get('updated', 0),
-                    'errors':  result.get('errors', []),
-                    'message': 'Import complete (ran synchronously — Celery unavailable).',
-                    'done':    True,
-                })
-            except Exception as exc2:
-                return JsonResponse({'ok': False, 'error': str(exc2)}, status=500)
-
-        return JsonResponse({
-            'ok':      True,
-            'task_id': task_id,
-            'total':   len(rows_data),
-            'message': f'Import started for {len(rows_data)} row(s).',
-        })
+            return JsonResponse({'ok': False, 'error': f'Import error: {str(exc)}'}, status=500)
 
     except Exception as e:
         # Log the full traceback for debugging
