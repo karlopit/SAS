@@ -1,0 +1,473 @@
+================================================================================
+             INVSYS — INVENTORY MANAGEMENT SYSTEM
+                       USER MANUAL
+             School of Accountancy and Science (SAS)
+                   Eulogio "Amang" Rodriguez
+            Institute of Science and Technology (EARIST)
+================================================================================
+
+Prepared for: SAS Office Staff
+Version: 1.0
+Date: May 2026
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  1. Introduction
+  2. Accessing the System
+  3. User Roles
+  4. Navigating the System (Sidebar)
+  5. PUBLIC PAGE — Submitting a Borrow Request (for Borrowers)
+  6. STAFF FEATURES
+     6.1  Dashboard
+     6.2  Borrow Requests
+     6.3  Borrow Management
+     6.4  Device Monitoring
+     6.5  Graduation Warnings
+  7. ADMIN FEATURES
+     7.1  Add Item
+     7.2  Manage Users
+  8. Common Tips & Tricks
+  9. Frequently Asked Questions (FAQ)
+
+================================================================================
+1. INTRODUCTION
+================================================================================
+
+InvSys is a web-based inventory management system designed to track borrowing,
+returning, and monitoring of office equipment — particularly tablets — handled
+by the SAS office of EARIST.
+
+Key features:
+  - Real-time updates across all logged-in staff (no need to refresh the page)
+  - Public borrow request form for students and employees
+  - Staff review and approval of borrow requests
+  - Full transaction tracking (borrowed, returned, quantities)
+  - Device-level monitoring with status flags (serviceable, missing, sealed, etc.)
+  - Graduation warning alerts for graduating students with unreturned devices
+  - Excel export for reports
+
+================================================================================
+2. ACCESSING THE SYSTEM
+================================================================================
+
+Open your web browser (Chrome, Edge, or Firefox recommended) and go to the
+system's URL provided by your system administrator.
+
+  - If you are STAFF or ADMIN, log in using your username and password.
+  - If you are a BORROWER (student or employee), you do NOT need to log in.
+    You can submit a borrow request directly from the home/welcome page.
+
+IMPORTANT: Do not share your login credentials with anyone.
+
+================================================================================
+3. USER ROLES
+================================================================================
+
+There are two types of logged-in user accounts:
+
+  STAFF
+  -----
+  - Can view and manage borrow requests (accept or decline)
+  - Can view all borrow transactions
+  - Can process device returns
+  - Can view and edit the device monitoring spreadsheet
+  - Can view graduation warnings
+  - Can export reports to Excel
+
+  ADMIN
+  -----
+  - Has all Staff access PLUS:
+  - Can add new inventory items
+  - Can edit item quantities
+  - Can manage user accounts (add/remove staff and admin accounts)
+
+================================================================================
+4. NAVIGATING THE SYSTEM (SIDEBAR)
+================================================================================
+
+After logging in, you will see a sidebar on the left side of the screen with
+the following navigation links:
+
+  MAIN SECTION:
+  - Dashboard           — Overview of inventory statistics and charts
+  - Add Item            — (Admin only) Add new items to inventory
+  - Borrow Requests     — (Staff only) Pending borrow requests from borrowers
+  - Borrow Management   — (Staff only) All borrow transactions and returns
+  - Device Monitoring   — (Staff only) Device-level tracking spreadsheet
+  - Graduation Warnings — (Staff only) Students nearing graduation with
+                          unreturned devices
+
+  ACCOUNT SECTION:
+  - Manage Users        — (Admin only) Add or remove user accounts
+  - Profile             — View your profile details
+  - Logout button       — Located at the bottom of the sidebar
+
+The top-right of every page shows the EARIST and SAS logos, and also displays
+a real-time connection indicator (green dot = connected, live updates active).
+
+================================================================================
+5. PUBLIC PAGE — SUBMITTING A BORROW REQUEST (FOR BORROWERS)
+================================================================================
+
+Students and employees who want to borrow equipment do NOT need an account.
+They access the public welcome page and fill out the borrow request form.
+
+HOW TO SUBMIT A BORROW REQUEST:
+---------------------------------
+Step 1: Open the system URL in your browser.
+Step 2: You will see the welcome page with a borrow request form.
+Step 3: Fill in all required fields:
+          - Your full name
+          - College or office you belong to
+          - The item you want to borrow
+          - Quantity needed
+          - Your contact information
+Step 4: Click "Submit Request."
+Step 5: A TRANSACTION ID will be displayed on screen after submission.
+        WRITE THIS DOWN OR TAKE A SCREENSHOT — you may need it for follow-up.
+
+After submission, your request will appear in the staff's "Borrow Requests"
+page for review. Staff will either accept or decline it.
+
+================================================================================
+6. STAFF FEATURES
+================================================================================
+
+------------------------------------------------------------------------
+6.1  DASHBOARD
+------------------------------------------------------------------------
+
+The Dashboard is the first page you see after logging in. It gives you
+a quick overview of the current inventory status.
+
+KEY STATISTICS shown on the Dashboard:
+  - Total Devices       — Total number of devices registered in the system
+  - Active Borrows      — Devices currently released/borrowed
+  - Total Returns       — Devices that have been returned
+  - Pending Requests    — Number of borrow requests waiting for review
+  - Available Quantity  — Stock currently available for borrowing
+  - Qty Borrowed        — Total quantity of items currently out on loan
+
+CHART:
+  A bar chart at the bottom shows device status (Serviceable, Non-Serviceable,
+  Sealed, Missing, Incomplete) broken down by college/office.
+
+The dashboard updates automatically in real time — no need to refresh.
+
+------------------------------------------------------------------------
+6.2  BORROW REQUESTS
+------------------------------------------------------------------------
+
+This page shows all PENDING borrow requests submitted by students and employees.
+
+WHAT YOU SEE IN THE TABLE:
+  - Transaction ID  — Unique ID auto-generated for each request
+  - Borrower Name   — Full name of the person requesting
+  - College/Office  — Their department or office
+  - Item Requested  — The item they want to borrow
+  - Quantity        — How many units they need
+  - Requested On    — Date and time of the request (Philippine Time)
+  - Actions         — Accept or Decline buttons
+
+HOW TO ACCEPT A REQUEST:
+  Step 1: Find the request in the table.
+  Step 2: Click the green "Accept" button.
+  Step 3: You will be redirected to a confirmation form.
+  Step 4: Fill in the required details (accountable officer, serial numbers, etc.)
+  Step 5: Click "Confirm Borrow" to finalize the transaction.
+
+HOW TO DECLINE A REQUEST:
+  Step 1: Find the request in the table.
+  Step 2: Click the red "Decline" button.
+  Step 3: The request will be removed from the pending list.
+
+SEARCH:
+  Use the search bar at the top to filter requests by Transaction ID,
+  borrower name, office, or item name.
+
+REAL-TIME UPDATES:
+  When a new borrow request is submitted, it will automatically appear at
+  the top of the table with a green highlight animation. A toast notification
+  will also pop up in the bottom-right corner of your screen.
+
+NOTE: The table supports scrolling and drag-to-scroll (click and drag
+      the table with your mouse to scroll horizontally or vertically).
+
+------------------------------------------------------------------------
+6.3  BORROW MANAGEMENT
+------------------------------------------------------------------------
+
+This page shows ALL borrow transactions — both active (borrowed) and
+completed (returned).
+
+WHAT YOU SEE IN THE TRANSACTIONS TABLE:
+  - Tx ID              — Transaction ID
+  - Borrower Name      — Name of borrower
+  - Borrower Type      — Student or Employee
+  - Accountable Officer— The staff member who processed the transaction
+  - College/Office     — Borrower's department
+  - Item               — Item borrowed
+  - Qty Borrowed       — How many units were borrowed
+  - Returned Qty       — How many units have been returned so far
+  - Borrowed On        — Date and time of borrowing
+  - Returned On        — Date and time of return (blank if not yet returned)
+  - Status             — "Return" button (if still borrowed) or "Returned" badge
+
+FILTERING:
+  Use the dropdown filters at the top to narrow down the list by:
+    - College/Office
+    - Accountable Officer
+    - Borrower Name
+    - Borrower Type (Student / Employee)
+    - Status (Released / Returned)
+  Use the search bar to search by any text in the table.
+  Click "× Clear filters" to reset all filters.
+
+HOW TO PROCESS A RETURN:
+  Step 1: Find the transaction in the table (status shows "↩ Return" button).
+  Step 2: Click the orange "↩ Return" button.
+  Step 3: A popup (modal) will appear listing all the individual devices
+          associated with that transaction.
+  Step 4: Check the boxes next to the devices that have been physically returned.
+          You can click "Select All" to mark all devices at once.
+  Step 5: Click "Confirm Return."
+  Step 6: The transaction table will update automatically to reflect the
+          returned quantity.
+
+EXPORT TO EXCEL:
+  Click the "Export Excel" button to download a full report of all
+  transactions as an Excel (.xlsx) file. A progress bar at the bottom
+  of the screen will show the export status.
+
+NOTE: The table supports drag-to-scroll (click and drag the table area).
+
+------------------------------------------------------------------------
+6.4  DEVICE MONITORING
+------------------------------------------------------------------------
+
+This is the main device-level tracking spreadsheet. Each row represents
+one individual device (tablet) registered in the system.
+
+COLUMNS IN THE DEVICE MONITORING TABLE:
+  - Box Number          — The box/unit number assigned to the device
+  - Serial Number       — The device's serial number
+  - Office/College      — Which office or college the device is assigned to
+  - Accountable Person  — The person directly responsible for the device
+  - Borrower Type       — Student or Employee
+  - Assigned M.R.#      — Memorandum Receipt number
+  - Accountable Officer — Staff member who processed the record
+  - Device              — Device type (e.g., Tablet)
+  - Serviceable         — Check if the device is in working condition
+  - Non-Serviceable     — Check if the device is broken/non-functional
+  - Sealed              — Check if the device is sealed/unopened
+  - Missing             — Check if the device is reported missing
+  - Incomplete          — Check if the device has missing accessories
+  - P.T.R.              — Property Transfer Receipt number
+  - Status              — Released / Returned / blank
+  - Date Returned       — When the device was physically returned
+  - Remarks             — Any additional notes
+  - Issue               — Known issues with the device
+
+HOW TO EDIT A ROW:
+  Step 1: Click on any cell in the row you want to edit.
+  Step 2: Type the new value directly in the cell.
+  Step 3: Click somewhere else (or press Tab) to move away from the cell.
+  Step 4: The system will AUTO-SAVE your changes automatically.
+          A small "Saved" indicator will briefly appear on the row.
+
+HOW TO ADD A NEW ROW:
+  Step 1: Click the "+ Add Row" button at the top of the page.
+  Step 2: A new blank row will appear at the bottom of the table.
+  Step 3: Fill in the fields. The row will be saved automatically.
+
+HOW TO DELETE A ROW:
+  Step 1: Find the row you want to delete.
+  Step 2: Click the red trash icon (delete button) on that row.
+  Step 3: A confirmation dialog will appear. Click OK to confirm deletion.
+  NOTE: Deletion is PERMANENT and cannot be undone.
+
+CHANGING RELEASE/RETURN STATUS:
+  Click the status badge (e.g., "—", "Released", "Returned") on a row
+  to cycle through the available statuses. The change saves automatically.
+
+FILTERING THE TABLE:
+  Use the dropdown filters at the top to narrow down rows by:
+    - College/Office
+    - Borrower Type
+    - Accountable Officer
+    - Assigned M.R.#
+    - P.T.R.#
+    - Release Status
+    - Device Status (Serviceable, Missing, etc.)
+  Use the search bar to search across all fields.
+
+IMPORT FROM EXCEL:
+  Step 1: Click the "Import Excel" button.
+  Step 2: Click "Choose File" and select your .xlsx or .xls file.
+  Step 3: Click "Import" to start the upload.
+  Step 4: A progress bar will show the import status.
+  Step 5: The table will refresh automatically when the import is complete.
+  
+  IMPORTANT: Your Excel file must have a "Serial Number" column.
+  The system will automatically detect and map the other columns
+  based on their header names.
+
+EXPORT TO EXCEL:
+  Click the "Export Excel" button to download the full device monitoring
+  data as an Excel file.
+
+NOTE: The table supports drag-to-scroll (click and drag to scroll the table).
+
+------------------------------------------------------------------------
+6.5  GRADUATION WARNINGS
+------------------------------------------------------------------------
+
+This page automatically identifies students who are in their 4th or 5th
+year and still have unreturned devices.
+
+WHAT YOU SEE:
+  - Borrower Name       — Student's full name
+  - Year Level          — Their current year level
+  - Section             — Their section
+  - College             — Their college/department
+  - Academic Year       — The school year they enrolled
+  - Student ID          — Their student ID number
+  - Item                — What device they borrowed
+  - Qty Outstanding     — How many units are still unreturned
+  - Serial Numbers      — Serial numbers of the unreturned devices
+  - Borrowed On         — When the device was borrowed
+  - Accountable Officer — Who processed the original transaction
+  - Transaction ID      — Reference number
+
+This page serves as a follow-up list. Use it to contact students who
+are nearing graduation and still have borrowed equipment.
+
+The count of warnings is also displayed as an orange badge in the
+sidebar navigation (next to "Graduation Warnings").
+
+================================================================================
+7. ADMIN FEATURES
+================================================================================
+
+------------------------------------------------------------------------
+7.1  ADD ITEM
+------------------------------------------------------------------------
+
+(Admin accounts only)
+
+This page allows administrators to add new types of items to the inventory.
+
+HOW TO ADD A NEW ITEM:
+  Step 1: Click "Add Item" in the sidebar.
+  Step 2: Fill in the item name and total quantity.
+  Step 3: Click "Save" or "Add Item."
+  Step 4: The new item will appear in the inventory and will be available
+          for borrowers to request.
+
+HOW TO EDIT AN ITEM'S QUANTITY:
+  Go to the Dashboard. Each item card has an "Edit" option to update
+  the available quantity if items are added or removed from stock.
+
+------------------------------------------------------------------------
+7.2  MANAGE USERS
+------------------------------------------------------------------------
+
+(Admin accounts only)
+
+This page allows administrators to create and manage user accounts for staff.
+
+HOW TO ADD A NEW USER:
+  Step 1: Click "Manage Users" in the sidebar.
+  Step 2: Click the button to create a new user.
+  Step 3: Enter the username, password, full name, and role (Staff or Admin).
+  Step 4: Save the new account.
+  Step 5: Share the credentials with the new staff member securely.
+
+HOW TO REMOVE A USER:
+  Find the user in the list and use the delete option.
+  NOTE: Be careful — deleted accounts cannot be recovered easily.
+
+================================================================================
+8. COMMON TIPS & TRICKS
+================================================================================
+
+  - REAL-TIME UPDATES: The system updates automatically. If you have multiple
+    staff using the system at the same time, changes made by one person will
+    appear on everyone else's screen immediately. You do NOT need to refresh.
+
+  - DRAG TO SCROLL: On wide tables, you can click and hold your mouse on the
+    table area and drag left/right (or up/down) to scroll the table without
+    needing the scrollbar.
+
+  - SEARCH IS INSTANT: The search bars filter results as you type — you don't
+    need to press Enter.
+
+  - AUTO-SAVE: Changes in the Device Monitoring table save automatically when
+    you click away from a cell. Wait for the "Saved" indicator before closing
+    the page.
+
+  - EXPORT BEFORE BIG CHANGES: It's good practice to export an Excel backup
+    before making bulk changes to the Device Monitoring table.
+
+  - FAVICON: The browser tab shows a dancing tablet icon so you can easily
+    identify the InvSys tab when you have many browser tabs open.
+
+  - HARD REFRESH: If something looks outdated or the page seems stuck, press
+    Ctrl + Shift + R (Windows) to force a full page reload.
+
+  - INCOGNITO MODE: If you need to test the public borrow form while logged in
+    as staff, open an Incognito/Private window so it doesn't interfere with
+    your staff session.
+
+================================================================================
+9. FREQUENTLY ASKED QUESTIONS (FAQ)
+================================================================================
+
+Q: A borrower submitted a request but I can't find it. What do I do?
+A: Check the "Borrow Requests" page and use the search bar to look for the
+   borrower's name or Transaction ID. If it still doesn't appear, try
+   refreshing the page (Ctrl + R). Requests should appear in real time.
+
+Q: I accidentally declined a request. What do I do?
+A: The borrower will need to re-submit their request from the public page.
+   Declined requests cannot be restored.
+
+Q: Can two staff members process the same request at the same time?
+A: The system will reflect changes in real time. If one staff member accepts
+   a request, it will disappear from the other staff member's pending list
+   automatically within seconds.
+
+Q: A device row in Device Monitoring was accidentally deleted. Can it be recovered?
+A: No. Deleted rows are permanent. This is why it's recommended to export
+   a backup before making major changes.
+
+Q: The import failed. What might be wrong?
+A: Common causes:
+   - The file is not .xlsx or .xls format
+   - The Excel file has no "Serial Number" column header
+   - The file has merged cells in the header row
+   - The data rows start too far down (the system checks the first 15 rows
+     for the header)
+
+Q: How do I know if I'm connected and receiving real-time updates?
+A: Look for the green dot indicator at the top-right area of any staff page.
+   Green = connected and live. If it turns grey or red, try refreshing.
+
+Q: Can borrowers check the status of their request?
+A: Not directly. Borrowers receive a Transaction ID when they submit a request.
+   They need to follow up with the office staff using that Transaction ID.
+
+Q: Where is the logout button?
+A: At the bottom of the left sidebar, inside your user chip (the box showing
+   your name and role). Click the arrow/logout icon on the right side of it.
+
+================================================================================
+                        END OF MANUAL
+================================================================================
+
+For technical issues or system errors, please contact your system administrator.
+
+Document prepared for internal use of the SAS Office — EARIST.
+================================================================================
